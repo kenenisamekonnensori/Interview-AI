@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  background: #09090b;
+  color: #fafafa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+main {
+  display: grid;
+  min-height: 100vh;
+  max-width: 48rem;
+  align-content: center;
+  gap: 1rem;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+h1,
+p {
+  margin: 0;
+}
