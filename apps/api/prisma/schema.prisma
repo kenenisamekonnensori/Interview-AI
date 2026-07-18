@@ -16,6 +16,7 @@ model User {
   updatedAt     DateTime  @updatedAt
   sessions      Session[]
   accounts      Account[]
+  authEmailOutbox AuthEmailOutbox[]
 
   @@map("user")
 }
@@ -62,4 +63,25 @@ model Verification {
   updatedAt  DateTime @updatedAt
 
   @@map("verification")
+}
+
+model AuthEmailOutbox {
+  id          String   @id
+  eventKey    String?  @unique
+  recipient   String
+  payload     Json
+  attempts    Int      @default(0)
+  availableAt DateTime @default(now())
+  lockedAt    DateTime?
+  completedAt DateTime?
+  failedAt    DateTime?
+  lastError   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([availableAt])
+  @@index([userId])
+  @@map("auth_email_outbox")
 }

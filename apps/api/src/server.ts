@@ -1,3 +1,5 @@
+import "./load-environment.js";
+
 import { createApp } from "./app.js";
 
 const app = createApp();

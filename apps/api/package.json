@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "tsup src/server.ts --format esm --target node22 --clean",
+    "build": "tsup src/server.ts src/workers/auth-email.worker.ts --format esm --target node22 --clean",
     "dev": "tsx watch src/server.ts",
     "lint": "eslint .",
     "prisma:generate": "prisma generate",
     "pretypecheck": "pnpm prisma:generate",
     "start": "node dist/server.mjs",
+    "start:auth-email-worker": "node dist/workers/auth-email.worker.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -19,8 +20,11 @@
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "better-auth": "^1.6.23",
+    "bullmq": "^5.80.8",
     "fastify": "^5.6.1",
+    "ioredis": "^5.11.1",
     "pg": "^8.22.0",
+    "resend": "^6.17.2",
     "zod": "^4.1.12"
   },
   "devDependencies": {
