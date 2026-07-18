@@ -1,6 +1,6 @@
 import type { ServerEnvironment } from "@interviewer-ai/config";
 import { prismaAdapter } from "@better-auth/prisma-adapter";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../../../prisma/generated/client.js";
 import type { BetterAuthOptions } from "better-auth";
 
 import { createAuthEmailOutbox } from "./email-outbox.js";
@@ -29,6 +29,20 @@ export function createAuthConfig(
       maxPasswordLength: 128,
       requireEmailVerification: true,
     },
+    socialProviders: {
+      google: {
+        clientId: environment.GOOGLE_CLIENT_ID,
+        clientSecret: environment.GOOGLE_CLIENT_SECRET,
+        prompt: "select_account",
+        scope: ["openid", "email", "profile"],
+      },
+    },
+    account: {
+      accountLinking: {
+        enabled: true,
+        disableImplicitLinking: false,
+      },
+    },
     session: {
       expiresIn: 30 * 24 * 60 * 60,
       updateAge: 24 * 60 * 60,
@@ -36,6 +50,27 @@ export function createAuthConfig(
     },
     advanced: {
       useSecureCookies: environment.NODE_ENV === "production",
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user) => {
+            if (!user.emailVerified) {
+              return;
+            }
+
+            void emailOutbox
+              .enqueueWelcome({
+                userId: user.id,
+                recipient: user.email,
+                name: user.name,
+              })
+              .catch((error: unknown) => {
+                logger.error(error, "Unable to enqueue Google welcome email");
+              });
+          },
+        },
+      },
     },
     emailVerification: {
       sendVerificationEmail: async ({ user, url }) => {

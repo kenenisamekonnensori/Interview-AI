@@ -1,7 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 
 import { serverEnvironmentSchema } from "@interviewer-ai/config";
-import type { AuthEmailOutbox, PrismaClient } from "@prisma/client";
+import type { AuthEmailOutbox, PrismaClient } from "../../prisma/generated/client.js";
 
 import { createAuthDatabase } from "../modules/auth/database.js";
 import { authEmailMessageSchema, type AuthEmailMessage } from "../modules/auth/email-outbox.js";

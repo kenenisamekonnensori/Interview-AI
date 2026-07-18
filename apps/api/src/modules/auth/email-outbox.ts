@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../../../prisma/generated/client.js";
 import { z } from "zod";
 
 const verificationEmailSchema = z.object({

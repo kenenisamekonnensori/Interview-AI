@@ -2,14 +2,15 @@
   "name": "@interviewer-ai/api",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "build": "tsup src/server.ts src/workers/auth-email.worker.ts --format esm --target node22 --clean",
+    "build": "tsup src/server.ts src/workers/auth-email.worker.ts --format esm --target node22 --external dotenv --external dotenv/config --clean",
     "dev": "tsx watch src/server.ts",
     "lint": "eslint .",
     "prisma:generate": "prisma generate",
     "pretypecheck": "pnpm prisma:generate",
-    "start": "node dist/server.mjs",
-    "start:auth-email-worker": "node dist/workers/auth-email.worker.mjs",
+    "start": "node dist/server.js",
+    "start:auth-email-worker": "node dist/workers/auth-email.worker.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

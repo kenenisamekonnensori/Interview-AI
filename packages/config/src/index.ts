@@ -6,6 +6,8 @@ export const serverEnvironmentSchema = z.object({
   BETTER_AUTH_URL: z.url(),
   DATABASE_URL: z.url(),
   EMAIL_FROM: z.string().min(1),
+  GOOGLE_CLIENT_ID: z.string().min(1),
+  GOOGLE_CLIENT_SECRET: z.string().min(1),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   REDIS_URL: z.url(),
   RESEND_API_KEY: z.string().min(1),
