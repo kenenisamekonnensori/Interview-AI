@@ -29,6 +29,14 @@ export function createAuthConfig(
       maxPasswordLength: 128,
       requireEmailVerification: true,
     },
+    session: {
+      expiresIn: 30 * 24 * 60 * 60,
+      updateAge: 24 * 60 * 60,
+      freshAge: 10 * 60,
+    },
+    advanced: {
+      useSecureCookies: environment.NODE_ENV === "production",
+    },
     emailVerification: {
       sendVerificationEmail: async ({ user, url }) => {
         void emailOutbox
