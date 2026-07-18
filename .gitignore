@@ -7,3 +7,6 @@ coverage
 .env.local
 !.env.example
 *.log
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+**/*.tsbuildinfo

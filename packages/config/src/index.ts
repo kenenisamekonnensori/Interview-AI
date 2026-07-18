@@ -15,3 +15,10 @@ export const serverEnvironmentSchema = z.object({
 });
 
 export type ServerEnvironment = z.infer<typeof serverEnvironmentSchema>;
+
+/** Environment values that are intentionally safe to expose to the browser. */
+export const webEnvironmentSchema = z.object({
+  NEXT_PUBLIC_API_URL: z.string().url().default("http://localhost:4000"),
+});
+
+export type WebEnvironment = z.infer<typeof webEnvironmentSchema>;
