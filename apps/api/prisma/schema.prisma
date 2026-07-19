@@ -1,8 +1,8 @@
 generator client {
   provider            = "prisma-client"
   output              = "./generated"
-  moduleFormat        = "esm"
   importFileExtension = "ts"
+  moduleFormat        = "esm"
 }
 
 datasource db {
@@ -10,16 +10,16 @@ datasource db {
 }
 
 model User {
-  id            String    @id
-  name          String
-  email         String    @unique
-  emailVerified Boolean   @default(false)
-  image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  sessions      Session[]
-  accounts      Account[]
+  id              String            @id
+  name            String
+  email           String            @unique
+  emailVerified   Boolean           @default(false)
+  image           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  accounts        Account[]
   authEmailOutbox AuthEmailOutbox[]
+  sessions        Session[]
 
   @@map("user")
 }
@@ -43,7 +43,6 @@ model Account {
   accountId             String
   providerId            String
   userId                String
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   accessToken           String?
   refreshToken          String?
   idToken               String?
@@ -53,6 +52,7 @@ model Account {
   password              String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("account")
 }
@@ -69,20 +69,20 @@ model Verification {
 }
 
 model AuthEmailOutbox {
-  id          String   @id
-  eventKey    String?  @unique
+  id          String    @id
+  eventKey    String?   @unique
   recipient   String
   payload     Json
-  attempts    Int      @default(0)
-  availableAt DateTime @default(now())
+  attempts    Int       @default(0)
+  availableAt DateTime  @default(now())
   lockedAt    DateTime?
   completedAt DateTime?
   failedAt    DateTime?
   lastError   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([availableAt])
   @@index([userId])

@@ -1,5 +1,10 @@
 @import "tailwindcss";
-@import "shadcn/tailwind.css";
+
+/* Tailwind v4 needs explicit source roots when this app is built from a monorepo. */
+@source "../app";
+@source "../components";
+@source "../features";
+@source "../lib";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -84,5 +89,70 @@
 
   body {
     @apply bg-background text-foreground antialiased;
+  }
+}
+
+@keyframes landing-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(4%, -5%, 0) scale(1.08);
+  }
+}
+
+@keyframes landing-wave {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+.landing-grid {
+  background-image: linear-gradient(oklch(0.8 0.04 240 / 5%) 1px, transparent 1px), linear-gradient(90deg, oklch(0.8 0.04 240 / 5%) 1px, transparent 1px);
+  background-size: 4rem 4rem;
+  mask-image: linear-gradient(to bottom, black, transparent 82%);
+}
+
+.landing-orb {
+  animation: landing-drift 13s ease-in-out infinite;
+}
+
+.landing-orb-two {
+  animation-delay: -6s;
+  animation-duration: 17s;
+}
+
+.landing-wave > span {
+  width: 0.22rem;
+  height: 100%;
+  transform-origin: center;
+  border-radius: 999px;
+  background: linear-gradient(to top, var(--primary), oklch(0.8 0.14 175));
+  animation: landing-wave 1.2s ease-in-out infinite;
+}
+
+.landing-wave > span:nth-child(3n) {
+  animation-delay: -0.35s;
+}
+
+.landing-wave > span:nth-child(3n + 1) {
+  animation-delay: -0.7s;
+}
+
+.landing-wave > span:nth-child(4n) {
+  animation-duration: 0.9s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-orb,
+  .landing-wave > span {
+    animation: none;
   }
 }
