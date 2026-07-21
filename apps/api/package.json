@@ -4,19 +4,21 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsup src/server.ts src/workers/auth-email.worker.ts --format esm --target node22 --external dotenv --external dotenv/config --clean",
+    "build": "tsup src/server.ts src/workers/auth-email.worker.ts src/workers/career-analysis.worker.ts --format esm --target node22 --external dotenv --external dotenv/config --clean",
     "dev": "tsx watch src/server.ts",
     "lint": "eslint .",
     "prisma:generate": "prisma generate",
     "pretypecheck": "pnpm prisma:generate",
     "start": "node dist/server.js",
     "start:auth-email-worker": "node dist/workers/auth-email.worker.js",
+    "start:career-analysis-worker": "node dist/workers/career-analysis.worker.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",
     "@aws-sdk/s3-request-presigner": "^3.1090.0",
     "@better-auth/prisma-adapter": "^1.6.23",
+    "@deepgram/sdk": "^5.6.0",
     "@fastify/cors": "^11.1.0",
     "@interviewer-ai/config": "workspace:*",
     "@interviewer-ai/types": "workspace:*",

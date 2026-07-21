@@ -260,6 +260,108 @@ export type EnumJobDescriptionStatusWithAggregatesFilter<$PrismaModel = never> =
   _max?: Prisma.NestedEnumJobDescriptionStatusFilter<$PrismaModel>
 }
 
+export type EnumInterviewStatusFilter<$PrismaModel = never> = {
+  equals?: $Enums.InterviewStatus | Prisma.EnumInterviewStatusFieldRefInput<$PrismaModel>
+  in?: $Enums.InterviewStatus[] | Prisma.ListEnumInterviewStatusFieldRefInput<$PrismaModel>
+  notIn?: $Enums.InterviewStatus[] | Prisma.ListEnumInterviewStatusFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumInterviewStatusFilter<$PrismaModel> | $Enums.InterviewStatus
+}
+
+export type EnumInterviewTypeFilter<$PrismaModel = never> = {
+  equals?: $Enums.InterviewType | Prisma.EnumInterviewTypeFieldRefInput<$PrismaModel>
+  in?: $Enums.InterviewType[] | Prisma.ListEnumInterviewTypeFieldRefInput<$PrismaModel>
+  notIn?: $Enums.InterviewType[] | Prisma.ListEnumInterviewTypeFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumInterviewTypeFilter<$PrismaModel> | $Enums.InterviewType
+}
+
+export type EnumInterviewDifficultyFilter<$PrismaModel = never> = {
+  equals?: $Enums.InterviewDifficulty | Prisma.EnumInterviewDifficultyFieldRefInput<$PrismaModel>
+  in?: $Enums.InterviewDifficulty[] | Prisma.ListEnumInterviewDifficultyFieldRefInput<$PrismaModel>
+  notIn?: $Enums.InterviewDifficulty[] | Prisma.ListEnumInterviewDifficultyFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumInterviewDifficultyFilter<$PrismaModel> | $Enums.InterviewDifficulty
+}
+
+export type EnumInterviewStatusWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.InterviewStatus | Prisma.EnumInterviewStatusFieldRefInput<$PrismaModel>
+  in?: $Enums.InterviewStatus[] | Prisma.ListEnumInterviewStatusFieldRefInput<$PrismaModel>
+  notIn?: $Enums.InterviewStatus[] | Prisma.ListEnumInterviewStatusFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumInterviewStatusWithAggregatesFilter<$PrismaModel> | $Enums.InterviewStatus
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumInterviewStatusFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumInterviewStatusFilter<$PrismaModel>
+}
+
+export type EnumInterviewTypeWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.InterviewType | Prisma.EnumInterviewTypeFieldRefInput<$PrismaModel>
+  in?: $Enums.InterviewType[] | Prisma.ListEnumInterviewTypeFieldRefInput<$PrismaModel>
+  notIn?: $Enums.InterviewType[] | Prisma.ListEnumInterviewTypeFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumInterviewTypeWithAggregatesFilter<$PrismaModel> | $Enums.InterviewType
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumInterviewTypeFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumInterviewTypeFilter<$PrismaModel>
+}
+
+export type EnumInterviewDifficultyWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.InterviewDifficulty | Prisma.EnumInterviewDifficultyFieldRefInput<$PrismaModel>
+  in?: $Enums.InterviewDifficulty[] | Prisma.ListEnumInterviewDifficultyFieldRefInput<$PrismaModel>
+  notIn?: $Enums.InterviewDifficulty[] | Prisma.ListEnumInterviewDifficultyFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumInterviewDifficultyWithAggregatesFilter<$PrismaModel> | $Enums.InterviewDifficulty
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumInterviewDifficultyFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumInterviewDifficultyFilter<$PrismaModel>
+}
+
+export type EnumConversationStateFilter<$PrismaModel = never> = {
+  equals?: $Enums.ConversationState | Prisma.EnumConversationStateFieldRefInput<$PrismaModel>
+  in?: $Enums.ConversationState[] | Prisma.ListEnumConversationStateFieldRefInput<$PrismaModel>
+  notIn?: $Enums.ConversationState[] | Prisma.ListEnumConversationStateFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumConversationStateFilter<$PrismaModel> | $Enums.ConversationState
+}
+
+export type EnumConversationStateWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.ConversationState | Prisma.EnumConversationStateFieldRefInput<$PrismaModel>
+  in?: $Enums.ConversationState[] | Prisma.ListEnumConversationStateFieldRefInput<$PrismaModel>
+  notIn?: $Enums.ConversationState[] | Prisma.ListEnumConversationStateFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumConversationStateWithAggregatesFilter<$PrismaModel> | $Enums.ConversationState
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumConversationStateFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumConversationStateFilter<$PrismaModel>
+}
+
+export type EnumConversationSpeakerFilter<$PrismaModel = never> = {
+  equals?: $Enums.ConversationSpeaker | Prisma.EnumConversationSpeakerFieldRefInput<$PrismaModel>
+  in?: $Enums.ConversationSpeaker[] | Prisma.ListEnumConversationSpeakerFieldRefInput<$PrismaModel>
+  notIn?: $Enums.ConversationSpeaker[] | Prisma.ListEnumConversationSpeakerFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumConversationSpeakerFilter<$PrismaModel> | $Enums.ConversationSpeaker
+}
+
+export type EnumConversationTurnTypeFilter<$PrismaModel = never> = {
+  equals?: $Enums.ConversationTurnType | Prisma.EnumConversationTurnTypeFieldRefInput<$PrismaModel>
+  in?: $Enums.ConversationTurnType[] | Prisma.ListEnumConversationTurnTypeFieldRefInput<$PrismaModel>
+  notIn?: $Enums.ConversationTurnType[] | Prisma.ListEnumConversationTurnTypeFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumConversationTurnTypeFilter<$PrismaModel> | $Enums.ConversationTurnType
+}
+
+export type EnumConversationSpeakerWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.ConversationSpeaker | Prisma.EnumConversationSpeakerFieldRefInput<$PrismaModel>
+  in?: $Enums.ConversationSpeaker[] | Prisma.ListEnumConversationSpeakerFieldRefInput<$PrismaModel>
+  notIn?: $Enums.ConversationSpeaker[] | Prisma.ListEnumConversationSpeakerFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumConversationSpeakerWithAggregatesFilter<$PrismaModel> | $Enums.ConversationSpeaker
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumConversationSpeakerFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumConversationSpeakerFilter<$PrismaModel>
+}
+
+export type EnumConversationTurnTypeWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.ConversationTurnType | Prisma.EnumConversationTurnTypeFieldRefInput<$PrismaModel>
+  in?: $Enums.ConversationTurnType[] | Prisma.ListEnumConversationTurnTypeFieldRefInput<$PrismaModel>
+  notIn?: $Enums.ConversationTurnType[] | Prisma.ListEnumConversationTurnTypeFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumConversationTurnTypeWithAggregatesFilter<$PrismaModel> | $Enums.ConversationTurnType
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumConversationTurnTypeFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumConversationTurnTypeFilter<$PrismaModel>
+}
+
 export type NestedStringFilter<$PrismaModel = never> = {
   equals?: string | Prisma.StringFieldRefInput<$PrismaModel>
   in?: string[] | Prisma.ListStringFieldRefInput<$PrismaModel>
@@ -490,6 +592,108 @@ export type NestedEnumJobDescriptionStatusWithAggregatesFilter<$PrismaModel = ne
   _count?: Prisma.NestedIntFilter<$PrismaModel>
   _min?: Prisma.NestedEnumJobDescriptionStatusFilter<$PrismaModel>
   _max?: Prisma.NestedEnumJobDescriptionStatusFilter<$PrismaModel>
+}
+
+export type NestedEnumInterviewStatusFilter<$PrismaModel = never> = {
+  equals?: $Enums.InterviewStatus | Prisma.EnumInterviewStatusFieldRefInput<$PrismaModel>
+  in?: $Enums.InterviewStatus[] | Prisma.ListEnumInterviewStatusFieldRefInput<$PrismaModel>
+  notIn?: $Enums.InterviewStatus[] | Prisma.ListEnumInterviewStatusFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumInterviewStatusFilter<$PrismaModel> | $Enums.InterviewStatus
+}
+
+export type NestedEnumInterviewTypeFilter<$PrismaModel = never> = {
+  equals?: $Enums.InterviewType | Prisma.EnumInterviewTypeFieldRefInput<$PrismaModel>
+  in?: $Enums.InterviewType[] | Prisma.ListEnumInterviewTypeFieldRefInput<$PrismaModel>
+  notIn?: $Enums.InterviewType[] | Prisma.ListEnumInterviewTypeFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumInterviewTypeFilter<$PrismaModel> | $Enums.InterviewType
+}
+
+export type NestedEnumInterviewDifficultyFilter<$PrismaModel = never> = {
+  equals?: $Enums.InterviewDifficulty | Prisma.EnumInterviewDifficultyFieldRefInput<$PrismaModel>
+  in?: $Enums.InterviewDifficulty[] | Prisma.ListEnumInterviewDifficultyFieldRefInput<$PrismaModel>
+  notIn?: $Enums.InterviewDifficulty[] | Prisma.ListEnumInterviewDifficultyFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumInterviewDifficultyFilter<$PrismaModel> | $Enums.InterviewDifficulty
+}
+
+export type NestedEnumInterviewStatusWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.InterviewStatus | Prisma.EnumInterviewStatusFieldRefInput<$PrismaModel>
+  in?: $Enums.InterviewStatus[] | Prisma.ListEnumInterviewStatusFieldRefInput<$PrismaModel>
+  notIn?: $Enums.InterviewStatus[] | Prisma.ListEnumInterviewStatusFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumInterviewStatusWithAggregatesFilter<$PrismaModel> | $Enums.InterviewStatus
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumInterviewStatusFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumInterviewStatusFilter<$PrismaModel>
+}
+
+export type NestedEnumInterviewTypeWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.InterviewType | Prisma.EnumInterviewTypeFieldRefInput<$PrismaModel>
+  in?: $Enums.InterviewType[] | Prisma.ListEnumInterviewTypeFieldRefInput<$PrismaModel>
+  notIn?: $Enums.InterviewType[] | Prisma.ListEnumInterviewTypeFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumInterviewTypeWithAggregatesFilter<$PrismaModel> | $Enums.InterviewType
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumInterviewTypeFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumInterviewTypeFilter<$PrismaModel>
+}
+
+export type NestedEnumInterviewDifficultyWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.InterviewDifficulty | Prisma.EnumInterviewDifficultyFieldRefInput<$PrismaModel>
+  in?: $Enums.InterviewDifficulty[] | Prisma.ListEnumInterviewDifficultyFieldRefInput<$PrismaModel>
+  notIn?: $Enums.InterviewDifficulty[] | Prisma.ListEnumInterviewDifficultyFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumInterviewDifficultyWithAggregatesFilter<$PrismaModel> | $Enums.InterviewDifficulty
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumInterviewDifficultyFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumInterviewDifficultyFilter<$PrismaModel>
+}
+
+export type NestedEnumConversationStateFilter<$PrismaModel = never> = {
+  equals?: $Enums.ConversationState | Prisma.EnumConversationStateFieldRefInput<$PrismaModel>
+  in?: $Enums.ConversationState[] | Prisma.ListEnumConversationStateFieldRefInput<$PrismaModel>
+  notIn?: $Enums.ConversationState[] | Prisma.ListEnumConversationStateFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumConversationStateFilter<$PrismaModel> | $Enums.ConversationState
+}
+
+export type NestedEnumConversationStateWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.ConversationState | Prisma.EnumConversationStateFieldRefInput<$PrismaModel>
+  in?: $Enums.ConversationState[] | Prisma.ListEnumConversationStateFieldRefInput<$PrismaModel>
+  notIn?: $Enums.ConversationState[] | Prisma.ListEnumConversationStateFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumConversationStateWithAggregatesFilter<$PrismaModel> | $Enums.ConversationState
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumConversationStateFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumConversationStateFilter<$PrismaModel>
+}
+
+export type NestedEnumConversationSpeakerFilter<$PrismaModel = never> = {
+  equals?: $Enums.ConversationSpeaker | Prisma.EnumConversationSpeakerFieldRefInput<$PrismaModel>
+  in?: $Enums.ConversationSpeaker[] | Prisma.ListEnumConversationSpeakerFieldRefInput<$PrismaModel>
+  notIn?: $Enums.ConversationSpeaker[] | Prisma.ListEnumConversationSpeakerFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumConversationSpeakerFilter<$PrismaModel> | $Enums.ConversationSpeaker
+}
+
+export type NestedEnumConversationTurnTypeFilter<$PrismaModel = never> = {
+  equals?: $Enums.ConversationTurnType | Prisma.EnumConversationTurnTypeFieldRefInput<$PrismaModel>
+  in?: $Enums.ConversationTurnType[] | Prisma.ListEnumConversationTurnTypeFieldRefInput<$PrismaModel>
+  notIn?: $Enums.ConversationTurnType[] | Prisma.ListEnumConversationTurnTypeFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumConversationTurnTypeFilter<$PrismaModel> | $Enums.ConversationTurnType
+}
+
+export type NestedEnumConversationSpeakerWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.ConversationSpeaker | Prisma.EnumConversationSpeakerFieldRefInput<$PrismaModel>
+  in?: $Enums.ConversationSpeaker[] | Prisma.ListEnumConversationSpeakerFieldRefInput<$PrismaModel>
+  notIn?: $Enums.ConversationSpeaker[] | Prisma.ListEnumConversationSpeakerFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumConversationSpeakerWithAggregatesFilter<$PrismaModel> | $Enums.ConversationSpeaker
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumConversationSpeakerFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumConversationSpeakerFilter<$PrismaModel>
+}
+
+export type NestedEnumConversationTurnTypeWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.ConversationTurnType | Prisma.EnumConversationTurnTypeFieldRefInput<$PrismaModel>
+  in?: $Enums.ConversationTurnType[] | Prisma.ListEnumConversationTurnTypeFieldRefInput<$PrismaModel>
+  notIn?: $Enums.ConversationTurnType[] | Prisma.ListEnumConversationTurnTypeFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumConversationTurnTypeWithAggregatesFilter<$PrismaModel> | $Enums.ConversationTurnType
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumConversationTurnTypeFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumConversationTurnTypeFilter<$PrismaModel>
 }
 
 

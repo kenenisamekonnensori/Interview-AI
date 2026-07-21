@@ -216,6 +216,7 @@ export type JobDescriptionWhereInput = {
   updatedAt?: Prisma.DateTimeFilter<"JobDescription"> | Date | string
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
   analysis?: Prisma.XOR<Prisma.JobAnalysisNullableScalarRelationFilter, Prisma.JobAnalysisWhereInput> | null
+  interviews?: Prisma.InterviewListRelationFilter
 }
 
 export type JobDescriptionOrderByWithRelationInput = {
@@ -230,6 +231,7 @@ export type JobDescriptionOrderByWithRelationInput = {
   updatedAt?: Prisma.SortOrder
   user?: Prisma.UserOrderByWithRelationInput
   analysis?: Prisma.JobAnalysisOrderByWithRelationInput
+  interviews?: Prisma.InterviewOrderByRelationAggregateInput
 }
 
 export type JobDescriptionWhereUniqueInput = Prisma.AtLeast<{
@@ -247,6 +249,7 @@ export type JobDescriptionWhereUniqueInput = Prisma.AtLeast<{
   updatedAt?: Prisma.DateTimeFilter<"JobDescription"> | Date | string
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
   analysis?: Prisma.XOR<Prisma.JobAnalysisNullableScalarRelationFilter, Prisma.JobAnalysisWhereInput> | null
+  interviews?: Prisma.InterviewListRelationFilter
 }, "id">
 
 export type JobDescriptionOrderByWithAggregationInput = {
@@ -290,6 +293,7 @@ export type JobDescriptionCreateInput = {
   updatedAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutJobDescriptionsInput
   analysis?: Prisma.JobAnalysisCreateNestedOneWithoutJobDescriptionInput
+  interviews?: Prisma.InterviewCreateNestedManyWithoutJobDescriptionInput
 }
 
 export type JobDescriptionUncheckedCreateInput = {
@@ -303,6 +307,7 @@ export type JobDescriptionUncheckedCreateInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   analysis?: Prisma.JobAnalysisUncheckedCreateNestedOneWithoutJobDescriptionInput
+  interviews?: Prisma.InterviewUncheckedCreateNestedManyWithoutJobDescriptionInput
 }
 
 export type JobDescriptionUpdateInput = {
@@ -316,6 +321,7 @@ export type JobDescriptionUpdateInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutJobDescriptionsNestedInput
   analysis?: Prisma.JobAnalysisUpdateOneWithoutJobDescriptionNestedInput
+  interviews?: Prisma.InterviewUpdateManyWithoutJobDescriptionNestedInput
 }
 
 export type JobDescriptionUncheckedUpdateInput = {
@@ -329,6 +335,7 @@ export type JobDescriptionUncheckedUpdateInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   analysis?: Prisma.JobAnalysisUncheckedUpdateOneWithoutJobDescriptionNestedInput
+  interviews?: Prisma.InterviewUncheckedUpdateManyWithoutJobDescriptionNestedInput
 }
 
 export type JobDescriptionCreateManyInput = {
@@ -412,6 +419,11 @@ export type JobDescriptionMinOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
 }
 
+export type JobDescriptionNullableScalarRelationFilter = {
+  is?: Prisma.JobDescriptionWhereInput | null
+  isNot?: Prisma.JobDescriptionWhereInput | null
+}
+
 export type JobDescriptionScalarRelationFilter = {
   is?: Prisma.JobDescriptionWhereInput
   isNot?: Prisma.JobDescriptionWhereInput
@@ -463,6 +475,22 @@ export type EnumJobDescriptionStatusFieldUpdateOperationsInput = {
   set?: $Enums.JobDescriptionStatus
 }
 
+export type JobDescriptionCreateNestedOneWithoutInterviewsInput = {
+  create?: Prisma.XOR<Prisma.JobDescriptionCreateWithoutInterviewsInput, Prisma.JobDescriptionUncheckedCreateWithoutInterviewsInput>
+  connectOrCreate?: Prisma.JobDescriptionCreateOrConnectWithoutInterviewsInput
+  connect?: Prisma.JobDescriptionWhereUniqueInput
+}
+
+export type JobDescriptionUpdateOneWithoutInterviewsNestedInput = {
+  create?: Prisma.XOR<Prisma.JobDescriptionCreateWithoutInterviewsInput, Prisma.JobDescriptionUncheckedCreateWithoutInterviewsInput>
+  connectOrCreate?: Prisma.JobDescriptionCreateOrConnectWithoutInterviewsInput
+  upsert?: Prisma.JobDescriptionUpsertWithoutInterviewsInput
+  disconnect?: Prisma.JobDescriptionWhereInput | boolean
+  delete?: Prisma.JobDescriptionWhereInput | boolean
+  connect?: Prisma.JobDescriptionWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.JobDescriptionUpdateToOneWithWhereWithoutInterviewsInput, Prisma.JobDescriptionUpdateWithoutInterviewsInput>, Prisma.JobDescriptionUncheckedUpdateWithoutInterviewsInput>
+}
+
 export type JobDescriptionCreateNestedOneWithoutAnalysisInput = {
   create?: Prisma.XOR<Prisma.JobDescriptionCreateWithoutAnalysisInput, Prisma.JobDescriptionUncheckedCreateWithoutAnalysisInput>
   connectOrCreate?: Prisma.JobDescriptionCreateOrConnectWithoutAnalysisInput
@@ -487,6 +515,7 @@ export type JobDescriptionCreateWithoutUserInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   analysis?: Prisma.JobAnalysisCreateNestedOneWithoutJobDescriptionInput
+  interviews?: Prisma.InterviewCreateNestedManyWithoutJobDescriptionInput
 }
 
 export type JobDescriptionUncheckedCreateWithoutUserInput = {
@@ -499,6 +528,7 @@ export type JobDescriptionUncheckedCreateWithoutUserInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   analysis?: Prisma.JobAnalysisUncheckedCreateNestedOneWithoutJobDescriptionInput
+  interviews?: Prisma.InterviewUncheckedCreateNestedManyWithoutJobDescriptionInput
 }
 
 export type JobDescriptionCreateOrConnectWithoutUserInput = {
@@ -542,6 +572,74 @@ export type JobDescriptionScalarWhereInput = {
   updatedAt?: Prisma.DateTimeFilter<"JobDescription"> | Date | string
 }
 
+export type JobDescriptionCreateWithoutInterviewsInput = {
+  id?: string
+  title?: string | null
+  company?: string | null
+  rawText: string
+  status?: $Enums.JobDescriptionStatus
+  deletedAt?: Date | string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  user: Prisma.UserCreateNestedOneWithoutJobDescriptionsInput
+  analysis?: Prisma.JobAnalysisCreateNestedOneWithoutJobDescriptionInput
+}
+
+export type JobDescriptionUncheckedCreateWithoutInterviewsInput = {
+  id?: string
+  userId: string
+  title?: string | null
+  company?: string | null
+  rawText: string
+  status?: $Enums.JobDescriptionStatus
+  deletedAt?: Date | string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  analysis?: Prisma.JobAnalysisUncheckedCreateNestedOneWithoutJobDescriptionInput
+}
+
+export type JobDescriptionCreateOrConnectWithoutInterviewsInput = {
+  where: Prisma.JobDescriptionWhereUniqueInput
+  create: Prisma.XOR<Prisma.JobDescriptionCreateWithoutInterviewsInput, Prisma.JobDescriptionUncheckedCreateWithoutInterviewsInput>
+}
+
+export type JobDescriptionUpsertWithoutInterviewsInput = {
+  update: Prisma.XOR<Prisma.JobDescriptionUpdateWithoutInterviewsInput, Prisma.JobDescriptionUncheckedUpdateWithoutInterviewsInput>
+  create: Prisma.XOR<Prisma.JobDescriptionCreateWithoutInterviewsInput, Prisma.JobDescriptionUncheckedCreateWithoutInterviewsInput>
+  where?: Prisma.JobDescriptionWhereInput
+}
+
+export type JobDescriptionUpdateToOneWithWhereWithoutInterviewsInput = {
+  where?: Prisma.JobDescriptionWhereInput
+  data: Prisma.XOR<Prisma.JobDescriptionUpdateWithoutInterviewsInput, Prisma.JobDescriptionUncheckedUpdateWithoutInterviewsInput>
+}
+
+export type JobDescriptionUpdateWithoutInterviewsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  title?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  company?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rawText?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.EnumJobDescriptionStatusFieldUpdateOperationsInput | $Enums.JobDescriptionStatus
+  deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  user?: Prisma.UserUpdateOneRequiredWithoutJobDescriptionsNestedInput
+  analysis?: Prisma.JobAnalysisUpdateOneWithoutJobDescriptionNestedInput
+}
+
+export type JobDescriptionUncheckedUpdateWithoutInterviewsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  userId?: Prisma.StringFieldUpdateOperationsInput | string
+  title?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  company?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rawText?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.EnumJobDescriptionStatusFieldUpdateOperationsInput | $Enums.JobDescriptionStatus
+  deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  analysis?: Prisma.JobAnalysisUncheckedUpdateOneWithoutJobDescriptionNestedInput
+}
+
 export type JobDescriptionCreateWithoutAnalysisInput = {
   id?: string
   title?: string | null
@@ -552,6 +650,7 @@ export type JobDescriptionCreateWithoutAnalysisInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutJobDescriptionsInput
+  interviews?: Prisma.InterviewCreateNestedManyWithoutJobDescriptionInput
 }
 
 export type JobDescriptionUncheckedCreateWithoutAnalysisInput = {
@@ -564,6 +663,7 @@ export type JobDescriptionUncheckedCreateWithoutAnalysisInput = {
   deletedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
+  interviews?: Prisma.InterviewUncheckedCreateNestedManyWithoutJobDescriptionInput
 }
 
 export type JobDescriptionCreateOrConnectWithoutAnalysisInput = {
@@ -592,6 +692,7 @@ export type JobDescriptionUpdateWithoutAnalysisInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutJobDescriptionsNestedInput
+  interviews?: Prisma.InterviewUpdateManyWithoutJobDescriptionNestedInput
 }
 
 export type JobDescriptionUncheckedUpdateWithoutAnalysisInput = {
@@ -604,6 +705,7 @@ export type JobDescriptionUncheckedUpdateWithoutAnalysisInput = {
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  interviews?: Prisma.InterviewUncheckedUpdateManyWithoutJobDescriptionNestedInput
 }
 
 export type JobDescriptionCreateManyUserInput = {
@@ -627,6 +729,7 @@ export type JobDescriptionUpdateWithoutUserInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   analysis?: Prisma.JobAnalysisUpdateOneWithoutJobDescriptionNestedInput
+  interviews?: Prisma.InterviewUpdateManyWithoutJobDescriptionNestedInput
 }
 
 export type JobDescriptionUncheckedUpdateWithoutUserInput = {
@@ -639,6 +742,7 @@ export type JobDescriptionUncheckedUpdateWithoutUserInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   analysis?: Prisma.JobAnalysisUncheckedUpdateOneWithoutJobDescriptionNestedInput
+  interviews?: Prisma.InterviewUncheckedUpdateManyWithoutJobDescriptionNestedInput
 }
 
 export type JobDescriptionUncheckedUpdateManyWithoutUserInput = {
@@ -653,6 +757,35 @@ export type JobDescriptionUncheckedUpdateManyWithoutUserInput = {
 }
 
 
+/**
+ * Count Type JobDescriptionCountOutputType
+ */
+
+export type JobDescriptionCountOutputType = {
+  interviews: number
+}
+
+export type JobDescriptionCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  interviews?: boolean | JobDescriptionCountOutputTypeCountInterviewsArgs
+}
+
+/**
+ * JobDescriptionCountOutputType without action
+ */
+export type JobDescriptionCountOutputTypeDefaultArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the JobDescriptionCountOutputType
+   */
+  select?: Prisma.JobDescriptionCountOutputTypeSelect<ExtArgs> | null
+}
+
+/**
+ * JobDescriptionCountOutputType without action
+ */
+export type JobDescriptionCountOutputTypeCountInterviewsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.InterviewWhereInput
+}
+
 
 export type JobDescriptionSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
@@ -666,6 +799,8 @@ export type JobDescriptionSelect<ExtArgs extends runtime.Types.Extensions.Intern
   updatedAt?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   analysis?: boolean | Prisma.JobDescription$analysisArgs<ExtArgs>
+  interviews?: boolean | Prisma.JobDescription$interviewsArgs<ExtArgs>
+  _count?: boolean | Prisma.JobDescriptionCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["jobDescription"]>
 
 export type JobDescriptionSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -710,6 +845,8 @@ export type JobDescriptionOmit<ExtArgs extends runtime.Types.Extensions.Internal
 export type JobDescriptionInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   analysis?: boolean | Prisma.JobDescription$analysisArgs<ExtArgs>
+  interviews?: boolean | Prisma.JobDescription$interviewsArgs<ExtArgs>
+  _count?: boolean | Prisma.JobDescriptionCountOutputTypeDefaultArgs<ExtArgs>
 }
 export type JobDescriptionIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -723,6 +860,7 @@ export type $JobDescriptionPayload<ExtArgs extends runtime.Types.Extensions.Inte
   objects: {
     user: Prisma.$UserPayload<ExtArgs>
     analysis: Prisma.$JobAnalysisPayload<ExtArgs> | null
+    interviews: Prisma.$InterviewPayload<ExtArgs>[]
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
@@ -1130,6 +1268,7 @@ export interface Prisma__JobDescriptionClient<T, Null = never, ExtArgs extends r
   readonly [Symbol.toStringTag]: "PrismaPromise"
   user<T extends Prisma.UserDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.UserDefaultArgs<ExtArgs>>): Prisma.Prisma__UserClient<runtime.Types.Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
   analysis<T extends Prisma.JobDescription$analysisArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.JobDescription$analysisArgs<ExtArgs>>): Prisma.Prisma__JobAnalysisClient<runtime.Types.Result.GetResult<Prisma.$JobAnalysisPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+  interviews<T extends Prisma.JobDescription$interviewsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.JobDescription$interviewsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$InterviewPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1585,6 +1724,30 @@ export type JobDescription$analysisArgs<ExtArgs extends runtime.Types.Extensions
    */
   include?: Prisma.JobAnalysisInclude<ExtArgs> | null
   where?: Prisma.JobAnalysisWhereInput
+}
+
+/**
+ * JobDescription.interviews
+ */
+export type JobDescription$interviewsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the Interview
+   */
+  select?: Prisma.InterviewSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the Interview
+   */
+  omit?: Prisma.InterviewOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.InterviewInclude<ExtArgs> | null
+  where?: Prisma.InterviewWhereInput
+  orderBy?: Prisma.InterviewOrderByWithRelationInput | Prisma.InterviewOrderByWithRelationInput[]
+  cursor?: Prisma.InterviewWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.InterviewScalarFieldEnum | Prisma.InterviewScalarFieldEnum[]
 }
 
 /**

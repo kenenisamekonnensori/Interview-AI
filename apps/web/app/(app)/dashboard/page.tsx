@@ -5,6 +5,8 @@ import { Sparkles } from "lucide-react";
 import { SignOutButton } from "@/features/auth/components/sign-out-button";
 import { authClient } from "@/lib/auth-client";
 import { ResumeManager } from "@/features/resumes/components/resume-manager";
+import { JobDescriptionManager } from "@/features/jobs/components/job-description-manager";
+import { InterviewManager } from "@/features/interviews/components/interview-manager";
 
 export default function DashboardPage() {
   const { data: session } = authClient.useSession();
@@ -33,6 +35,12 @@ export default function DashboardPage() {
         </div>
         <div className="mt-10">
           <ResumeManager />
+        </div>
+        <div className="mt-6">
+          <JobDescriptionManager />
+        </div>
+        <div className="mt-6">
+          <InterviewManager />
         </div>
       </section>
     </main>

@@ -22,6 +22,7 @@ model User {
   sessions        Session[]
   resumes         Resume[]
   jobDescriptions JobDescription[]
+  interviews      Interview[]
 
   @@map("user")
 }
@@ -50,6 +51,7 @@ model Resume {
   updatedAt DateTime     @updatedAt
   user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   analysis  ResumeAnalysis?
+  interviews Interview[]
 
   @@index([userId, createdAt])
   @@index([userId, isActive])
@@ -94,9 +96,125 @@ model JobDescription {
   updatedAt DateTime             @updatedAt
   user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   analysis  JobAnalysis?
+  interviews Interview[]
 
   @@index([userId, createdAt])
   @@map("job_description")
+}
+
+enum InterviewStatus {
+  DRAFT
+  PREPARING
+  READY
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum InterviewType {
+  BEHAVIORAL
+  TECHNICAL
+  CODING
+  SYSTEM_DESIGN
+  HR
+  MIXED
+}
+
+enum InterviewDifficulty {
+  EASY
+  MEDIUM
+  HARD
+  EXPERT
+}
+
+model Interview {
+  id               String              @id @default(uuid())
+  userId           String
+  resumeId         String?
+  jobDescriptionId String?
+  status           InterviewStatus     @default(DRAFT)
+  interviewType    InterviewType
+  difficulty       InterviewDifficulty @default(MEDIUM)
+  durationMinutes  Int
+  language         String              @default("en")
+  targetRole       String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resume           Resume?             @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+  jobDescription   JobDescription?     @relation(fields: [jobDescriptionId], references: [id], onDelete: SetNull)
+  plan             InterviewPlan?
+  conversation     Conversation?
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("interview")
+}
+
+enum ConversationState {
+  GREETING
+  LISTENING
+  THINKING
+  SPEAKING
+  CLOSING
+  COMPLETED
+}
+enum ConversationSpeaker {
+  USER
+  AI
+  SYSTEM
+}
+enum ConversationTurnType {
+  GREETING
+  QUESTION
+  ANSWER
+  FOLLOW_UP
+  CLARIFICATION
+  CLOSING
+}
+
+model Conversation {
+  id          String            @id @default(uuid())
+  interviewId String            @unique
+  state       ConversationState @default(GREETING)
+  sequence    Int               @default(0)
+  startedAt   DateTime          @default(now())
+  completedAt DateTime?
+  interview   Interview         @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  turns       ConversationTurn[]
+  @@map("conversation")
+}
+
+model ConversationTurn {
+  id             String               @id @default(uuid())
+  conversationId String
+  sequence       Int
+  speaker        ConversationSpeaker
+  type           ConversationTurnType
+  text           String
+  createdAt      DateTime             @default(now())
+  conversation   Conversation         @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  @@unique([conversationId, sequence])
+  @@map("conversation_turn")
+}
+
+model InterviewPlan {
+  id            String   @id @default(uuid())
+  interviewId   String   @unique
+  objectives    Json
+  topics        Json
+  evaluationRubric Json
+  timeline      Json
+  followUpStrategy String
+  fallbackStrategy String
+  model         String
+  generatedAt   DateTime @default(now())
+  version       Int      @default(1)
+  interview     Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("interview_plan")
 }
 
 model JobAnalysis {

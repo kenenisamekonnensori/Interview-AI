@@ -2,7 +2,7 @@
 
 import type { Resume, ResumeUploadRequest, ResumeUploadResponse } from "@interviewer-ai/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, LoaderCircle, Star, Trash2, Upload } from "lucide-react";
+import { FileText, LoaderCircle, Sparkles, Star, Trash2, Upload } from "lucide-react";
 import { useRef, useState, type ChangeEvent } from "react";
 
 import { apiClient } from "@/lib/api-client";
@@ -61,6 +61,10 @@ export function ResumeManager() {
   });
   const remove = useMutation({
     mutationFn: (id: string) => apiClient(`/api/v1/resumes/${id}`, { method: "DELETE" }),
+    onSuccess: refresh,
+  });
+  const analyze = useMutation({
+    mutationFn: (id: string) => apiClient(`/api/v1/resumes/${id}/analyze`, { method: "POST" }),
     onSuccess: refresh,
   });
 
@@ -136,9 +140,31 @@ export function ResumeManager() {
                   {formatFileSize(resume.fileSize)} · Added{" "}
                   {new Date(resume.createdAt).toLocaleDateString()}
                 </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {resume.status === "ANALYZED"
+                    ? "Analysis ready"
+                    : resume.status === "ANALYZING"
+                      ? "Analysis in progress"
+                      : resume.status === "FAILED"
+                        ? "Analysis failed"
+                        : "Ready to analyze"}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => analyze.mutate(resume.id)}
+                disabled={analyze.isPending || resume.status === "ANALYZING"}
+              >
+                <Sparkles className="size-3" />
+                {resume.status === "ANALYZING"
+                  ? "Analyzing"
+                  : resume.status === "ANALYZED"
+                    ? "Reanalyze"
+                    : "Analyze"}
+              </Button>
               {resume.isActive ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
                   <Star className="size-3 fill-current" />

@@ -62,6 +62,26 @@ export type ResumeAnalysis = Prisma.ResumeAnalysisModel
  */
 export type JobDescription = Prisma.JobDescriptionModel
 /**
+ * Model Interview
+ * 
+ */
+export type Interview = Prisma.InterviewModel
+/**
+ * Model Conversation
+ * 
+ */
+export type Conversation = Prisma.ConversationModel
+/**
+ * Model ConversationTurn
+ * 
+ */
+export type ConversationTurn = Prisma.ConversationTurnModel
+/**
+ * Model InterviewPlan
+ * 
+ */
+export type InterviewPlan = Prisma.InterviewPlanModel
+/**
  * Model JobAnalysis
  * 
  */

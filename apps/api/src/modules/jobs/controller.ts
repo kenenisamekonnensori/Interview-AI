@@ -40,6 +40,26 @@ export function registerJobDescriptionRoutes(
       return reply.status(201).send({ jobDescription: toDto(job) });
     },
   );
+  app.get(
+    "/api/v1/job-descriptions/:id/analysis",
+    { preHandler: app.requireVerifiedUser },
+    async (request, reply) => {
+      const params = jobDescriptionIdSchema.safeParse(request.params);
+      if (!params.success)
+        return reply
+          .status(400)
+          .send({ code: "VALIDATION_ERROR", message: "Invalid job description ID." });
+      const job = await database.jobDescription.findFirst({
+        where: { id: params.data.id, userId: request.authContext!.user.id, deletedAt: null },
+        include: { analysis: true },
+      });
+      if (!job)
+        return reply
+          .status(404)
+          .send({ code: "JOB_DESCRIPTION_NOT_FOUND", message: "Job description not found." });
+      return { status: job.status, analysis: job.analysis };
+    },
+  );
   app.get("/api/v1/job-descriptions", { preHandler: app.requireVerifiedUser }, async (request) => ({
     jobDescriptions: (
       await database.jobDescription.findMany({

@@ -6,6 +6,8 @@ import { createAuth } from "./modules/auth/index.js";
 import { createAuthFastifyIntegration } from "./modules/auth/fastify.js";
 import { registerResumeRoutes } from "./modules/resumes/index.js";
 import { registerJobDescriptionRoutes } from "./modules/jobs/index.js";
+import { registerInterviewRoutes } from "./modules/interviews/index.js";
+import { registerConversationRoutes } from "./modules/conversation/index.js";
 import { createCareerAnalysisQueue } from "./services/career-analysis-queue.js";
 
 export function createApp() {
@@ -33,6 +35,8 @@ export function createApp() {
 
   registerResumeRoutes(app, { database, environment, queue: careerAnalysisQueue });
   registerJobDescriptionRoutes(app, { database, queue: careerAnalysisQueue });
+  registerInterviewRoutes(app, database, careerAnalysisQueue);
+  registerConversationRoutes(app, database);
 
   app.get("/health", async () => ({ status: "ok" }));
 

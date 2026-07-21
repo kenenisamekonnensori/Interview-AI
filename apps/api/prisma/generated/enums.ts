@@ -30,3 +30,72 @@ export const JobDescriptionStatus = {
 } as const
 
 export type JobDescriptionStatus = (typeof JobDescriptionStatus)[keyof typeof JobDescriptionStatus]
+
+
+export const InterviewStatus = {
+  DRAFT: 'DRAFT',
+  PREPARING: 'PREPARING',
+  READY: 'READY',
+  IN_PROGRESS: 'IN_PROGRESS',
+  PAUSED: 'PAUSED',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+  FAILED: 'FAILED'
+} as const
+
+export type InterviewStatus = (typeof InterviewStatus)[keyof typeof InterviewStatus]
+
+
+export const InterviewType = {
+  BEHAVIORAL: 'BEHAVIORAL',
+  TECHNICAL: 'TECHNICAL',
+  CODING: 'CODING',
+  SYSTEM_DESIGN: 'SYSTEM_DESIGN',
+  HR: 'HR',
+  MIXED: 'MIXED'
+} as const
+
+export type InterviewType = (typeof InterviewType)[keyof typeof InterviewType]
+
+
+export const InterviewDifficulty = {
+  EASY: 'EASY',
+  MEDIUM: 'MEDIUM',
+  HARD: 'HARD',
+  EXPERT: 'EXPERT'
+} as const
+
+export type InterviewDifficulty = (typeof InterviewDifficulty)[keyof typeof InterviewDifficulty]
+
+
+export const ConversationState = {
+  GREETING: 'GREETING',
+  LISTENING: 'LISTENING',
+  THINKING: 'THINKING',
+  SPEAKING: 'SPEAKING',
+  CLOSING: 'CLOSING',
+  COMPLETED: 'COMPLETED'
+} as const
+
+export type ConversationState = (typeof ConversationState)[keyof typeof ConversationState]
+
+
+export const ConversationSpeaker = {
+  USER: 'USER',
+  AI: 'AI',
+  SYSTEM: 'SYSTEM'
+} as const
+
+export type ConversationSpeaker = (typeof ConversationSpeaker)[keyof typeof ConversationSpeaker]
+
+
+export const ConversationTurnType = {
+  GREETING: 'GREETING',
+  QUESTION: 'QUESTION',
+  ANSWER: 'ANSWER',
+  FOLLOW_UP: 'FOLLOW_UP',
+  CLARIFICATION: 'CLARIFICATION',
+  CLOSING: 'CLOSING'
+} as const
+
+export type ConversationTurnType = (typeof ConversationTurnType)[keyof typeof ConversationTurnType]

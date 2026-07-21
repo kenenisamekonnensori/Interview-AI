@@ -71,12 +71,10 @@ export function registerResumeRoutes(
         return reply.status(400).send({ code: "VALIDATION_ERROR", message: "Invalid resume ID." });
       const resume = await service.requireOwned(userId(request), params.data.id);
       if (resume.status === "PENDING_UPLOAD")
-        return reply
-          .status(409)
-          .send({
-            code: "RESUME_NOT_READY",
-            message: "Finish uploading this resume before analysis.",
-          });
+        return reply.status(409).send({
+          code: "RESUME_NOT_READY",
+          message: "Finish uploading this resume before analysis.",
+        });
       if (resume.status !== "ANALYZING") {
         await database.resume.update({ where: { id: resume.id }, data: { status: "ANALYZING" } });
         await queue.enqueue({ kind: "resume", resumeId: resume.id, userId: resume.userId });
@@ -92,6 +90,23 @@ export function registerResumeRoutes(
     const resumes = await service.list(userId(request), query.data.includePending);
     return { resumes: resumes.map(toResumeDto) };
   });
+
+  app.get(
+    "/api/v1/resumes/:id/analysis",
+    { preHandler: app.requireVerifiedUser },
+    async (request, reply) => {
+      const params = resumeIdSchema.safeParse(request.params);
+      if (!params.success)
+        return reply.status(400).send({ code: "VALIDATION_ERROR", message: "Invalid resume ID." });
+      const resume = await database.resume.findFirst({
+        where: { id: params.data.id, userId: userId(request), deletedAt: null },
+        include: { analysis: true },
+      });
+      if (!resume)
+        return reply.status(404).send({ code: "RESUME_NOT_FOUND", message: "Resume not found." });
+      return { status: resume.status, analysis: resume.analysis };
+    },
+  );
 
   app.post(
     "/api/v1/resumes/:id/complete",

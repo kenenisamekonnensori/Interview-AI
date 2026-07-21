@@ -55,6 +55,10 @@ export const ModelName = {
   Resume: 'Resume',
   ResumeAnalysis: 'ResumeAnalysis',
   JobDescription: 'JobDescription',
+  Interview: 'Interview',
+  Conversation: 'Conversation',
+  ConversationTurn: 'ConversationTurn',
+  InterviewPlan: 'InterviewPlan',
   JobAnalysis: 'JobAnalysis',
   Session: 'Session',
   Account: 'Account',
@@ -140,6 +144,66 @@ export const JobDescriptionScalarFieldEnum = {
 } as const
 
 export type JobDescriptionScalarFieldEnum = (typeof JobDescriptionScalarFieldEnum)[keyof typeof JobDescriptionScalarFieldEnum]
+
+
+export const InterviewScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  resumeId: 'resumeId',
+  jobDescriptionId: 'jobDescriptionId',
+  status: 'status',
+  interviewType: 'interviewType',
+  difficulty: 'difficulty',
+  durationMinutes: 'durationMinutes',
+  language: 'language',
+  targetRole: 'targetRole',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type InterviewScalarFieldEnum = (typeof InterviewScalarFieldEnum)[keyof typeof InterviewScalarFieldEnum]
+
+
+export const ConversationScalarFieldEnum = {
+  id: 'id',
+  interviewId: 'interviewId',
+  state: 'state',
+  sequence: 'sequence',
+  startedAt: 'startedAt',
+  completedAt: 'completedAt'
+} as const
+
+export type ConversationScalarFieldEnum = (typeof ConversationScalarFieldEnum)[keyof typeof ConversationScalarFieldEnum]
+
+
+export const ConversationTurnScalarFieldEnum = {
+  id: 'id',
+  conversationId: 'conversationId',
+  sequence: 'sequence',
+  speaker: 'speaker',
+  type: 'type',
+  text: 'text',
+  createdAt: 'createdAt'
+} as const
+
+export type ConversationTurnScalarFieldEnum = (typeof ConversationTurnScalarFieldEnum)[keyof typeof ConversationTurnScalarFieldEnum]
+
+
+export const InterviewPlanScalarFieldEnum = {
+  id: 'id',
+  interviewId: 'interviewId',
+  objectives: 'objectives',
+  topics: 'topics',
+  evaluationRubric: 'evaluationRubric',
+  timeline: 'timeline',
+  followUpStrategy: 'followUpStrategy',
+  fallbackStrategy: 'fallbackStrategy',
+  model: 'model',
+  generatedAt: 'generatedAt',
+  version: 'version'
+} as const
+
+export type InterviewPlanScalarFieldEnum = (typeof InterviewPlanScalarFieldEnum)[keyof typeof InterviewPlanScalarFieldEnum]
 
 
 export const JobAnalysisScalarFieldEnum = {
