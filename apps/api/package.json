@@ -21,6 +21,7 @@
     "@deepgram/sdk": "^5.6.0",
     "@fastify/cors": "^11.1.0",
     "@interviewer-ai/config": "workspace:*",
+    "@interviewer-ai/prompts": "workspace:*",
     "@interviewer-ai/types": "workspace:*",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",

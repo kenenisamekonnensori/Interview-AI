@@ -1,10 +1,16 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 import type { ServerEnvironment } from "@interviewer-ai/config";
+import { buildInterviewerPrompt, type InterviewerResponse } from "@interviewer-ai/prompts";
 import { z } from "zod";
-import { DeepgramConfigurationError, grantDeepgramAccessToken } from "./deepgram.js";
+import {
+  DeepgramConfigurationError,
+  grantDeepgramAccessToken,
+  synthesizeSpeech,
+} from "./deepgram.js";
 
 const idSchema = z.object({ id: z.uuid() });
+const turnIdSchema = z.object({ id: z.uuid(), turnId: z.uuid() });
 const turnSchema = z.object({
   speaker: z.enum(["USER", "AI", "SYSTEM"]),
   type: z.enum(["GREETING", "QUESTION", "ANSWER", "FOLLOW_UP", "CLARIFICATION", "CLOSING"]),
@@ -19,12 +25,144 @@ const permitted: Record<string, string[]> = {
   CLOSING: ["COMPLETED"],
   COMPLETED: [],
 };
+const interviewerResponseSchema = z.object({
+  text: z.string().trim().min(1).max(4_000),
+  turnType: z.enum(["QUESTION", "FOLLOW_UP", "CLARIFICATION", "CLOSING"]),
+  nextState: z.enum(["LISTENING", "CLOSING"]),
+});
+
+async function generateWithGemini(
+  environment: ServerEnvironment,
+  instructions: string,
+  context: unknown,
+) {
+  if (!environment.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured.");
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${environment.GEMINI_MODEL}:generateContent?key=${environment.GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: instructions }] },
+        contents: [{ role: "user", parts: [{ text: JSON.stringify(context) }] }],
+        generationConfig: { responseMimeType: "application/json" },
+      }),
+    },
+  );
+  if (!response.ok) throw new Error(`Gemini returned ${response.status}.`);
+  const body = (await response.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Gemini returned no response.");
+  return interviewerResponseSchema.parse(JSON.parse(text)) as InterviewerResponse;
+}
 
 export function registerConversationRoutes(
   app: FastifyInstance,
   database: PrismaClient,
   environment: ServerEnvironment,
 ) {
+  app.get(
+    "/api/v1/interviews/:id/conversation/turns/:turnId/audio",
+    { preHandler: app.requireVerifiedUser },
+    async (request, reply) => {
+      const params = turnIdSchema.safeParse(request.params);
+      if (!params.success)
+        return reply.status(400).send({ code: "VALIDATION_ERROR", message: "Invalid turn ID." });
+      const turn = await database.conversationTurn.findFirst({
+        where: {
+          id: params.data.turnId,
+          speaker: "AI",
+          conversation: {
+            interviewId: params.data.id,
+            interview: { userId: request.authContext!.user.id },
+          },
+        },
+      });
+      if (!turn)
+        return reply.status(404).send({ code: "AI_TURN_NOT_FOUND", message: "AI turn not found." });
+      try {
+        reply.header("Content-Type", "audio/wav");
+        reply.header("Cache-Control", "private, no-store");
+        return reply.send(await synthesizeSpeech(environment, turn.text));
+      } catch (error) {
+        if (error instanceof DeepgramConfigurationError)
+          return reply
+            .status(503)
+            .send({ code: "VOICE_UNAVAILABLE", message: "Voice is not configured." });
+        throw error;
+      }
+    },
+  );
+  app.post(
+    "/api/v1/interviews/:id/conversation/next-response",
+    { preHandler: app.requireVerifiedUser },
+    async (request, reply) => {
+      const params = idSchema.safeParse(request.params);
+      if (!params.success)
+        return reply
+          .status(400)
+          .send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
+      const conversation = await database.conversation.findFirst({
+        where: {
+          interviewId: params.data.id,
+          interview: { userId: request.authContext!.user.id, status: "IN_PROGRESS" },
+        },
+        include: {
+          interview: { include: { plan: true } },
+          turns: { orderBy: { sequence: "desc" }, take: 12 },
+        },
+      });
+      if (!conversation || !conversation.interview.plan)
+        return reply.status(409).send({
+          code: "CONVERSATION_NOT_READY",
+          message: "A planned active conversation is required.",
+        });
+      if (conversation.state !== "GREETING" && conversation.state !== "THINKING")
+        return reply.status(409).send({
+          code: "INVALID_STATE_TRANSITION",
+          message: "The interviewer cannot respond in the current state.",
+        });
+      try {
+        const prompt = buildInterviewerPrompt({
+          interviewType: conversation.interview.interviewType,
+          difficulty: conversation.interview.difficulty,
+          targetRole: conversation.interview.targetRole,
+        });
+        const ai = await generateWithGemini(environment, prompt, {
+          plan: conversation.interview.plan,
+          recentTurns: conversation.turns
+            .reverse()
+            .map((turn) => ({ speaker: turn.speaker, type: turn.type, text: turn.text })),
+        });
+        const result = await database.$transaction(async (tx) => {
+          const sequence = conversation.sequence + 1;
+          const turn = await tx.conversationTurn.create({
+            data: {
+              conversationId: conversation.id,
+              sequence,
+              speaker: "AI",
+              type: ai.turnType,
+              text: ai.text,
+            },
+          });
+          await tx.conversation.update({
+            where: { id: conversation.id },
+            data: { sequence, state: ai.nextState },
+          });
+          return turn;
+        });
+        return reply.status(201).send({ turn: result, nextState: ai.nextState });
+      } catch (error) {
+        request.log.error(error, "Gemini conversation response failed");
+        return reply.status(502).send({
+          code: "AI_RESPONSE_FAILED",
+          message: "The interviewer could not respond. Please try again.",
+        });
+      }
+    },
+  );
   app.post(
     "/api/v1/interviews/:id/voice-token",
     { preHandler: app.requireVerifiedUser },
@@ -42,12 +180,10 @@ export function registerConversationRoutes(
         },
       });
       if (!interview)
-        return reply
-          .status(409)
-          .send({
-            code: "INTERVIEW_NOT_VOICE_READY",
-            message: "Only ready or active interviews can use voice.",
-          });
+        return reply.status(409).send({
+          code: "INTERVIEW_NOT_VOICE_READY",
+          message: "Only ready or active interviews can use voice.",
+        });
       try {
         return { accessToken: await grantDeepgramAccessToken(environment), expiresInSeconds: 30 };
       } catch (error) {
