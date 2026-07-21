@@ -1,0 +1,110 @@
+import { randomUUID } from "node:crypto";
+
+import {
+  DeleteObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import type { ServerEnvironment } from "@interviewer-ai/config";
+
+const PRESIGNED_UPLOAD_TTL_SECONDS = 10 * 60;
+
+type R2Configuration = {
+  accessKeyId: string;
+  bucket: string;
+  endpoint: string;
+  secretAccessKey: string;
+};
+
+function getR2Configuration(environment: ServerEnvironment): R2Configuration {
+  const { R2_ACCESS_KEY_ID, R2_BUCKET, R2_ENDPOINT, R2_SECRET_ACCESS_KEY } = environment;
+  if (!R2_ACCESS_KEY_ID || !R2_BUCKET || !R2_ENDPOINT || !R2_SECRET_ACCESS_KEY) {
+    throw new ResumeStorageConfigurationError();
+  }
+  return {
+    accessKeyId: R2_ACCESS_KEY_ID,
+    bucket: R2_BUCKET,
+    endpoint: R2_ENDPOINT,
+    secretAccessKey: R2_SECRET_ACCESS_KEY,
+  };
+}
+
+function createClient(configuration: R2Configuration) {
+  return new S3Client({
+    region: "auto",
+    endpoint: configuration.endpoint,
+    forcePathStyle: true,
+    credentials: {
+      accessKeyId: configuration.accessKeyId,
+      secretAccessKey: configuration.secretAccessKey,
+    },
+  });
+}
+
+export class ResumeStorageConfigurationError extends Error {
+  constructor() {
+    super("Resume storage is not configured.");
+    this.name = "ResumeStorageConfigurationError";
+  }
+}
+
+export class ResumeStorageError extends Error {
+  constructor() {
+    super("The uploaded file could not be verified in storage.");
+    this.name = "ResumeStorageError";
+  }
+}
+
+export function createResumeStorageKey(userId: string, fileName: string) {
+  const extension = fileName.toLowerCase().endsWith(".docx") ? "docx" : "pdf";
+  return `resumes/${userId}/${randomUUID()}.${extension}`;
+}
+
+export async function createResumeUploadUrl(
+  environment: ServerEnvironment,
+  key: string,
+  mimeType: string,
+) {
+  const configuration = getR2Configuration(environment);
+  const url = await getSignedUrl(
+    createClient(configuration),
+    new PutObjectCommand({ Bucket: configuration.bucket, Key: key, ContentType: mimeType }),
+    { expiresIn: PRESIGNED_UPLOAD_TTL_SECONDS },
+  );
+  return {
+    url,
+    headers: { "Content-Type": mimeType },
+    expiresAt: new Date(Date.now() + PRESIGNED_UPLOAD_TTL_SECONDS * 1000),
+  };
+}
+
+export async function assertResumeObjectExists(
+  environment: ServerEnvironment,
+  key: string,
+  expected: { fileSize: number; mimeType: string },
+) {
+  const configuration = getR2Configuration(environment);
+  try {
+    const object = await createClient(configuration).send(
+      new HeadObjectCommand({ Bucket: configuration.bucket, Key: key }),
+    );
+    if (object.ContentLength !== expected.fileSize || object.ContentType !== expected.mimeType) {
+      throw new ResumeStorageError();
+    }
+  } catch {
+    throw new ResumeStorageError();
+  }
+}
+
+export async function deleteResumeObject(environment: ServerEnvironment, key: string) {
+  const configuration = getR2Configuration(environment);
+  try {
+    await createClient(configuration).send(
+      new DeleteObjectCommand({ Bucket: configuration.bucket, Key: key }),
+    );
+  } catch {
+    throw new ResumeStorageError();
+  }
+}

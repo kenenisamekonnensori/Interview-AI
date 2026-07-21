@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+const optionalEnvironmentString = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().min(1).optional(),
+);
+
 export const serverEnvironmentSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(4000),
   BETTER_AUTH_SECRET: z.string().min(32),
@@ -11,6 +16,10 @@ export const serverEnvironmentSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   REDIS_URL: z.url(),
   RESEND_API_KEY: z.string().min(1),
+  R2_ACCESS_KEY_ID: optionalEnvironmentString,
+  R2_BUCKET: optionalEnvironmentString,
+  R2_ENDPOINT: z.preprocess((value) => (value === "" ? undefined : value), z.url().optional()),
+  R2_SECRET_ACCESS_KEY: optionalEnvironmentString,
   WEB_URL: z.url(),
 });
 

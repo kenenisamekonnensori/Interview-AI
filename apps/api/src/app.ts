@@ -4,11 +4,12 @@ import Fastify from "fastify";
 
 import { createAuth } from "./modules/auth/index.js";
 import { createAuthFastifyIntegration } from "./modules/auth/fastify.js";
+import { registerResumeRoutes } from "./modules/resumes/index.js";
 
 export function createApp() {
   const environment = serverEnvironmentSchema.parse(process.env);
   const app = Fastify({ logger: true });
-  const { auth, dispose } = createAuth(environment, app.log);
+  const { auth, database, dispose } = createAuth(environment, app.log);
 
   app.decorate("auth", auth);
   app.decorateRequest("authContext", null);
@@ -23,6 +24,8 @@ export function createApp() {
   app.route(authIntegration.route);
   app.decorate("requireSession", authIntegration.requireSession);
   app.decorate("requireVerifiedUser", authIntegration.requireVerifiedUser);
+
+  registerResumeRoutes(app, { database, environment });
 
   app.get("/health", async () => ({ status: "ok" }));
 

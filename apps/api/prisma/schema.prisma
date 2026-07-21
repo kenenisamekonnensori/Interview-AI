@@ -20,8 +20,35 @@ model User {
   accounts        Account[]
   authEmailOutbox AuthEmailOutbox[]
   sessions        Session[]
+  resumes         Resume[]
 
   @@map("user")
+}
+
+enum ResumeStatus {
+  PENDING_UPLOAD
+  READY
+  DELETED
+}
+
+model Resume {
+  id        String       @id @default(uuid())
+  userId    String
+  storageKey String      @unique
+  fileName  String
+  mimeType  String
+  fileSize  Int
+  status    ResumeStatus @default(PENDING_UPLOAD)
+  isActive  Boolean      @default(false)
+  uploadedAt DateTime?
+  deletedAt DateTime?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, isActive])
+  @@map("resume")
 }
 
 model Session {

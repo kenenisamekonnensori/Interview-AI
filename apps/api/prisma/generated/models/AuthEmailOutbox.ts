@@ -573,14 +573,6 @@ export type AuthEmailOutboxUncheckedUpdateManyWithoutUserNestedInput = {
   deleteMany?: Prisma.AuthEmailOutboxScalarWhereInput | Prisma.AuthEmailOutboxScalarWhereInput[]
 }
 
-export type IntFieldUpdateOperationsInput = {
-  set?: number
-  increment?: number
-  decrement?: number
-  multiply?: number
-  divide?: number
-}
-
 export type AuthEmailOutboxCreateWithoutUserInput = {
   id: string
   eventKey?: string | null

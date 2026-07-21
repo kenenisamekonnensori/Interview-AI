@@ -10,6 +10,7 @@ export function createAuth(environment: ServerEnvironment, logger: FastifyBaseLo
 
   return {
     auth: betterAuth(createAuthConfig(environment, database, logger)),
+    database,
     dispose: () => database.$disconnect(),
   };
 }
