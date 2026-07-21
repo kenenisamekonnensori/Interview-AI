@@ -6,10 +6,19 @@ import { createResumeUploadSchema, listResumesQuerySchema, resumeIdSchema } from
 import { ResumeStorageConfigurationError, ResumeStorageError } from "./storage.js";
 import { toResumeDto } from "./types.js";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
+import type { createCareerAnalysisQueue } from "../../services/career-analysis-queue.js";
 
 export function registerResumeRoutes(
   app: FastifyInstance,
-  { database, environment }: { database: PrismaClient; environment: ServerEnvironment },
+  {
+    database,
+    environment,
+    queue,
+  }: {
+    database: PrismaClient;
+    environment: ServerEnvironment;
+    queue: ReturnType<typeof createCareerAnalysisQueue>;
+  },
 ) {
   const service = createResumeService({ database, environment });
   const userId = (request: FastifyRequest) => request.authContext!.user.id;
@@ -19,12 +28,10 @@ export function registerResumeRoutes(
     if (error instanceof ResumeConflictError)
       return reply.status(409).send({ code: "RESUME_CONFLICT", message: error.message });
     if (error instanceof ResumeStorageConfigurationError)
-      return reply
-        .status(503)
-        .send({
-          code: "RESUME_STORAGE_UNAVAILABLE",
-          message: "Resume uploads are not configured yet.",
-        });
+      return reply.status(503).send({
+        code: "RESUME_STORAGE_UNAVAILABLE",
+        message: "Resume uploads are not configured yet.",
+      });
     if (error instanceof ResumeStorageError)
       return reply.status(422).send({ code: "RESUME_UPLOAD_NOT_FOUND", message: error.message });
     throw error;
@@ -41,19 +48,40 @@ export function registerResumeRoutes(
           .send({ code: "VALIDATION_ERROR", message: "Upload a PDF or DOCX resume up to 10 MB." });
       try {
         const result = await service.requestUpload(userId(request), input.data);
-        return reply
-          .status(201)
-          .send({
-            resume: toResumeDto(result.resume),
-            upload: {
-              url: result.upload.url,
-              headers: result.upload.headers,
-              expiresAt: result.upload.expiresAt.toISOString(),
-            },
-          });
+        return reply.status(201).send({
+          resume: toResumeDto(result.resume),
+          upload: {
+            url: result.upload.url,
+            headers: result.upload.headers,
+            expiresAt: result.upload.expiresAt.toISOString(),
+          },
+        });
       } catch (error) {
         return handleError(reply, error);
       }
+    },
+  );
+
+  app.post(
+    "/api/v1/resumes/:id/analyze",
+    { preHandler: app.requireVerifiedUser },
+    async (request, reply) => {
+      const params = resumeIdSchema.safeParse(request.params);
+      if (!params.success)
+        return reply.status(400).send({ code: "VALIDATION_ERROR", message: "Invalid resume ID." });
+      const resume = await service.requireOwned(userId(request), params.data.id);
+      if (resume.status === "PENDING_UPLOAD")
+        return reply
+          .status(409)
+          .send({
+            code: "RESUME_NOT_READY",
+            message: "Finish uploading this resume before analysis.",
+          });
+      if (resume.status !== "ANALYZING") {
+        await database.resume.update({ where: { id: resume.id }, data: { status: "ANALYZING" } });
+        await queue.enqueue({ kind: "resume", resumeId: resume.id, userId: resume.userId });
+      }
+      return reply.status(202).send({ status: "ANALYZING" });
     },
   );
 

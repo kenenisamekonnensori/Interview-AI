@@ -12,7 +12,21 @@
 export const ResumeStatus = {
   PENDING_UPLOAD: 'PENDING_UPLOAD',
   READY: 'READY',
+  ANALYZING: 'ANALYZING',
+  ANALYZED: 'ANALYZED',
+  FAILED: 'FAILED',
   DELETED: 'DELETED'
 } as const
 
 export type ResumeStatus = (typeof ResumeStatus)[keyof typeof ResumeStatus]
+
+
+export const JobDescriptionStatus = {
+  READY: 'READY',
+  ANALYZING: 'ANALYZING',
+  ANALYZED: 'ANALYZED',
+  FAILED: 'FAILED',
+  DELETED: 'DELETED'
+} as const
+
+export type JobDescriptionStatus = (typeof JobDescriptionStatus)[keyof typeof JobDescriptionStatus]

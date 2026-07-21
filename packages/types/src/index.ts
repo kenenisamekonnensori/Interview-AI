@@ -2,7 +2,8 @@ export type HealthStatus = {
   status: "ok";
 };
 
-export type ResumeStatus = "PENDING_UPLOAD" | "READY" | "DELETED";
+export type ResumeStatus =
+  "PENDING_UPLOAD" | "READY" | "ANALYZING" | "ANALYZED" | "FAILED" | "DELETED";
 
 export type Resume = {
   id: string;

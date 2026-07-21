@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -104,6 +105,19 @@ export async function deleteResumeObject(environment: ServerEnvironment, key: st
     await createClient(configuration).send(
       new DeleteObjectCommand({ Bucket: configuration.bucket, Key: key }),
     );
+  } catch {
+    throw new ResumeStorageError();
+  }
+}
+
+export async function downloadResumeObject(environment: ServerEnvironment, key: string) {
+  const configuration = getR2Configuration(environment);
+  try {
+    const object = await createClient(configuration).send(
+      new GetObjectCommand({ Bucket: configuration.bucket, Key: key }),
+    );
+    if (!object.Body) throw new ResumeStorageError();
+    return new Uint8Array(await object.Body.transformToByteArray());
   } catch {
     throw new ResumeStorageError();
   }

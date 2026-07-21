@@ -53,6 +53,9 @@ export const AnyNull = runtime.AnyNull
 export const ModelName = {
   User: 'User',
   Resume: 'Resume',
+  ResumeAnalysis: 'ResumeAnalysis',
+  JobDescription: 'JobDescription',
+  JobAnalysis: 'JobAnalysis',
   Session: 'Session',
   Account: 'Account',
   Verification: 'Verification',
@@ -104,6 +107,56 @@ export const ResumeScalarFieldEnum = {
 } as const
 
 export type ResumeScalarFieldEnum = (typeof ResumeScalarFieldEnum)[keyof typeof ResumeScalarFieldEnum]
+
+
+export const ResumeAnalysisScalarFieldEnum = {
+  id: 'id',
+  resumeId: 'resumeId',
+  summary: 'summary',
+  skills: 'skills',
+  technologies: 'technologies',
+  experience: 'experience',
+  education: 'education',
+  projects: 'projects',
+  certifications: 'certifications',
+  generatedAt: 'generatedAt',
+  model: 'model',
+  version: 'version'
+} as const
+
+export type ResumeAnalysisScalarFieldEnum = (typeof ResumeAnalysisScalarFieldEnum)[keyof typeof ResumeAnalysisScalarFieldEnum]
+
+
+export const JobDescriptionScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  title: 'title',
+  company: 'company',
+  rawText: 'rawText',
+  status: 'status',
+  deletedAt: 'deletedAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type JobDescriptionScalarFieldEnum = (typeof JobDescriptionScalarFieldEnum)[keyof typeof JobDescriptionScalarFieldEnum]
+
+
+export const JobAnalysisScalarFieldEnum = {
+  id: 'id',
+  jobDescriptionId: 'jobDescriptionId',
+  requiredSkills: 'requiredSkills',
+  preferredSkills: 'preferredSkills',
+  responsibilities: 'responsibilities',
+  keywords: 'keywords',
+  seniority: 'seniority',
+  technologyStack: 'technologyStack',
+  generatedAt: 'generatedAt',
+  model: 'model',
+  version: 'version'
+} as const
+
+export type JobAnalysisScalarFieldEnum = (typeof JobAnalysisScalarFieldEnum)[keyof typeof JobAnalysisScalarFieldEnum]
 
 
 export const SessionScalarFieldEnum = {

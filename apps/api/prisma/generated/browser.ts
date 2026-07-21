@@ -28,6 +28,21 @@ export type User = Prisma.UserModel
  */
 export type Resume = Prisma.ResumeModel
 /**
+ * Model ResumeAnalysis
+ * 
+ */
+export type ResumeAnalysis = Prisma.ResumeAnalysisModel
+/**
+ * Model JobDescription
+ * 
+ */
+export type JobDescription = Prisma.JobDescriptionModel
+/**
+ * Model JobAnalysis
+ * 
+ */
+export type JobAnalysis = Prisma.JobAnalysisModel
+/**
  * Model Session
  * 
  */

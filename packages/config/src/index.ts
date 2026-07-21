@@ -14,6 +14,8 @@ export const serverEnvironmentSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  OPENAI_ANALYSIS_MODEL: z.string().min(1).default("gpt-4o-mini"),
+  OPENAI_API_KEY: optionalEnvironmentString,
   REDIS_URL: z.url(),
   RESEND_API_KEY: z.string().min(1),
   R2_ACCESS_KEY_ID: optionalEnvironmentString,

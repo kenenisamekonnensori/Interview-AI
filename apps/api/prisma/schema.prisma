@@ -21,6 +21,7 @@ model User {
   authEmailOutbox AuthEmailOutbox[]
   sessions        Session[]
   resumes         Resume[]
+  jobDescriptions JobDescription[]
 
   @@map("user")
 }
@@ -28,6 +29,9 @@ model User {
 enum ResumeStatus {
   PENDING_UPLOAD
   READY
+  ANALYZING
+  ANALYZED
+  FAILED
   DELETED
 }
 
@@ -45,10 +49,71 @@ model Resume {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
   user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysis  ResumeAnalysis?
 
   @@index([userId, createdAt])
   @@index([userId, isActive])
   @@map("resume")
+}
+
+model ResumeAnalysis {
+  id          String   @id @default(uuid())
+  resumeId    String   @unique
+  summary     String
+  skills      Json
+  technologies Json
+  experience  Json
+  education   Json
+  projects    Json
+  certifications Json
+  generatedAt DateTime @default(now())
+  model       String
+  version     Int      @default(1)
+  resume      Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  @@map("resume_analysis")
+}
+
+enum JobDescriptionStatus {
+  READY
+  ANALYZING
+  ANALYZED
+  FAILED
+  DELETED
+}
+
+model JobDescription {
+  id        String               @id @default(uuid())
+  userId    String
+  title     String?
+  company   String?
+  rawText   String
+  status    JobDescriptionStatus @default(READY)
+  deletedAt DateTime?
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysis  JobAnalysis?
+
+  @@index([userId, createdAt])
+  @@map("job_description")
+}
+
+model JobAnalysis {
+  id                String   @id @default(uuid())
+  jobDescriptionId  String   @unique
+  requiredSkills    Json
+  preferredSkills   Json
+  responsibilities  Json
+  keywords          Json
+  seniority         String?
+  technologyStack   Json
+  generatedAt       DateTime @default(now())
+  model             String
+  version           Int      @default(1)
+  jobDescription    JobDescription @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)
+
+  @@map("job_analysis")
 }
 
 model Session {
