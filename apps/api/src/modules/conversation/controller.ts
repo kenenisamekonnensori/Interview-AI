@@ -1,6 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
+import type { ServerEnvironment } from "@interviewer-ai/config";
 import { z } from "zod";
+import { DeepgramConfigurationError, grantDeepgramAccessToken } from "./deepgram.js";
 
 const idSchema = z.object({ id: z.uuid() });
 const turnSchema = z.object({
@@ -18,7 +20,45 @@ const permitted: Record<string, string[]> = {
   COMPLETED: [],
 };
 
-export function registerConversationRoutes(app: FastifyInstance, database: PrismaClient) {
+export function registerConversationRoutes(
+  app: FastifyInstance,
+  database: PrismaClient,
+  environment: ServerEnvironment,
+) {
+  app.post(
+    "/api/v1/interviews/:id/voice-token",
+    { preHandler: app.requireVerifiedUser },
+    async (request, reply) => {
+      const params = idSchema.safeParse(request.params);
+      if (!params.success)
+        return reply
+          .status(400)
+          .send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
+      const interview = await database.interview.findFirst({
+        where: {
+          id: params.data.id,
+          userId: request.authContext!.user.id,
+          status: { in: ["READY", "IN_PROGRESS"] },
+        },
+      });
+      if (!interview)
+        return reply
+          .status(409)
+          .send({
+            code: "INTERVIEW_NOT_VOICE_READY",
+            message: "Only ready or active interviews can use voice.",
+          });
+      try {
+        return { accessToken: await grantDeepgramAccessToken(environment), expiresInSeconds: 30 };
+      } catch (error) {
+        if (error instanceof DeepgramConfigurationError)
+          return reply
+            .status(503)
+            .send({ code: "VOICE_UNAVAILABLE", message: "Voice is not configured." });
+        throw error;
+      }
+    },
+  );
   app.post(
     "/api/v1/interviews/:id/conversation/start",
     { preHandler: app.requireVerifiedUser },
@@ -65,12 +105,10 @@ export function registerConversationRoutes(app: FastifyInstance, database: Prism
           .status(404)
           .send({ code: "CONVERSATION_NOT_FOUND", message: "Conversation not found." });
       if (!permitted[conversation.state]?.includes(input.data.state))
-        return reply
-          .status(409)
-          .send({
-            code: "INVALID_STATE_TRANSITION",
-            message: "This conversation transition is not allowed.",
-          });
+        return reply.status(409).send({
+          code: "INVALID_STATE_TRANSITION",
+          message: "This conversation transition is not allowed.",
+        });
       const result = await database.$transaction(async (tx) => {
         const next = conversation.sequence + 1;
         const turn = await tx.conversationTurn.create({
