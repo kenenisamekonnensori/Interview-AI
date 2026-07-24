@@ -20,44 +20,50 @@ Unlike the System Design Document, this document focuses on implementation detai
 
 ## Frontend
 
-* Next.js
-* React
-* TypeScript
-* Tailwind CSS
-* shadcn/ui
-* TanStack Query
-* Zustand
-* React Hook Form
-* Zod
-* WebRTC
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+- shadcn/ui
+- TanStack Query
+- Zustand
+- React Hook Form
+- Zod
+- WebRTC
 
 ---
 
 ## Backend
 
-* Node.js
-* Fastify
-* TypeScript
-* Prisma ORM
-* PostgreSQL
-* Redis
+- Node.js
+- Fastify
+- TypeScript
+- Prisma ORM
+- PostgreSQL
+- Redis
 
 ---
+
+
 
 ## AI
 
-* OpenAI Realtime API
-* OpenAI Responses API
-* Structured Outputs
-* Function Calling
+- Gemini for reasoning, planning, interviewing, evaluation, and reports
+- Deepgram for STT, TTS, and browser live-voice transport
+- Structured Outputs
+- Function Calling
 
 ---
+
+
 
 ## Storage
 
-* Cloudflare R2
+- Cloudflare R2
 
 ---
+
+
 
 # Monorepo Structure
 
@@ -79,6 +85,8 @@ scripts/
 ```
 
 ---
+
+
 
 # Backend Structure
 
@@ -120,15 +128,17 @@ src/
 
 Each module owns:
 
-* routes
-* service
-* repository
-* validation
-* types
+- routes
+- service
+- repository
+- validation
+- types
 
 No module may directly manipulate another module's database entities.
 
 ---
+
+
 
 # Frontend Structure
 
@@ -154,69 +164,87 @@ Feature-specific logic belongs inside the corresponding feature folder.
 
 ---
 
+
+
 # Domain Ownership
+
+
 
 ## Auth
 
 Owns:
 
-* authentication
-* authorization
-* sessions
+- authentication
+- authorization
+- sessions
 
 ---
+
+
 
 ## Resume
 
 Owns:
 
-* resume upload
-* parsing
-* storage
+- resume upload
+- parsing
+- storage
 
 ---
+
+
 
 ## Jobs
 
 Owns:
 
-* job descriptions
-* extracted skills
+- job descriptions
+- extracted skills
 
 ---
+
+
 
 ## Interview
 
 Owns:
 
-* interview lifecycle
-* interview persistence
-* transcripts
+- interview lifecycle
+- interview persistence
+- transcripts
 
 ---
+
+
 
 ## Conversation
 
 Owns:
 
-* conversation state
-* AI session
-* interruptions
-* turn management
+- conversation state
+- AI session
+- interruptions
+- turn management
 
 ---
+
+
 
 ## Reports
 
 Owns:
 
-* evaluations
-* summaries
-* recommendations
+- evaluations
+- summaries
+- recommendations
 
 ---
 
+
+
 # API Design
+
+
 
 ## Authentication
 
@@ -230,6 +258,8 @@ POST /auth/logout
 
 ---
 
+
+
 ## Resume
 
 ```http
@@ -242,6 +272,8 @@ DELETE /resumes/:id
 
 ---
 
+
+
 ## Job Description
 
 ```http
@@ -251,6 +283,8 @@ GET /jobs/:id
 ```
 
 ---
+
+
 
 ## Interview
 
@@ -266,6 +300,8 @@ POST /interviews/:id/end
 
 ---
 
+
+
 ## Reports
 
 ```http
@@ -274,24 +310,50 @@ GET /reports/:id
 
 ---
 
+
+
 # Conversation Manager
 
 The Conversation Manager coordinates the interview.
 
 Responsibilities:
 
-* maintain state
-* receive transcript updates
-* invoke AI
-* execute function calls
-* control speaking state
-* handle interruptions
+- maintain state
+- receive transcript updates
+- invoke AI
+- execute function calls
+- control speaking state
+- handle interruptions
 
 No UI logic belongs here.
 
 No persistence logic belongs here.
 
+It calls the `AiProvider` interface only. Gemini/OpenAI request URLs, SDK types, prompts serialized for a provider, and response parsing must remain in `modules/ai/`; no controller may know a provider request format.
+
 ---
+
+# AI Provider Module
+
+`modules/ai/` is the only backend module that integrates a reasoning provider. The initial adapter is Gemini. It exposes `createInterviewPlan`, `generateInterviewerResponse`, `evaluateInterview`, and `generateReport` as domain capabilities. Resume and job analysis use an internal structured-analysis helper in that module.
+
+Deepgram is a voice integration owned by the conversation module: it issues short-lived browser access tokens, transcribes live audio, and synthesizes persisted AI text. It does not plan or reason about an interview.
+
+The active environment configuration is:
+
+```dotenv
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.5-flash-lite
+DEEPGRAM_API_KEY=
+```
+
+These keys are server-only. OpenAI variables are intentionally not configured. A future provider is added by implementing the provider interface, not by modifying controllers.
+
+If Gemini fails, planning or response generation fails explicitly and does not invent output; live responses return `AI_RESPONSE_FAILED` while retaining the last valid state. If Deepgram fails, voice endpoints return `VOICE_UNAVAILABLE`; the user can use text turns where supported.
+
+---
+
+
 
 # Interview State Machine
 
@@ -349,6 +411,8 @@ No hidden transitions.
 
 ---
 
+
+
 # Event Definitions
 
 The application communicates internally using domain events.
@@ -381,25 +445,29 @@ Events should describe something that has already happened.
 
 ---
 
+
+
 # AI Responsibilities
 
 The AI is responsible for:
 
-* reasoning
-* question generation
-* follow-up generation
-* evaluation
-* summarization
+- reasoning
+- question generation
+- follow-up generation
+- evaluation
+- summarization
 
 The AI is NOT responsible for:
 
-* authentication
-* authorization
-* persistence
-* business rules
-* database access
+- authentication
+- authorization
+- persistence
+- business rules
+- database access
 
 ---
+
+
 
 # Function Calling
 
@@ -423,11 +491,13 @@ generateFeedback()
 
 Every tool must:
 
-* validate input
-* return structured output
-* be idempotent where appropriate
+- validate input
+- return structured output
+- be idempotent where appropriate
 
 ---
+
+
 
 # Prompt Organization
 
@@ -449,6 +519,8 @@ Each prompt has a single responsibility.
 
 ---
 
+
+
 # Validation
 
 Every request entering the backend must be validated.
@@ -458,6 +530,8 @@ Validation occurs before business logic executes.
 Shared schemas should be reused whenever possible.
 
 ---
+
+
 
 # Error Handling
 
@@ -476,19 +550,25 @@ Unexpected errors should never expose internal implementation details.
 
 ---
 
+
+
 # Logging
 
 Log:
 
-* authentication events
-* interview lifecycle
-* AI tool execution
-* failures
-* retries
+- authentication events
+- interview lifecycle
+- AI tool execution
+- failures
+- retries
 
 Avoid logging sensitive user information or complete prompts.
 
+Never log full resumes, raw audio, complete transcripts, provider tokens, or unredacted provider request/response bodies. Log provider capability, failure category, status, retry count, and request ID only when available.
+
 ---
+
+
 
 # Database Ownership
 
@@ -498,105 +578,117 @@ Example:
 
 Auth
 
-* users
-* sessions
+- users
+- sessions
 
 Interview
 
-* interviews
-* questions
-* answers
+- interviews
+- questions
+- answers
 
 Reports
 
-* reports
+- reports
 
 Cross-module access must go through service interfaces rather than direct table manipulation.
 
 ---
 
+
+
 # Security
 
-* JWT authentication
-* Secure cookies when applicable
-* Rate limiting
-* Input validation
-* File validation
-* Principle of least privilege
-* HTTPS everywhere
+- JWT authentication
+- Secure cookies when applicable
+- Rate limiting
+- Input validation
+- File validation
+- Principle of least privilege
+- HTTPS everywhere
 
 ---
+
+
 
 # Coding Standards
 
-* TypeScript strict mode
-* ESLint
-* Prettier
-* No use of any
-* Dependency injection where appropriate
-* Small, focused services
-* Pure business logic
-* Descriptive naming
-* Comprehensive error handling
+- TypeScript strict mode
+- ESLint
+- Prettier
+- No use of any
+- Dependency injection where appropriate
+- Small, focused services
+- Pure business logic
+- Descriptive naming
+- Comprehensive error handling
 
 ---
+
+
 
 # Testing Strategy
 
 Unit Tests
 
-* business logic
-* utilities
-* state machine
+- business logic
+- utilities
+- state machine
 
 Integration Tests
 
-* API endpoints
-* database operations
+- API endpoints
+- database operations
 
 End-to-End Tests
 
-* authentication
-* interview creation
-* interview flow
-* report generation
+- authentication
+- interview creation
+- interview flow
+- report generation
 
 ---
+
+
 
 # Performance Goals
 
-* Fast initial page load
-* Low-latency voice interactions
-* Responsive UI
-* Efficient database queries
-* Streaming AI responses
-* Minimal blocking operations
+- Fast initial page load
+- Low-latency voice interactions
+- Responsive UI
+- Efficient database queries
+- Streaming AI responses
+- Minimal blocking operations
 
 ---
+
+
 
 # Deployment Targets
 
 Frontend
 
-* Vercel
+- Vercel
 
 Backend
 
-* Railway or Fly.io
+- Railway or Fly.io
 
 Database
 
-* PostgreSQL
+- PostgreSQL
 
 Cache
 
-* Redis
+- Redis
 
 Storage
 
-* Cloudflare R2
+- Cloudflare R2
 
 ---
+
+
 
 # Engineering Principles
 
@@ -610,6 +702,8 @@ Storage
 8. Optimize for readability and extensibility.
 
 ---
+
+
 
 # Implementation Order
 
@@ -630,6 +724,8 @@ Storage
 15. Polish
 
 ---
+
+
 
 # Summary
 

@@ -14,6 +14,7 @@ Before making changes, read:
 
 These documents define:
 - system architecture
+- approved provider architecture and AI module boundaries
 - coding patterns
 - folder structure
 - implementation decisions

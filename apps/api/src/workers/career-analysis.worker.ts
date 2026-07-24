@@ -5,6 +5,7 @@ import { serverEnvironmentSchema } from "@interviewer-ai/config";
 import { z } from "zod";
 
 import { createAuthDatabase } from "../modules/auth/database.js";
+import { createAiProvider } from "../modules/ai/index.js";
 import { extractResumeText } from "../modules/resumes/parser.js";
 import { downloadResumeObject } from "../modules/resumes/storage.js";
 import type { CareerAnalysisJob } from "../services/career-analysis-queue.js";
@@ -12,6 +13,7 @@ import { createRedisConnectionOptions } from "../services/redis-connection.js";
 
 const environment = serverEnvironmentSchema.parse(process.env);
 const database = createAuthDatabase(environment.DATABASE_URL);
+const aiProvider = createAiProvider(environment);
 
 const stringListSchema = z.array(z.string().trim().min(1)).max(100);
 const resumeAnalysisSchema = z.object({
@@ -66,33 +68,7 @@ const interviewPlanSchema = z.object({
 });
 
 async function structuredAnalysis(instructions: string, content: unknown) {
-  if (!environment.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured.");
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${environment.GEMINI_MODEL}:generateContent?key=${environment.GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: instructions }] },
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: typeof content === "string" ? content : JSON.stringify(content) }],
-          },
-        ],
-        generationConfig: { responseMimeType: "application/json" },
-      }),
-    },
-  );
-  if (!response.ok) throw new Error(`Gemini returned ${response.status}.`);
-  const result = (await response.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-  const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error("Gemini returned no analysis.");
-  return JSON.parse(text) as unknown;
+  return aiProvider.generateStructured({ instructions, context: content }, (value) => value);
 }
 
 async function analyzeResume(resumeId: string) {
@@ -187,7 +163,7 @@ async function planInterview(interviewId: string) {
     const plan = interviewPlanSchema.parse(
       await structuredAnalysis(
         "Create a realistic interview plan. Cover the role requirements and candidate evidence. Allocate no more than the requested duration. Do not expose this plan to the candidate.",
-        JSON.stringify(context),
+        context,
       ),
     );
     await database.interviewPlan.upsert({
