@@ -1,7 +1,10 @@
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 import type { createCareerAnalysisQueue } from "../../services/career-analysis-queue.js";
 import type { InterviewConfiguration, InterviewStatus } from "@interviewer-ai/types";
-import { assertConversationTransition, assertInterviewTransition } from "../conversation/state-machine.js";
+import {
+  assertConversationTransition,
+  assertInterviewTransition,
+} from "../conversation/state-machine.js";
 import { InterviewEventPublisher } from "./events.js";
 import { InterviewRepository } from "./repository.js";
 
@@ -12,7 +15,10 @@ declare module "fastify" {
 }
 
 export class InterviewLifecycleError extends Error {
-  constructor(readonly code: string, message: string) {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
     super(message);
     this.name = "InterviewLifecycleError";
   }
@@ -35,7 +41,12 @@ export class InterviewService {
     const [resume, job] = await Promise.all([
       input.resumeId
         ? this.database.resume.findFirst({
-            where: { id: input.resumeId, userId, deletedAt: null, status: { in: ["READY", "ANALYZED"] } },
+            where: {
+              id: input.resumeId,
+              userId,
+              deletedAt: null,
+              status: { in: ["READY", "ANALYZED"] },
+            },
           })
         : null,
       input.jobDescriptionId
@@ -45,9 +56,15 @@ export class InterviewService {
         : null,
     ]);
     if (input.resumeId && !resume)
-      throw new InterviewLifecycleError("RESUME_NOT_FOUND", "Choose a resume you own that is ready to use.");
+      throw new InterviewLifecycleError(
+        "RESUME_NOT_FOUND",
+        "Choose a resume you own that is ready to use.",
+      );
     if (input.jobDescriptionId && !job)
-      throw new InterviewLifecycleError("JOB_DESCRIPTION_NOT_FOUND", "Choose a job description you own.");
+      throw new InterviewLifecycleError(
+        "JOB_DESCRIPTION_NOT_FOUND",
+        "Choose a job description you own.",
+      );
     return this.database.interview.create({
       data: {
         userId,
@@ -68,12 +85,16 @@ export class InterviewService {
 
   async prepare(id: string, userId: string) {
     const interview = await this.repository.findOwned(id, userId);
-    if (!interview) throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
+    if (!interview)
+      throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
     if (interview.status === "PREPARING") return { status: "PREPARING" as const };
     try {
       assertInterviewTransition(interview.status, "PREPARING");
     } catch {
-      throw new InterviewLifecycleError("INTERVIEW_NOT_PREPARABLE", "This interview cannot be prepared.");
+      throw new InterviewLifecycleError(
+        "INTERVIEW_NOT_PREPARABLE",
+        "This interview cannot be prepared.",
+      );
     }
     const changed = await this.database.interview.updateMany({
       where: { id, userId, status: "DRAFT" },
@@ -82,7 +103,10 @@ export class InterviewService {
     if (!changed.count) {
       const current = await this.repository.findOwned(id, userId);
       if (current?.status === "PREPARING") return { status: "PREPARING" as const };
-      throw new InterviewLifecycleError("INTERVIEW_NOT_PREPARABLE", "This interview cannot be prepared.");
+      throw new InterviewLifecycleError(
+        "INTERVIEW_NOT_PREPARABLE",
+        "This interview cannot be prepared.",
+      );
     }
     await this.queue.enqueue({ kind: "interview-plan", interviewId: id, userId });
     return { status: "PREPARING" as const };
@@ -94,20 +118,31 @@ export class InterviewService {
         where: { id, userId },
         include: { plan: true, conversation: true },
       });
-      if (!interview) throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
+      if (!interview)
+        throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
       if (interview.status === "IN_PROGRESS" && interview.conversation)
         return { conversation: interview.conversation, started: false };
       if (interview.status !== "READY")
-        throw new InterviewLifecycleError("INTERVIEW_NOT_READY", "Only ready interviews can start.");
+        throw new InterviewLifecycleError(
+          "INTERVIEW_NOT_READY",
+          "Only ready interviews can start.",
+        );
       if (!interview.plan)
-        throw new InterviewLifecycleError("INTERVIEW_PLAN_REQUIRED", "A valid interview plan is required before starting.");
+        throw new InterviewLifecycleError(
+          "INTERVIEW_PLAN_REQUIRED",
+          "A valid interview plan is required before starting.",
+        );
       assertInterviewTransition(interview.status, "IN_PROGRESS");
       const startedAt = new Date();
       const changed = await tx.interview.updateMany({
         where: { id, userId, status: "READY" },
         data: { status: "IN_PROGRESS", startedAt },
       });
-      if (!changed.count) throw new InterviewLifecycleError("INTERVIEW_START_CONFLICT", "Interview start is in progress; retry the request.");
+      if (!changed.count)
+        throw new InterviewLifecycleError(
+          "INTERVIEW_START_CONFLICT",
+          "Interview start is in progress; retry the request.",
+        );
       const conversation = await tx.conversation.upsert({
         where: { interviewId: id },
         create: { interviewId: id, startedAt },
@@ -129,11 +164,15 @@ export class InterviewService {
         where: { id, userId },
         include: { conversation: true, report: true },
       });
-      if (!interview) throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
+      if (!interview)
+        throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
       if (interview.status === "COMPLETED") return { interview, requested: false };
       if (interview.status === "COMPLETING") return { interview, requested: false };
       if (interview.status !== "IN_PROGRESS" || !interview.conversation)
-        throw new InterviewLifecycleError("INTERVIEW_NOT_ACTIVE", "Only active interviews can be completed.");
+        throw new InterviewLifecycleError(
+          "INTERVIEW_NOT_ACTIVE",
+          "Only active interviews can be completed.",
+        );
       assertInterviewTransition(interview.status, "COMPLETING");
       const claimed = await tx.interview.updateMany({
         where: { id, userId, status: "IN_PROGRESS" },
@@ -179,12 +218,16 @@ export class InterviewService {
 
   async cancel(id: string, userId: string) {
     const interview = await this.repository.findOwned(id, userId);
-    if (!interview) throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
+    if (!interview)
+      throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
     if (interview.status === "CANCELLED") return interview;
     try {
       assertInterviewTransition(interview.status, "CANCELLED");
     } catch {
-      throw new InterviewLifecycleError("INTERVIEW_NOT_CANCELLABLE", "This interview cannot be cancelled.");
+      throw new InterviewLifecycleError(
+        "INTERVIEW_NOT_CANCELLABLE",
+        "This interview cannot be cancelled.",
+      );
     }
     const updated = await this.database.interview.updateMany({
       where: { id, userId, status: { in: ["DRAFT", "PREPARING", "READY"] } },
@@ -193,14 +236,18 @@ export class InterviewService {
     if (!updated.count) {
       const current = await this.repository.findOwned(id, userId);
       if (current?.status === "CANCELLED") return current;
-      throw new InterviewLifecycleError("INTERVIEW_NOT_CANCELLABLE", "This interview cannot be cancelled.");
+      throw new InterviewLifecycleError(
+        "INTERVIEW_NOT_CANCELLABLE",
+        "This interview cannot be cancelled.",
+      );
     }
     return this.repository.findOwned(id, userId);
   }
 
   async details(id: string, userId: string) {
     const interview = await this.repository.findOwned(id, userId);
-    if (!interview) throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
+    if (!interview)
+      throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
     return interview;
   }
 
@@ -219,11 +266,17 @@ export class InterviewService {
 }
 
 function conversationDto(conversation: {
-  id: string; interviewId: string; state: string; sequence: number; startedAt: Date; completedAt: Date | null;
+  id: string;
+  interviewId: string;
+  state: string;
+  sequence: number;
+  startedAt: Date;
+  completedAt: Date | null;
 }) {
   return {
     ...conversation,
-    state: conversation.state as "GREETING" | "LISTENING" | "TRANSCRIBING" | "THINKING" | "SPEAKING" | "CLOSING" | "COMPLETED",
+    state: conversation.state as
+      "GREETING" | "LISTENING" | "TRANSCRIBING" | "THINKING" | "SPEAKING" | "CLOSING" | "COMPLETED",
     startedAt: conversation.startedAt.toISOString(),
     completedAt: conversation.completedAt?.toISOString() ?? null,
   };

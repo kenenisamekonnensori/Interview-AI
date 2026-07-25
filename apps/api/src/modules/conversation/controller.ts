@@ -1,10 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 import type { ServerEnvironment } from "@interviewer-ai/config";
-import {
-  finalizeTranscriptRequestSchema,
-  type ConversationState,
-} from "@interviewer-ai/types";
+import { finalizeTranscriptRequestSchema, type ConversationState } from "@interviewer-ai/types";
 import { buildInterviewerPrompt } from "@interviewer-ai/prompts";
 import { z } from "zod";
 import { createAiProvider } from "../ai/index.js";
@@ -13,10 +10,7 @@ import {
   grantDeepgramAccessToken,
   synthesizeSpeech,
 } from "./deepgram.js";
-import {
-  assertConversationTransition,
-  InvalidStateTransitionError,
-} from "./state-machine.js";
+import { assertConversationTransition, InvalidStateTransitionError } from "./state-machine.js";
 import { InterviewLifecycleError, type InterviewService } from "../interviews/service.js";
 
 const idSchema = z.object({ id: z.uuid() });
@@ -188,7 +182,9 @@ export function registerConversationRoutes(
         return reply.status(result.started ? 201 : 200).send({ conversation: result.conversation });
       } catch (error) {
         if (error instanceof InterviewLifecycleError)
-          return reply.status(error.code === "INTERVIEW_NOT_FOUND" ? 404 : 409).send({ code: error.code, message: error.message });
+          return reply
+            .status(error.code === "INTERVIEW_NOT_FOUND" ? 404 : 409)
+            .send({ code: error.code, message: error.message });
         throw error;
       }
     },
@@ -265,7 +261,10 @@ export function registerConversationRoutes(
         return reply.status(404).send({ code: "AI_TURN_NOT_FOUND", message: "AI turn not found." });
       try {
         if (turn.type === "CLOSING") {
-          const interview = await interviewService.requestCompletion(params.data.id, request.authContext!.user.id);
+          const interview = await interviewService.requestCompletion(
+            params.data.id,
+            request.authContext!.user.id,
+          );
           return reply.send({ state: interview.status });
         }
         const result = await database.$transaction(async (tx) => {
@@ -279,7 +278,9 @@ export function registerConversationRoutes(
         return reply.send(result);
       } catch (error) {
         if (error instanceof InterviewLifecycleError)
-          return reply.status(error.code === "INTERVIEW_NOT_FOUND" ? 404 : 409).send({ code: error.code, message: error.message });
+          return reply
+            .status(error.code === "INTERVIEW_NOT_FOUND" ? 404 : 409)
+            .send({ code: error.code, message: error.message });
         if (error instanceof InvalidStateTransitionError)
           return reply
             .status(409)
@@ -299,11 +300,16 @@ export function registerConversationRoutes(
           .status(400)
           .send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
       try {
-        const interview = await interviewService.requestCompletion(params.data.id, request.authContext!.user.id);
+        const interview = await interviewService.requestCompletion(
+          params.data.id,
+          request.authContext!.user.id,
+        );
         return reply.send({ state: interview.status });
       } catch (error) {
         if (error instanceof InterviewLifecycleError)
-          return reply.status(error.code === "INTERVIEW_NOT_FOUND" ? 404 : 409).send({ code: error.code, message: error.message });
+          return reply
+            .status(error.code === "INTERVIEW_NOT_FOUND" ? 404 : 409)
+            .send({ code: error.code, message: error.message });
         if (error instanceof InvalidStateTransitionError)
           return reply
             .status(409)

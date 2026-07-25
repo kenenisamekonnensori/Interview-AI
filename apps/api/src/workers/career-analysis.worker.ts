@@ -179,11 +179,14 @@ const generatedReportSchema = z.object({
 async function evaluateInterview(interviewId: string) {
   const interview = await database.interview.findUnique({
     where: { id: interviewId },
-    include: { conversation: { include: { turns: { orderBy: { sequence: "asc" } } } }, plan: true, report: true },
+    include: {
+      conversation: { include: { turns: { orderBy: { sequence: "asc" } } } },
+      plan: true,
+      report: true,
+    },
   });
   if (!interview || interview.status === "COMPLETED") return;
-  if (interview.status !== "COMPLETING" || !interview.conversation || !interview.plan)
-    return;
+  if (interview.status !== "COMPLETING" || !interview.conversation || !interview.plan) return;
   if (interview.conversation.state !== "COMPLETED" || !interview.conversation.completedAt)
     throw new Error("A completed conversation is required before evaluation.");
 

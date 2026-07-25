@@ -22,10 +22,7 @@ export type AuthContext = {
 declare module "fastify" {
   interface FastifyInstance {
     requireSession: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-    requireVerifiedUser: (
-      request: FastifyRequest,
-      reply: FastifyReply,
-    ) => Promise<void>;
+    requireVerifiedUser: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
 
   interface FastifyRequest {

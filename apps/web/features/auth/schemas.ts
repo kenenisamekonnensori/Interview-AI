@@ -1,7 +1,15 @@
 import { z } from "zod";
 
-const emailSchema = z.string().trim().email("Enter a valid email address.").max(254).transform((value) => value.toLowerCase());
-const passwordSchema = z.string().min(12, "Use at least 12 characters.").max(128, "Use 128 characters or fewer.");
+const emailSchema = z
+  .string()
+  .trim()
+  .email("Enter a valid email address.")
+  .max(254)
+  .transform((value) => value.toLowerCase());
+const passwordSchema = z
+  .string()
+  .min(12, "Use at least 12 characters.")
+  .max(128, "Use 128 characters or fewer.");
 
 export const signInSchema = z.object({
   email: emailSchema,

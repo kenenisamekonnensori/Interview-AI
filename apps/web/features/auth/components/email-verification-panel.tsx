@@ -45,7 +45,14 @@ export function EmailVerificationPanel() {
   }
 
   if (isPending) {
-    return <div className="grid min-h-[18rem] place-items-center"><LoaderCircle className="size-6 animate-spin text-primary" aria-label="Checking your session" /></div>;
+    return (
+      <div className="grid min-h-[18rem] place-items-center">
+        <LoaderCircle
+          className="size-6 animate-spin text-primary"
+          aria-label="Checking your session"
+        />
+      </div>
+    );
   }
 
   return (
@@ -56,25 +63,52 @@ export function EmailVerificationPanel() {
       <p className="mt-7 text-sm font-medium text-primary">One last step</p>
       <h1 className="mt-2 text-3xl font-semibold tracking-[-0.03em]">Check your inbox.</h1>
       <p className="mt-3 text-sm leading-6 text-muted-foreground">
-        We sent a verification link to <span className="font-medium text-foreground">{email}</span>. Open it to activate your account.
+        We sent a verification link to <span className="font-medium text-foreground">{email}</span>.
+        Open it to activate your account.
       </p>
 
       <div className="mt-8 rounded-2xl border border-border bg-card/50 p-4 text-left text-sm leading-6 text-muted-foreground">
         <p className="font-medium text-foreground">Didn’t receive it?</p>
-        <p className="mt-1">Check spam, then request another link. Verification links expire for your protection.</p>
+        <p className="mt-1">
+          Check spam, then request another link. Verification links expire for your protection.
+        </p>
       </div>
 
-      {notice && <p aria-live="polite" className="mt-4 flex items-center justify-center gap-2 text-sm text-primary"><CheckCircle2 className="size-4" aria-hidden="true" />{notice}</p>}
-      {error && <p aria-live="polite" className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
+      {notice && (
+        <p
+          aria-live="polite"
+          className="mt-4 flex items-center justify-center gap-2 text-sm text-primary"
+        >
+          <CheckCircle2 className="size-4" aria-hidden="true" />
+          {notice}
+        </p>
+      )}
+      {error && (
+        <p
+          aria-live="polite"
+          className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      )}
 
       <Button className="mt-6 w-full" onClick={resendEmail} variant="outline">
         <RefreshCw className="size-4" aria-hidden="true" />
         Resend verification email
       </Button>
-      <button className="mt-4 text-sm text-muted-foreground hover:text-foreground" onClick={() => void refetch()} type="button">
+      <button
+        className="mt-4 text-sm text-muted-foreground hover:text-foreground"
+        onClick={() => void refetch()}
+        type="button"
+      >
         I’ve verified my email
       </button>
-      <p className="mt-7 text-sm text-muted-foreground">Already verified? <Link className="font-medium text-primary hover:underline" href="/sign-in">Sign in</Link></p>
+      <p className="mt-7 text-sm text-muted-foreground">
+        Already verified?{" "}
+        <Link className="font-medium text-primary hover:underline" href="/sign-in">
+          Sign in
+        </Link>
+      </p>
     </div>
   );
 }

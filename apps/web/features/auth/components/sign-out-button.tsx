@@ -18,5 +18,10 @@ export function SignOutButton() {
     router.refresh();
   }
 
-  return <Button disabled={isPending} onClick={signOut} size="sm" variant="ghost"><LogOut className="size-4" aria-hidden="true" />Sign out</Button>;
+  return (
+    <Button disabled={isPending} onClick={signOut} size="sm" variant="ghost">
+      <LogOut className="size-4" aria-hidden="true" />
+      Sign out
+    </Button>
+  );
 }

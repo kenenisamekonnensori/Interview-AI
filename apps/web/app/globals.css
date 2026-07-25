@@ -115,7 +115,9 @@
 }
 
 .landing-grid {
-  background-image: linear-gradient(oklch(0.8 0.04 240 / 5%) 1px, transparent 1px), linear-gradient(90deg, oklch(0.8 0.04 240 / 5%) 1px, transparent 1px);
+  background-image:
+    linear-gradient(oklch(0.8 0.04 240 / 5%) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.8 0.04 240 / 5%) 1px, transparent 1px);
   background-size: 4rem 4rem;
   mask-image: linear-gradient(to bottom, black, transparent 82%);
 }

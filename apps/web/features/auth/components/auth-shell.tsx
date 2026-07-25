@@ -21,7 +21,8 @@ export function AuthShell({ children }: PropsWithChildren) {
             Build confidence before the conversation counts.
           </h1>
           <p className="mt-6 max-w-md text-base leading-7 text-muted-foreground">
-            Rehearse high-stakes interviews with an AI interviewer that listens, adapts, and gives you useful feedback.
+            Rehearse high-stakes interviews with an AI interviewer that listens, adapts, and gives
+            you useful feedback.
           </p>
         </div>
 
@@ -29,13 +30,19 @@ export function AuthShell({ children }: PropsWithChildren) {
           <div className="mb-5 flex items-center justify-between">
             <div>
               <p className="text-sm font-medium">Interview readiness</p>
-              <p className="mt-1 text-xs text-muted-foreground">Your practice improves over time.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Your practice improves over time.
+              </p>
             </div>
             <BarChart3 className="size-5 text-primary" aria-hidden="true" />
           </div>
           <div className="flex h-16 items-end gap-2" aria-hidden="true">
             {[35, 47, 42, 64, 58, 82, 76, 94].map((height, index) => (
-              <span key={index} className="flex-1 rounded-t bg-primary/80" style={{ height: `${height}%` }} />
+              <span
+                key={index}
+                className="flex-1 rounded-t bg-primary/80"
+                style={{ height: `${height}%` }}
+              />
             ))}
           </div>
         </div>

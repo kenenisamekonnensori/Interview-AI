@@ -44,7 +44,15 @@ export function createAuthEmailOutbox(database: PrismaClient) {
         },
       });
     },
-    enqueueWelcome: async ({ userId, recipient, name }: { userId: string; recipient: string; name: string }) => {
+    enqueueWelcome: async ({
+      userId,
+      recipient,
+      name,
+    }: {
+      userId: string;
+      recipient: string;
+      name: string;
+    }) => {
       const eventKey = `welcome:${userId}`;
 
       await database.authEmailOutbox.upsert({

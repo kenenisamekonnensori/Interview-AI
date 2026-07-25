@@ -15,12 +15,20 @@ export default function NewInterviewPage() {
           1. Add your resume
         </p>
         <p className="rounded-xl border border-border bg-card/60 px-4 py-3">2. Add a target role</p>
-        <p className="rounded-xl border border-border bg-card/60 px-4 py-3">3. Configure interview</p>
+        <p className="rounded-xl border border-border bg-card/60 px-4 py-3">
+          3. Configure interview
+        </p>
       </div>
       <div className="mt-8 space-y-6">
-        <section id="resumes"><ResumeManager /></section>
-        <section id="roles"><JobDescriptionManager /></section>
-        <section id="configuration"><InterviewManager /></section>
+        <section id="resumes">
+          <ResumeManager />
+        </section>
+        <section id="roles">
+          <JobDescriptionManager />
+        </section>
+        <section id="configuration">
+          <InterviewManager />
+        </section>
       </div>
     </main>
   );

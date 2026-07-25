@@ -24,8 +24,15 @@ export function OAuthCallback() {
       <div className="text-center">
         <AlertCircle className="mx-auto size-10 text-destructive" aria-hidden="true" />
         <h1 className="mt-5 text-2xl font-semibold">Google sign-in didn’t finish.</h1>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">No account changes were made. You can safely try again.</p>
-        <Link className="mt-6 inline-block text-sm font-medium text-primary hover:underline" href="/sign-in">Return to sign in</Link>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          No account changes were made. You can safely try again.
+        </p>
+        <Link
+          className="mt-6 inline-block text-sm font-medium text-primary hover:underline"
+          href="/sign-in"
+        >
+          Return to sign in
+        </Link>
       </div>
     );
   }
@@ -35,7 +42,9 @@ export function OAuthCallback() {
       <div>
         <LoaderCircle className="mx-auto size-7 animate-spin text-primary" aria-hidden="true" />
         <h1 className="mt-5 text-xl font-semibold">Finishing your secure sign-in</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{isPending ? "Checking your session…" : "Redirecting you now…"}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {isPending ? "Checking your session…" : "Redirecting you now…"}
+        </p>
       </div>
     </div>
   );

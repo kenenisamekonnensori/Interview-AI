@@ -27,7 +27,14 @@ export function SessionGuard({ children }: PropsWithChildren) {
   }, [isPending, router, session]);
 
   if (isPending || !session || !session.user.emailVerified) {
-    return <div className="grid min-h-screen place-items-center"><LoaderCircle className="size-6 animate-spin text-primary" aria-label="Checking your session" /></div>;
+    return (
+      <div className="grid min-h-screen place-items-center">
+        <LoaderCircle
+          className="size-6 animate-spin text-primary"
+          aria-label="Checking your session"
+        />
+      </div>
+    );
   }
 
   return children;
