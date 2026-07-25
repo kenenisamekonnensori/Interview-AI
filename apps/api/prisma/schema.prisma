@@ -107,7 +107,7 @@ enum InterviewStatus {
   PREPARING
   READY
   IN_PROGRESS
-  PAUSED
+  COMPLETING
   COMPLETED
   CANCELLED
   FAILED
@@ -156,6 +156,7 @@ model Interview {
 enum ConversationState {
   GREETING
   LISTENING
+  TRANSCRIBING
   THINKING
   SPEAKING
   CLOSING

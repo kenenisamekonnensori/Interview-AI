@@ -1,4 +1,5 @@
 import { webEnvironment } from "@/lib/env";
+import type { ApiErrorShape } from "@interviewer-ai/types";
 
 type ApiRequestOptions = Omit<RequestInit, "body" | "headers" | "method"> & {
   body?: unknown;
@@ -6,7 +7,7 @@ type ApiRequestOptions = Omit<RequestInit, "body" | "headers" | "method"> & {
   method?: "DELETE" | "GET" | "PATCH" | "POST" | "PUT";
 };
 
-type ApiErrorBody = { code?: string; message?: string };
+type ApiErrorBody = Partial<ApiErrorShape>;
 
 export class ApiError extends Error {
   readonly code: string | undefined;
@@ -67,7 +68,8 @@ export async function apiClient<T>(
     }
 
     throw new ApiError({
-      message: typeof responseBody === "string" ? responseBody : "The request could not be completed.",
+      message:
+        typeof responseBody === "string" ? responseBody : "The request could not be completed.",
       status: response.status,
     });
   }

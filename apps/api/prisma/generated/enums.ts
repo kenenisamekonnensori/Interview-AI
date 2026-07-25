@@ -37,7 +37,7 @@ export const InterviewStatus = {
   PREPARING: 'PREPARING',
   READY: 'READY',
   IN_PROGRESS: 'IN_PROGRESS',
-  PAUSED: 'PAUSED',
+  COMPLETING: 'COMPLETING',
   COMPLETED: 'COMPLETED',
   CANCELLED: 'CANCELLED',
   FAILED: 'FAILED'
@@ -71,6 +71,7 @@ export type InterviewDifficulty = (typeof InterviewDifficulty)[keyof typeof Inte
 export const ConversationState = {
   GREETING: 'GREETING',
   LISTENING: 'LISTENING',
+  TRANSCRIBING: 'TRANSCRIBING',
   THINKING: 'THINKING',
   SPEAKING: 'SPEAKING',
   CLOSING: 'CLOSING',

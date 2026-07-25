@@ -1,6 +1,11 @@
 "use client";
 
-import type { Resume } from "@interviewer-ai/types";
+import type {
+  InterviewConfiguration,
+  InterviewDto,
+  JobDescriptionDto,
+  Resume,
+} from "@interviewer-ai/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarClock, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
@@ -9,18 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiClient } from "@/lib/api-client";
 
-type Job = { id: string; title: string | null; company: string | null; status: string };
-type Interview = {
-  id: string;
-  status: string;
-  interviewType: string;
-  difficulty: string;
-  durationMinutes: number;
-  targetRole: string | null;
-  createdAt: string;
-  resume: { fileName: string } | null;
-  jobDescription: { title: string | null; company: string | null } | null;
-};
 const interviewsKey = ["interviews"] as const;
 
 export function InterviewManager() {
@@ -28,8 +21,9 @@ export function InterviewManager() {
   const [open, setOpen] = useState(false);
   const [resumeId, setResumeId] = useState("");
   const [jobDescriptionId, setJobDescriptionId] = useState("");
-  const [interviewType, setInterviewType] = useState("MIXED");
-  const [difficulty, setDifficulty] = useState("MEDIUM");
+  const [interviewType, setInterviewType] =
+    useState<InterviewConfiguration["interviewType"]>("MIXED");
+  const [difficulty, setDifficulty] = useState<InterviewConfiguration["difficulty"]>("MEDIUM");
   const [durationMinutes, setDurationMinutes] = useState("30");
   const [targetRole, setTargetRole] = useState("");
   const { data: resumes } = useQuery({
@@ -38,16 +32,16 @@ export function InterviewManager() {
   });
   const { data: jobs } = useQuery({
     queryKey: ["job-descriptions"],
-    queryFn: () => apiClient<{ jobDescriptions: Job[] }>("/api/v1/job-descriptions"),
+    queryFn: () => apiClient<{ jobDescriptions: JobDescriptionDto[] }>("/api/v1/job-descriptions"),
   });
   const { data: interviews, isPending } = useQuery({
     queryKey: interviewsKey,
-    queryFn: () => apiClient<{ interviews: Interview[] }>("/api/v1/interviews"),
+    queryFn: () => apiClient<{ interviews: InterviewDto[] }>("/api/v1/interviews"),
   });
   const refresh = () => client.invalidateQueries({ queryKey: interviewsKey });
   const create = useMutation({
     mutationFn: () =>
-      apiClient("/api/v1/interviews", {
+      apiClient<{ interview: InterviewDto }>("/api/v1/interviews", {
         method: "POST",
         body: {
           resumeId: resumeId || undefined,
@@ -57,7 +51,7 @@ export function InterviewManager() {
           durationMinutes: Number(durationMinutes),
           targetRole: targetRole || undefined,
           language: "en",
-        },
+        } satisfies InterviewConfiguration,
       }),
     onSuccess: () => {
       setOpen(false);
@@ -119,7 +113,9 @@ export function InterviewManager() {
           <select
             className="h-11 rounded-xl border border-input bg-card px-3 text-sm"
             value={interviewType}
-            onChange={(event) => setInterviewType(event.target.value)}
+            onChange={(event) =>
+              setInterviewType(event.target.value as InterviewConfiguration["interviewType"])
+            }
           >
             {["MIXED", "BEHAVIORAL", "TECHNICAL", "CODING", "SYSTEM_DESIGN", "HR"].map((type) => (
               <option key={type}>{type.replace("_", " ")}</option>
@@ -128,7 +124,9 @@ export function InterviewManager() {
           <select
             className="h-11 rounded-xl border border-input bg-card px-3 text-sm"
             value={difficulty}
-            onChange={(event) => setDifficulty(event.target.value)}
+            onChange={(event) =>
+              setDifficulty(event.target.value as InterviewConfiguration["difficulty"])
+            }
           >
             {["EASY", "MEDIUM", "HARD", "EXPERT"].map((level) => (
               <option key={level}>{level}</option>

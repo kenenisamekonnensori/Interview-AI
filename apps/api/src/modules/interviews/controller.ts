@@ -2,6 +2,10 @@ import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 import { createInterviewSchema, interviewIdSchema } from "./schema.js";
 import type { createCareerAnalysisQueue } from "../../services/career-analysis-queue.js";
+import {
+  assertInterviewTransition,
+  InvalidStateTransitionError,
+} from "../conversation/state-machine.js";
 
 function toDto(interview: {
   id: string;
@@ -107,11 +111,15 @@ export function registerInterviewRoutes(
         return reply
           .status(404)
           .send({ code: "INTERVIEW_NOT_FOUND", message: "Interview not found." });
-      if (interview.status !== "DRAFT" && interview.status !== "FAILED")
+      try {
+        assertInterviewTransition(interview.status, "PREPARING");
+      } catch (error) {
+        if (!(error instanceof InvalidStateTransitionError)) throw error;
         return reply.status(409).send({
           code: "INTERVIEW_NOT_PREPARABLE",
-          message: "Only draft interviews can be prepared.",
+          message: error.message,
         });
+      }
       await database.interview.update({
         where: { id: interview.id },
         data: { status: "PREPARING" },
@@ -153,16 +161,27 @@ export function registerInterviewRoutes(
         return reply
           .status(400)
           .send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
-      const update = await database.interview.updateMany({
-        where: { id: params.data.id, userId: request.authContext!.user.id, status: "DRAFT" },
+      const interview = await database.interview.findFirst({
+        where: { id: params.data.id, userId: request.authContext!.user.id },
+      });
+      if (!interview)
+        return reply
+          .status(404)
+          .send({ code: "INTERVIEW_NOT_FOUND", message: "Interview not found." });
+      try {
+        assertInterviewTransition(interview.status, "CANCELLED");
+      } catch (error) {
+        if (error instanceof InvalidStateTransitionError)
+          return reply
+            .status(409)
+            .send({ code: "INTERVIEW_NOT_CANCELLABLE", message: error.message });
+        throw error;
+      }
+      await database.interview.update({
+        where: { id: interview.id },
         data: { status: "CANCELLED" },
       });
-      return update.count
-        ? reply.status(204).send()
-        : reply.status(409).send({
-            code: "INTERVIEW_NOT_CANCELLABLE",
-            message: "Only draft interviews can be cancelled.",
-          });
+      return reply.status(204).send();
     },
   );
 }

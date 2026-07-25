@@ -198,7 +198,11 @@ importers:
 
   packages/shared: {}
 
-  packages/types: {}
+  packages/types:
+    dependencies:
+      zod:
+        specifier: ^4.1.12
+        version: 4.4.3
 
   packages/ui:
     dependencies:

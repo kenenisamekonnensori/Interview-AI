@@ -3,27 +3,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BriefcaseBusiness, ChevronDown, LoaderCircle, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
+import type {
+  JobAnalysisDto,
+  JobDescriptionDto,
+  JobDescriptionStatus,
+} from "@interviewer-ai/types";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiClient } from "@/lib/api-client";
 
-type Job = {
-  id: string;
-  title: string | null;
-  company: string | null;
-  rawText: string;
-  status: "READY" | "ANALYZING" | "ANALYZED" | "FAILED";
-  createdAt: string;
-};
-type Analysis = {
-  requiredSkills: string[];
-  preferredSkills: string[];
-  responsibilities: string[];
-  keywords: string[];
-  seniority: string | null;
-  technologyStack: string[];
-};
 const queryKey = ["job-descriptions"] as const;
 
 export function JobDescriptionManager() {
@@ -35,14 +24,14 @@ export function JobDescriptionManager() {
   const [selected, setSelected] = useState<string | null>(null);
   const { data, isPending } = useQuery({
     queryKey,
-    queryFn: () => apiClient<{ jobDescriptions: Job[] }>("/api/v1/job-descriptions"),
+    queryFn: () => apiClient<{ jobDescriptions: JobDescriptionDto[] }>("/api/v1/job-descriptions"),
     refetchInterval: (query) =>
       query.state.data?.jobDescriptions.some((job) => job.status === "ANALYZING") ? 3_000 : false,
   });
   const refresh = () => client.invalidateQueries({ queryKey });
   const create = useMutation({
     mutationFn: () =>
-      apiClient<{ jobDescription: Job }>("/api/v1/job-descriptions", {
+      apiClient<{ jobDescription: JobDescriptionDto }>("/api/v1/job-descriptions", {
         method: "POST",
         body: { title: title || undefined, company: company || undefined, rawText },
       }),
@@ -69,7 +58,7 @@ export function JobDescriptionManager() {
   const { data: analysis } = useQuery({
     queryKey: ["job-analysis", selected],
     queryFn: () =>
-      apiClient<{ status: Job["status"]; analysis: Analysis | null }>(
+      apiClient<{ status: JobDescriptionStatus; analysis: JobAnalysisDto | null }>(
         `/api/v1/job-descriptions/${selected}/analysis`,
       ),
     enabled: selected !== null,
@@ -200,7 +189,13 @@ export function JobDescriptionManager() {
   );
 }
 
-function AnalysisView({ analysis, status }: { analysis: Analysis | null; status: Job["status"] }) {
+function AnalysisView({
+  analysis,
+  status,
+}: {
+  analysis: JobAnalysisDto | null;
+  status: JobDescriptionStatus;
+}) {
   if (status === "ANALYZING")
     return <p className="mt-4 text-sm text-muted-foreground">Extracting interview priorities…</p>;
   if (status === "FAILED")

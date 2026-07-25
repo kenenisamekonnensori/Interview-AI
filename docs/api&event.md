@@ -42,6 +42,45 @@ REST endpoints should be:
 * Validated
 * Idempotent where appropriate
 
+## Canonical lifecycle ownership
+
+`InterviewStatus` and `ConversationState` are defined in `@interviewer-ai/types` and validated by the backend-owned `modules/conversation/state-machine.ts`. The browser never sends a requested next state.
+
+```text
+Interview
+DRAFT -> PREPARING -> READY -> IN_PROGRESS -> COMPLETING -> COMPLETED
+
+Cancellation: DRAFT | PREPARING | READY -> CANCELLED
+Failure: PREPARING | IN_PROGRESS | COMPLETING -> FAILED
+
+Conversation
+GREETING -> LISTENING -> TRANSCRIBING -> THINKING -> SPEAKING -> LISTENING
+Any active conversation state -> CLOSING -> COMPLETED
+```
+
+The greeting is generated before the first listening state, so its operational transition is `GREETING -> SPEAKING -> LISTENING`. A finalized user transcript follows `LISTENING -> TRANSCRIBING -> THINKING`. These state changes are chosen and persisted by the API.
+
+## Implemented interview and conversation endpoints
+
+All endpoints below are under `/api/v1`, require an authenticated verified user, and return the shared DTOs from `@interviewer-ai/types`.
+
+| Method | Path | Request | Result |
+| --- | --- | --- | --- |
+| `POST` | `/interviews` | `InterviewConfiguration` | Creates an `InterviewDto` in `DRAFT`. |
+| `GET` | `/interviews` | — | Lists `InterviewDto`s. |
+| `POST` | `/interviews/:id/prepare` | — | Transitions `DRAFT -> PREPARING` and queues plan generation. |
+| `GET` | `/interviews/:id/plan` | — | Returns the current status and `InterviewPlan` when ready. |
+| `DELETE` | `/interviews/:id` | — | Cancels only a cancellable interview. |
+| `POST` | `/interviews/:id/voice-token` | — | Returns a short-lived Deepgram browser token. |
+| `POST` | `/interviews/:id/conversation/start` | — | Transitions `READY -> IN_PROGRESS` and creates the conversation. |
+| `POST` | `/interviews/:id/conversation/next-response` | — | Backend generates and persists an AI turn; the model cannot choose lifecycle state. |
+| `POST` | `/interviews/:id/conversation/transcripts` | `{ text, metadata? }` | Persists a finalized user transcript and moves the conversation to `THINKING`. |
+| `POST` | `/interviews/:id/conversation/turns/:turnId/playback-completed` | — | Records completed AI playback and moves to `LISTENING`, or completes a closing turn. |
+| `POST` | `/interviews/:id/conversation/complete` | — | Requests and performs a backend-owned interview completion. |
+| `GET` | `/interviews/:id/conversation/turns/:turnId/audio` | — | Synthesizes persisted AI text for playback. |
+
+Errors use `ApiErrorShape`: `{ code, message, details? }`. Invalid lifecycle changes return `409 INVALID_STATE_TRANSITION` (or a more specific lifecycle error); the current persisted state remains authoritative.
+
 ---
 
 # Realtime Events
@@ -65,6 +104,23 @@ Examples:
 Events should never contain business logic—they only communicate state changes.
 
 The client obtains a short-lived Deepgram token from `POST /api/v1/interviews/:id/voice-token`. It sends raw audio directly to Deepgram and sends only the finalized, validated transcript text to the API as a conversation turn. Raw audio is neither proxied through nor persisted by the API by default.
+
+## Typed real-time event contract
+
+Event names and payload types are exported by `@interviewer-ai/types` as `RealtimeEventName`, `RealtimeEventPayloads`, and `RealtimeEvent`. Events are facts emitted after backend decisions; no event payload accepts an arbitrary next state.
+
+| Event | Payload |
+| --- | --- |
+| `InterviewStarted` | `{ interviewId, conversation }` |
+| `UserSpeechStarted` | `{ interviewId, conversationId, occurredAt }` |
+| `TranscriptFinalized` | `{ interviewId, conversationId, turn, metadata? }` |
+| `AIResponseGenerated` | `{ interviewId, conversationId, turn }` |
+| `AIStartedSpeaking` | `{ interviewId, conversationId, turnId, occurredAt }` |
+| `InterviewCompletionRequested` | `{ interviewId, conversationId, occurredAt }` |
+| `InterviewCompleted` | `{ interviewId, conversationId, occurredAt }` |
+| `ReportGenerated` | `{ interviewId, report, occurredAt }` |
+
+The current voice transport is Deepgram's browser WebSocket, with REST acknowledgements for finalized transcripts and playback completion. A future application WebSocket/SSE transport must publish this exact event union rather than inventing a second event vocabulary.
 
 ---
 

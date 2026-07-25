@@ -2,6 +2,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { Worker } from "bullmq";
 import { serverEnvironmentSchema } from "@interviewer-ai/config";
+import { interviewPlanSchema } from "@interviewer-ai/types";
 import { z } from "zod";
 
 import { createAuthDatabase } from "../modules/auth/database.js";
@@ -10,6 +11,7 @@ import { extractResumeText } from "../modules/resumes/parser.js";
 import { downloadResumeObject } from "../modules/resumes/storage.js";
 import type { CareerAnalysisJob } from "../services/career-analysis-queue.js";
 import { createRedisConnectionOptions } from "../services/redis-connection.js";
+import { assertInterviewTransition } from "../modules/conversation/state-machine.js";
 
 const environment = serverEnvironmentSchema.parse(process.env);
 const database = createAuthDatabase(environment.DATABASE_URL);
@@ -41,32 +43,6 @@ const jobAnalysisSchema = z.object({
   seniority: z.string().trim().min(1).max(100).nullable(),
   technologyStack: stringListSchema,
 });
-const interviewPlanSchema = z.object({
-  objectives: stringListSchema.min(1).max(8),
-  topics: z
-    .array(
-      z.object({
-        topic: z.string().trim().min(1).max(160),
-        priority: z.enum(["HIGH", "MEDIUM", "LOW"]),
-        minutes: z.number().int().min(1).max(60),
-      }),
-    )
-    .min(1)
-    .max(12),
-  evaluationRubric: stringListSchema.min(1).max(12),
-  timeline: z
-    .array(
-      z.object({
-        phase: z.string().trim().min(1).max(100),
-        minutes: z.number().int().min(1).max(60),
-      }),
-    )
-    .min(1)
-    .max(10),
-  followUpStrategy: z.string().trim().min(1).max(1_000),
-  fallbackStrategy: z.string().trim().min(1).max(1_000),
-});
-
 async function structuredAnalysis(instructions: string, content: unknown) {
   return aiProvider.generateStructured({ instructions, context: content }, (value) => value);
 }
@@ -176,8 +152,10 @@ async function planInterview(interviewId: string) {
         version: { increment: 1 },
       },
     });
+    assertInterviewTransition(interview.status, "READY");
     await database.interview.update({ where: { id: interviewId }, data: { status: "READY" } });
   } catch (error) {
+    assertInterviewTransition(interview.status, "FAILED");
     await database.interview.update({ where: { id: interviewId }, data: { status: "FAILED" } });
     throw error;
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import type { Resume } from "@interviewer-ai/types";
+import type { InterviewDto, JobDescriptionDto, Resume } from "@interviewer-ai/types";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -19,18 +19,6 @@ import { authClient } from "@/lib/auth-client";
 import { apiClient } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 
-type Job = { id: string; title: string | null; company: string | null };
-type Interview = {
-  id: string;
-  status: string;
-  interviewType: string;
-  difficulty: string;
-  durationMinutes: number;
-  targetRole: string | null;
-  createdAt: string;
-  jobDescription: { title: string | null } | null;
-};
-
 export default function DashboardPage() {
   const { data: session } = authClient.useSession();
   const firstName = session?.user.name.split(" ")[0] ?? "there";
@@ -40,11 +28,11 @@ export default function DashboardPage() {
   });
   const { data: jobs } = useQuery({
     queryKey: ["job-descriptions"],
-    queryFn: () => apiClient<{ jobDescriptions: Job[] }>("/api/v1/job-descriptions"),
+    queryFn: () => apiClient<{ jobDescriptions: JobDescriptionDto[] }>("/api/v1/job-descriptions"),
   });
   const { data: interviews } = useQuery({
     queryKey: ["interviews"],
-    queryFn: () => apiClient<{ interviews: Interview[] }>("/api/v1/interviews"),
+    queryFn: () => apiClient<{ interviews: InterviewDto[] }>("/api/v1/interviews"),
   });
   const hasProfile = Boolean(resumes?.resumes.length || jobs?.jobDescriptions.length);
   const recent = interviews?.interviews.slice(0, 4) ?? [];

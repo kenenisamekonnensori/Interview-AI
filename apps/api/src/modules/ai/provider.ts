@@ -1,5 +1,6 @@
 import type { ServerEnvironment } from "@interviewer-ai/config";
 import type { InterviewerResponse } from "@interviewer-ai/prompts";
+import { conversationTurnTypeSchema } from "@interviewer-ai/types";
 import { z } from "zod";
 
 export type AiCapabilityInput = {
@@ -30,8 +31,12 @@ export class AiProviderError extends Error {
 
 const interviewerResponseSchema = z.object({
   text: z.string().trim().min(1).max(4_000),
-  turnType: z.enum(["QUESTION", "FOLLOW_UP", "CLARIFICATION", "CLOSING"]),
-  nextState: z.enum(["LISTENING", "CLOSING"]),
+  turnType: conversationTurnTypeSchema.extract([
+    "QUESTION",
+    "FOLLOW_UP",
+    "CLARIFICATION",
+    "CLOSING",
+  ]),
 });
 
 class GeminiAiProvider implements AiProvider {
