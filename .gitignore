@@ -10,3 +10,4 @@ coverage
 *.tsbuildinfo
 tsconfig.tsbuildinfo
 **/*.tsbuildinfo
+apps/api/prisma/generated/**
