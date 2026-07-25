@@ -392,6 +392,7 @@ export const ModelName = {
   Conversation: 'Conversation',
   ConversationTurn: 'ConversationTurn',
   InterviewPlan: 'InterviewPlan',
+  InterviewReport: 'InterviewReport',
   JobAnalysis: 'JobAnalysis',
   Session: 'Session',
   Account: 'Account',
@@ -412,7 +413,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "resume" | "resumeAnalysis" | "jobDescription" | "interview" | "conversation" | "conversationTurn" | "interviewPlan" | "jobAnalysis" | "session" | "account" | "verification" | "authEmailOutbox"
+    modelProps: "user" | "resume" | "resumeAnalysis" | "jobDescription" | "interview" | "conversation" | "conversationTurn" | "interviewPlan" | "interviewReport" | "jobAnalysis" | "session" | "account" | "verification" | "authEmailOutbox"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -1008,6 +1009,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    InterviewReport: {
+      payload: Prisma.$InterviewReportPayload<ExtArgs>
+      fields: Prisma.InterviewReportFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.InterviewReportFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InterviewReportPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.InterviewReportFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InterviewReportPayload>
+        }
+        findFirst: {
+          args: Prisma.InterviewReportFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InterviewReportPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.InterviewReportFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InterviewReportPayload>
+        }
+        findMany: {
+          args: Prisma.InterviewReportFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InterviewReportPayload>[]
+        }
+        create: {
+          args: Prisma.InterviewReportCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InterviewReportPayload>
+        }
+        createMany: {
+          args: Prisma.InterviewReportCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.InterviewReportCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InterviewReportPayload>[]
+        }
+        delete: {
+          args: Prisma.InterviewReportDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InterviewReportPayload>
+        }
+        update: {
+          args: Prisma.InterviewReportUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InterviewReportPayload>
+        }
+        deleteMany: {
+          args: Prisma.InterviewReportDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.InterviewReportUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.InterviewReportUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InterviewReportPayload>[]
+        }
+        upsert: {
+          args: Prisma.InterviewReportUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InterviewReportPayload>
+        }
+        aggregate: {
+          args: Prisma.InterviewReportAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateInterviewReport>
+        }
+        groupBy: {
+          args: Prisma.InterviewReportGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.InterviewReportGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.InterviewReportCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.InterviewReportCountAggregateOutputType> | number
+        }
+      }
+    }
     JobAnalysis: {
       payload: Prisma.$JobAnalysisPayload<ExtArgs>
       fields: Prisma.JobAnalysisFieldRefs
@@ -1492,6 +1567,8 @@ export const InterviewScalarFieldEnum = {
   durationMinutes: 'durationMinutes',
   language: 'language',
   targetRole: 'targetRole',
+  startedAt: 'startedAt',
+  completedAt: 'completedAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -1539,6 +1616,18 @@ export const InterviewPlanScalarFieldEnum = {
 } as const
 
 export type InterviewPlanScalarFieldEnum = (typeof InterviewPlanScalarFieldEnum)[keyof typeof InterviewPlanScalarFieldEnum]
+
+
+export const InterviewReportScalarFieldEnum = {
+  id: 'id',
+  interviewId: 'interviewId',
+  evaluation: 'evaluation',
+  summary: 'summary',
+  generatedAt: 'generatedAt',
+  model: 'model'
+} as const
+
+export type InterviewReportScalarFieldEnum = (typeof InterviewReportScalarFieldEnum)[keyof typeof InterviewReportScalarFieldEnum]
 
 
 export const JobAnalysisScalarFieldEnum = {
@@ -1974,6 +2063,7 @@ export type GlobalOmitConfig = {
   conversation?: Prisma.ConversationOmit
   conversationTurn?: Prisma.ConversationTurnOmit
   interviewPlan?: Prisma.InterviewPlanOmit
+  interviewReport?: Prisma.InterviewReportOmit
   jobAnalysis?: Prisma.JobAnalysisOmit
   session?: Prisma.SessionOmit
   account?: Prisma.AccountOmit

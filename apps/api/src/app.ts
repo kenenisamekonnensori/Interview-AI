@@ -36,7 +36,7 @@ export function createApp() {
   registerResumeRoutes(app, { database, environment, queue: careerAnalysisQueue });
   registerJobDescriptionRoutes(app, { database, queue: careerAnalysisQueue });
   registerInterviewRoutes(app, database, careerAnalysisQueue);
-  registerConversationRoutes(app, database, environment);
+  registerConversationRoutes(app, database, environment, app.interviewService);
 
   app.get("/health", async () => ({ status: "ok" }));
 

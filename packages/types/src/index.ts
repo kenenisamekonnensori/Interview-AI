@@ -138,6 +138,8 @@ export const interviewDtoSchema = interviewConfigurationSchema.extend({
   id: z.uuid(),
   status: interviewStatusSchema,
   createdAt: z.string().datetime(),
+  startedAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable(),
   resume: z.object({ id: z.uuid(), fileName: z.string() }).nullable(),
   jobDescription: z
     .object({ id: z.uuid(), title: z.string().nullable(), company: z.string().nullable() })

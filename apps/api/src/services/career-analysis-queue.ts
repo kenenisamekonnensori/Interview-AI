@@ -4,7 +4,8 @@ import { createRedisConnectionOptions } from "./redis-connection.js";
 export type CareerAnalysisJob =
   | { kind: "resume"; resumeId: string; userId: string }
   | { kind: "job-description"; jobDescriptionId: string; userId: string }
-  | { kind: "interview-plan"; interviewId: string; userId: string };
+  | { kind: "interview-plan"; interviewId: string; userId: string }
+  | { kind: "interview-evaluation"; interviewId: string; userId: string };
 
 const options: JobsOptions = {
   attempts: 3,

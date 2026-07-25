@@ -68,15 +68,17 @@ All endpoints below are under `/api/v1`, require an authenticated verified user,
 | --- | --- | --- | --- |
 | `POST` | `/interviews` | `InterviewConfiguration` | Creates an `InterviewDto` in `DRAFT`. |
 | `GET` | `/interviews` | — | Lists `InterviewDto`s. |
+| `GET` | `/interviews/:id` | — | Returns the owned interview, plan, conversation, and report when present. |
 | `POST` | `/interviews/:id/prepare` | — | Transitions `DRAFT -> PREPARING` and queues plan generation. |
 | `GET` | `/interviews/:id/plan` | — | Returns the current status and `InterviewPlan` when ready. |
+| `GET` | `/interviews/:id/state` | — | Returns the authoritative lifecycle state, timestamps, conversation state, and report readiness. |
 | `DELETE` | `/interviews/:id` | — | Cancels only a cancellable interview. |
 | `POST` | `/interviews/:id/voice-token` | — | Returns a short-lived Deepgram browser token. |
 | `POST` | `/interviews/:id/conversation/start` | — | Transitions `READY -> IN_PROGRESS` and creates the conversation. |
 | `POST` | `/interviews/:id/conversation/next-response` | — | Backend generates and persists an AI turn; the model cannot choose lifecycle state. |
 | `POST` | `/interviews/:id/conversation/transcripts` | `{ text, metadata? }` | Persists a finalized user transcript and moves the conversation to `THINKING`. |
 | `POST` | `/interviews/:id/conversation/turns/:turnId/playback-completed` | — | Records completed AI playback and moves to `LISTENING`, or completes a closing turn. |
-| `POST` | `/interviews/:id/conversation/complete` | — | Requests and performs a backend-owned interview completion. |
+| `POST` | `/interviews/:id/conversation/complete` | — | Idempotently moves an active interview to `COMPLETING`, finalizes the conversation, and queues evaluation/report generation. The worker marks it `COMPLETED` only after a valid report is persisted. |
 | `GET` | `/interviews/:id/conversation/turns/:turnId/audio` | — | Synthesizes persisted AI text for playback. |
 
 Errors use `ApiErrorShape`: `{ code, message, details? }`. Invalid lifecycle changes return `409 INVALID_STATE_TRANSITION` (or a more specific lifecycle error); the current persisted state remains authoritative.

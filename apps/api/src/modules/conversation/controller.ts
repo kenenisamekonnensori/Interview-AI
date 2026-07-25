@@ -4,7 +4,6 @@ import type { ServerEnvironment } from "@interviewer-ai/config";
 import {
   finalizeTranscriptRequestSchema,
   type ConversationState,
-  type InterviewStatus,
 } from "@interviewer-ai/types";
 import { buildInterviewerPrompt } from "@interviewer-ai/prompts";
 import { z } from "zod";
@@ -16,9 +15,9 @@ import {
 } from "./deepgram.js";
 import {
   assertConversationTransition,
-  assertInterviewTransition,
   InvalidStateTransitionError,
 } from "./state-machine.js";
+import { InterviewLifecycleError, type InterviewService } from "../interviews/service.js";
 
 const idSchema = z.object({ id: z.uuid() });
 const turnIdSchema = z.object({ id: z.uuid(), turnId: z.uuid() });
@@ -27,13 +26,11 @@ function asConversationState(state: string): ConversationState {
   return state as ConversationState;
 }
 
-function asInterviewStatus(status: string): InterviewStatus {
-  return status as InterviewStatus;
-}
 export function registerConversationRoutes(
   app: FastifyInstance,
   database: PrismaClient,
   environment: ServerEnvironment,
+  interviewService: InterviewService,
 ) {
   const aiProvider = createAiProvider(environment);
   app.get(
@@ -115,12 +112,6 @@ export function registerConversationRoutes(
         const result = await database.$transaction(async (tx) => {
           const nextState: ConversationState = ai.turnType === "CLOSING" ? "CLOSING" : "SPEAKING";
           assertConversationTransition(asConversationState(conversation.state), nextState);
-          if (nextState === "CLOSING") {
-            assertInterviewTransition(
-              asInterviewStatus(conversation.interview.status),
-              "COMPLETING",
-            );
-          }
           const sequence = conversation.sequence + 1;
           const turn = await tx.conversationTurn.create({
             data: {
@@ -135,12 +126,6 @@ export function registerConversationRoutes(
             where: { id: conversation.id },
             data: { sequence, state: nextState },
           });
-          if (nextState === "CLOSING") {
-            await tx.interview.update({
-              where: { id: conversation.interviewId },
-              data: { status: "COMPLETING" },
-            });
-          }
           return { turn, state: nextState };
         });
         return reply.status(201).send(result);
@@ -198,24 +183,14 @@ export function registerConversationRoutes(
         return reply
           .status(400)
           .send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
-      const interview = await database.interview.findFirst({
-        where: { id: params.data.id, userId: request.authContext!.user.id, status: "READY" },
-      });
-      if (!interview)
-        return reply
-          .status(409)
-          .send({ code: "INTERVIEW_NOT_READY", message: "Only ready interviews can start." });
-      const conversation = await database.$transaction(async (tx) => {
-        assertInterviewTransition(asInterviewStatus(interview.status), "IN_PROGRESS");
-        const value = await tx.conversation.upsert({
-          where: { interviewId: interview.id },
-          create: { interviewId: interview.id },
-          update: {},
-        });
-        await tx.interview.update({ where: { id: interview.id }, data: { status: "IN_PROGRESS" } });
-        return value;
-      });
-      return reply.status(201).send({ conversation });
+      try {
+        const result = await interviewService.start(params.data.id, request.authContext!.user.id);
+        return reply.status(result.started ? 201 : 200).send({ conversation: result.conversation });
+      } catch (error) {
+        if (error instanceof InterviewLifecycleError)
+          return reply.status(error.code === "INTERVIEW_NOT_FOUND" ? 404 : 409).send({ code: error.code, message: error.message });
+        throw error;
+      }
     },
   );
   app.post(
@@ -289,24 +264,11 @@ export function registerConversationRoutes(
       if (!conversation || !turn)
         return reply.status(404).send({ code: "AI_TURN_NOT_FOUND", message: "AI turn not found." });
       try {
+        if (turn.type === "CLOSING") {
+          const interview = await interviewService.requestCompletion(params.data.id, request.authContext!.user.id);
+          return reply.send({ state: interview.status });
+        }
         const result = await database.$transaction(async (tx) => {
-          if (turn.type === "CLOSING") {
-            assertConversationTransition(asConversationState(conversation.state), "COMPLETED");
-            assertInterviewTransition(
-              asInterviewStatus(conversation.interview.status),
-              "COMPLETED",
-            );
-            const completedAt = new Date();
-            await tx.conversation.update({
-              where: { id: conversation.id },
-              data: { state: "COMPLETED", completedAt },
-            });
-            await tx.interview.update({
-              where: { id: conversation.interviewId },
-              data: { status: "COMPLETED" },
-            });
-            return { state: "COMPLETED" as const };
-          }
           assertConversationTransition(asConversationState(conversation.state), "LISTENING");
           await tx.conversation.update({
             where: { id: conversation.id },
@@ -316,6 +278,8 @@ export function registerConversationRoutes(
         });
         return reply.send(result);
       } catch (error) {
+        if (error instanceof InterviewLifecycleError)
+          return reply.status(error.code === "INTERVIEW_NOT_FOUND" ? 404 : 409).send({ code: error.code, message: error.message });
         if (error instanceof InvalidStateTransitionError)
           return reply
             .status(409)
@@ -334,41 +298,12 @@ export function registerConversationRoutes(
         return reply
           .status(400)
           .send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
-      const conversation = await database.conversation.findFirst({
-        where: { interviewId: params.data.id, interview: { userId: request.authContext!.user.id } },
-        include: { interview: true },
-      });
-      if (!conversation)
-        return reply
-          .status(404)
-          .send({ code: "CONVERSATION_NOT_FOUND", message: "Conversation not found." });
       try {
-        const result = await database.$transaction(async (tx) => {
-          assertConversationTransition(asConversationState(conversation.state), "CLOSING");
-          assertInterviewTransition(asInterviewStatus(conversation.interview.status), "COMPLETING");
-          await tx.conversation.update({
-            where: { id: conversation.id },
-            data: { state: "CLOSING" },
-          });
-          await tx.interview.update({
-            where: { id: conversation.interviewId },
-            data: { status: "COMPLETING" },
-          });
-          assertConversationTransition("CLOSING", "COMPLETED");
-          assertInterviewTransition("COMPLETING", "COMPLETED");
-          const completedAt = new Date();
-          await tx.conversation.update({
-            where: { id: conversation.id },
-            data: { state: "COMPLETED", completedAt },
-          });
-          await tx.interview.update({
-            where: { id: conversation.interviewId },
-            data: { status: "COMPLETED" },
-          });
-          return { state: "COMPLETED" as const };
-        });
-        return reply.send(result);
+        const interview = await interviewService.requestCompletion(params.data.id, request.authContext!.user.id);
+        return reply.send({ state: interview.status });
       } catch (error) {
+        if (error instanceof InterviewLifecycleError)
+          return reply.status(error.code === "INTERVIEW_NOT_FOUND" ? 404 : 409).send({ code: error.code, message: error.message });
         if (error instanceof InvalidStateTransitionError)
           return reply
             .status(409)

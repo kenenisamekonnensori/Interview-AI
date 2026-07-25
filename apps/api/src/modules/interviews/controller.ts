@@ -1,25 +1,28 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
-import { createInterviewSchema, interviewIdSchema } from "./schema.js";
 import type { createCareerAnalysisQueue } from "../../services/career-analysis-queue.js";
-import {
-  assertInterviewTransition,
-  InvalidStateTransitionError,
-} from "../conversation/state-machine.js";
+import { createInterviewSchema, interviewIdSchema } from "./schema.js";
+import { InterviewEventPublisher } from "./events.js";
+import { InterviewLifecycleError, InterviewService } from "./service.js";
 
 function toDto(interview: {
-  id: string;
-  status: string;
-  interviewType: string;
-  difficulty: string;
-  durationMinutes: number;
-  language: string;
-  targetRole: string | null;
-  createdAt: Date;
+  id: string; status: string; interviewType: string; difficulty: string; durationMinutes: number;
+  language: string; targetRole: string | null; createdAt: Date; startedAt?: Date | null; completedAt?: Date | null;
   resume?: { id: string; fileName: string } | null;
   jobDescription?: { id: string; title: string | null; company: string | null } | null;
 }) {
-  return { ...interview, createdAt: interview.createdAt.toISOString() };
+  return {
+    ...interview,
+    createdAt: interview.createdAt.toISOString(),
+    startedAt: interview.startedAt?.toISOString() ?? null,
+    completedAt: interview.completedAt?.toISOString() ?? null,
+  };
+}
+
+function sendLifecycleError(reply: { status: (statusCode: number) => { send: (payload: unknown) => unknown } }, error: unknown) {
+  if (!(error instanceof InterviewLifecycleError)) throw error;
+  const status = error.code.endsWith("NOT_FOUND") ? 404 : error.code === "RESUME_NOT_FOUND" || error.code === "JOB_DESCRIPTION_NOT_FOUND" ? 404 : 409;
+  return reply.status(status).send({ code: error.code, message: error.message });
 }
 
 export function registerInterviewRoutes(
@@ -27,161 +30,73 @@ export function registerInterviewRoutes(
   database: PrismaClient,
   queue: ReturnType<typeof createCareerAnalysisQueue>,
 ) {
-  app.post(
-    "/api/v1/interviews",
-    { preHandler: app.requireVerifiedUser },
-    async (request, reply) => {
-      const input = createInterviewSchema.safeParse(request.body);
-      if (!input.success)
-        return reply
-          .status(400)
-          .send({ code: "VALIDATION_ERROR", message: "Choose a valid interview configuration." });
-      const userId = request.authContext!.user.id;
-      const [resume, job] = await Promise.all([
-        input.data.resumeId
-          ? database.resume.findFirst({
-              where: {
-                id: input.data.resumeId,
-                userId,
-                deletedAt: null,
-                status: { in: ["READY", "ANALYZED"] },
-              },
-            })
-          : null,
-        input.data.jobDescriptionId
-          ? database.jobDescription.findFirst({
-              where: { id: input.data.jobDescriptionId, userId, deletedAt: null },
-            })
-          : null,
-      ]);
-      if (input.data.resumeId && !resume)
-        return reply.status(404).send({
-          code: "RESUME_NOT_FOUND",
-          message: "Choose a resume you own that is ready to use.",
-        });
-      if (input.data.jobDescriptionId && !job)
-        return reply.status(404).send({
-          code: "JOB_DESCRIPTION_NOT_FOUND",
-          message: "Choose a job description you own.",
-        });
-      const interview = await database.interview.create({
-        data: {
-          userId,
-          interviewType: input.data.interviewType,
-          difficulty: input.data.difficulty,
-          durationMinutes: input.data.durationMinutes,
-          language: input.data.language,
-          targetRole: input.data.targetRole ?? null,
-          resumeId: resume?.id ?? null,
-          jobDescriptionId: job?.id ?? null,
-        },
-        include: {
-          resume: { select: { id: true, fileName: true } },
-          jobDescription: { select: { id: true, title: true, company: true } },
-        },
-      });
-      return reply.status(201).send({ interview: toDto(interview) });
-    },
-  );
+  const service = new InterviewService(database, queue, new InterviewEventPublisher(app.log));
+  app.decorate("interviewService", service);
+
+  app.post("/api/v1/interviews", { preHandler: app.requireVerifiedUser }, async (request, reply) => {
+    const input = createInterviewSchema.safeParse(request.body);
+    if (!input.success)
+      return reply.status(400).send({ code: "VALIDATION_ERROR", message: "Choose a valid interview configuration." });
+    try {
+      return reply.status(201).send({ interview: toDto(await service.create(request.authContext!.user.id, input.data)) });
+    } catch (error) {
+      return sendLifecycleError(reply, error);
+    }
+  });
+
   app.get("/api/v1/interviews", { preHandler: app.requireVerifiedUser }, async (request) => ({
-    interviews: (
-      await database.interview.findMany({
-        where: { userId: request.authContext!.user.id },
-        include: {
-          resume: { select: { id: true, fileName: true } },
-          jobDescription: { select: { id: true, title: true, company: true } },
-        },
-        orderBy: { createdAt: "desc" },
-      })
-    ).map(toDto),
+    interviews: (await service.repository.listOwned(request.authContext!.user.id)).map(toDto),
   }));
-  app.post(
-    "/api/v1/interviews/:id/prepare",
-    { preHandler: app.requireVerifiedUser },
-    async (request, reply) => {
-      const params = interviewIdSchema.safeParse(request.params);
-      if (!params.success)
-        return reply
-          .status(400)
-          .send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
-      const interview = await database.interview.findFirst({
-        where: { id: params.data.id, userId: request.authContext!.user.id },
-      });
-      if (!interview)
-        return reply
-          .status(404)
-          .send({ code: "INTERVIEW_NOT_FOUND", message: "Interview not found." });
-      try {
-        assertInterviewTransition(interview.status, "PREPARING");
-      } catch (error) {
-        if (!(error instanceof InvalidStateTransitionError)) throw error;
-        return reply.status(409).send({
-          code: "INTERVIEW_NOT_PREPARABLE",
-          message: error.message,
-        });
-      }
-      await database.interview.update({
-        where: { id: interview.id },
-        data: { status: "PREPARING" },
-      });
-      await queue.enqueue({
-        kind: "interview-plan",
-        interviewId: interview.id,
-        userId: interview.userId,
-      });
-      return reply.status(202).send({ status: "PREPARING" });
-    },
-  );
-  app.get(
-    "/api/v1/interviews/:id/plan",
-    { preHandler: app.requireVerifiedUser },
-    async (request, reply) => {
-      const params = interviewIdSchema.safeParse(request.params);
-      if (!params.success)
-        return reply
-          .status(400)
-          .send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
-      const interview = await database.interview.findFirst({
-        where: { id: params.data.id, userId: request.authContext!.user.id },
-        include: { plan: true },
-      });
-      if (!interview)
-        return reply
-          .status(404)
-          .send({ code: "INTERVIEW_NOT_FOUND", message: "Interview not found." });
+
+  app.get("/api/v1/interviews/:id", { preHandler: app.requireVerifiedUser }, async (request, reply) => {
+    const params = interviewIdSchema.safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
+    try {
+      return { interview: toDto(await service.details(params.data.id, request.authContext!.user.id)) };
+    } catch (error) {
+      return sendLifecycleError(reply, error);
+    }
+  });
+
+  app.post("/api/v1/interviews/:id/prepare", { preHandler: app.requireVerifiedUser }, async (request, reply) => {
+    const params = interviewIdSchema.safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
+    try {
+      return reply.status(202).send(await service.prepare(params.data.id, request.authContext!.user.id));
+    } catch (error) {
+      return sendLifecycleError(reply, error);
+    }
+  });
+
+  app.get("/api/v1/interviews/:id/plan", { preHandler: app.requireVerifiedUser }, async (request, reply) => {
+    const params = interviewIdSchema.safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
+    try {
+      const interview = await service.details(params.data.id, request.authContext!.user.id);
       return { status: interview.status, plan: interview.plan };
-    },
-  );
-  app.delete(
-    "/api/v1/interviews/:id",
-    { preHandler: app.requireVerifiedUser },
-    async (request, reply) => {
-      const params = interviewIdSchema.safeParse(request.params);
-      if (!params.success)
-        return reply
-          .status(400)
-          .send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
-      const interview = await database.interview.findFirst({
-        where: { id: params.data.id, userId: request.authContext!.user.id },
-      });
-      if (!interview)
-        return reply
-          .status(404)
-          .send({ code: "INTERVIEW_NOT_FOUND", message: "Interview not found." });
-      try {
-        assertInterviewTransition(interview.status, "CANCELLED");
-      } catch (error) {
-        if (error instanceof InvalidStateTransitionError)
-          return reply
-            .status(409)
-            .send({ code: "INTERVIEW_NOT_CANCELLABLE", message: error.message });
-        throw error;
-      }
-      await database.interview.update({
-        where: { id: interview.id },
-        data: { status: "CANCELLED" },
-      });
+    } catch (error) {
+      return sendLifecycleError(reply, error);
+    }
+  });
+
+  app.get("/api/v1/interviews/:id/state", { preHandler: app.requireVerifiedUser }, async (request, reply) => {
+    const params = interviewIdSchema.safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
+    try {
+      return service.state(params.data.id, request.authContext!.user.id);
+    } catch (error) {
+      return sendLifecycleError(reply, error);
+    }
+  });
+
+  app.delete("/api/v1/interviews/:id", { preHandler: app.requireVerifiedUser }, async (request, reply) => {
+    const params = interviewIdSchema.safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
+    try {
+      await service.cancel(params.data.id, request.authContext!.user.id);
       return reply.status(204).send();
-    },
-  );
+    } catch (error) {
+      return sendLifecycleError(reply, error);
+    }
+  });
 }

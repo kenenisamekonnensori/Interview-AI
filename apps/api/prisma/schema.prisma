@@ -140,6 +140,8 @@ model Interview {
   durationMinutes  Int
   language         String              @default("en")
   targetRole       String?
+  startedAt        DateTime?
+  completedAt      DateTime?
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
   user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -147,6 +149,7 @@ model Interview {
   jobDescription   JobDescription?     @relation(fields: [jobDescriptionId], references: [id], onDelete: SetNull)
   plan             InterviewPlan?
   conversation     Conversation?
+  report           InterviewReport?
 
   @@index([userId, createdAt])
   @@index([status])
@@ -216,6 +219,18 @@ model InterviewPlan {
   interview     Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
 
   @@map("interview_plan")
+}
+
+model InterviewReport {
+  id          String    @id @default(uuid())
+  interviewId String    @unique
+  evaluation  Json
+  summary     String
+  generatedAt DateTime  @default(now())
+  model       String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("interview_report")
 }
 
 model JobAnalysis {

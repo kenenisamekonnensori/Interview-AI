@@ -59,6 +59,7 @@ export const ModelName = {
   Conversation: 'Conversation',
   ConversationTurn: 'ConversationTurn',
   InterviewPlan: 'InterviewPlan',
+  InterviewReport: 'InterviewReport',
   JobAnalysis: 'JobAnalysis',
   Session: 'Session',
   Account: 'Account',
@@ -157,6 +158,8 @@ export const InterviewScalarFieldEnum = {
   durationMinutes: 'durationMinutes',
   language: 'language',
   targetRole: 'targetRole',
+  startedAt: 'startedAt',
+  completedAt: 'completedAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -204,6 +207,18 @@ export const InterviewPlanScalarFieldEnum = {
 } as const
 
 export type InterviewPlanScalarFieldEnum = (typeof InterviewPlanScalarFieldEnum)[keyof typeof InterviewPlanScalarFieldEnum]
+
+
+export const InterviewReportScalarFieldEnum = {
+  id: 'id',
+  interviewId: 'interviewId',
+  evaluation: 'evaluation',
+  summary: 'summary',
+  generatedAt: 'generatedAt',
+  model: 'model'
+} as const
+
+export type InterviewReportScalarFieldEnum = (typeof InterviewReportScalarFieldEnum)[keyof typeof InterviewReportScalarFieldEnum]
 
 
 export const JobAnalysisScalarFieldEnum = {
