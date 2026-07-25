@@ -1,23 +1,153 @@
 name: CI
 
+# Verify changes to every supported development branch. README-only changes do
+# not affect the build and are intentionally excluded to conserve CI capacity.
 on:
   pull_request:
+    branches:
+      - main
+      - develop
+      - "feat/**"
+      - "feature/**"
+      - "fix/**"
+      - "bugfix/**"
+      - "refactor/**"
+      - "chore/**"
+      - "docs/**"
+      - "perf/**"
+      - "test/**"
+      - "ci/**"
+      - "hotfix/**"
+      - "release/**"
+    paths-ignore:
+      - "README.md"
+      - "**/README.md"
   push:
-    branches: [main]
+    branches:
+      - main
+      - develop
+      - "feat/**"
+      - "feature/**"
+      - "fix/**"
+      - "bugfix/**"
+      - "refactor/**"
+      - "chore/**"
+      - "docs/**"
+      - "perf/**"
+      - "test/**"
+      - "ci/**"
+      - "hotfix/**"
+      - "release/**"
+    paths-ignore:
+      - "README.md"
+      - "**/README.md"
+
+# A newer commit supersedes an in-progress run for the same pull request or branch.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# CI only needs to read the repository. Keep the default token narrowly scoped.
+permissions:
+  contents: read
+
+env:
+  CI: true
+  TURBO_TELEMETRY_DISABLED: "1"
+  # Prisma validates its schema during generation but does not connect for this command.
+  DATABASE_URL: postgresql://ci:ci@localhost:5432/interviewer_ai?schema=public
 
 jobs:
   verify:
+    name: Verify (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # Keep the shape of a matrix so adding another supported LTS is a one-line change.
+      fail-fast: true
+      matrix:
+        node-version: [24]
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      # Fetch the exact pull-request commit and its workspace metadata.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # The action reads the pnpm version pinned by packageManager in package.json.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      # setup-node restores the pnpm content-addressable store using pnpm-lock.yaml.
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
         with:
-          version: 10
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
+          node-version: ${{ matrix.node-version }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm build
+          cache-dependency-path: pnpm-lock.yaml
+
+      # Persist Turbo task outputs. Turbo still hashes inputs, so restored entries are safe.
+      - name: Restore Turborepo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-node-${{ matrix.node-version }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            turbo-${{ runner.os }}-node-${{ matrix.node-version }}-
+
+      # --frozen-lockfile verifies workspace and lockfile consistency without mutation.
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Display the resolved workspace graph; installation above is the consistency gate.
+      - name: Validate pnpm workspace
+        run: pnpm --recursive list --depth -1
+
+      # Prisma generate validates apps/api/prisma/schema.prisma before writing the client.
+      - name: Generate and validate Prisma Client
+        run: pnpm --filter @interviewer-ai/api run prisma:generate
+
+      # The root Turbo task runs every workspace typecheck under strict TypeScript settings,
+      # including the config package that owns the environment schemas.
+      - name: Typecheck workspaces and environment typings
+        run: pnpm typecheck
+
+      # Use the repository's root lint script so its shared ESLint configuration is authoritative.
+      - name: Lint source code
+        run: pnpm lint
+
+      # Check formatting without modifying the checkout.
+      - name: Check Prettier formatting
+        run: pnpm format:check
+
+      # Turbo builds dependency packages before the applications and reuses its cache.
+      - name: Build all applications
+        run: pnpm build
+
+      # No workspace currently declares a test script. This intentionally runs only declared
+      # scripts, so adding test scripts automatically turns this into the unit-test gate.
+      - name: Run configured unit tests
+        run: |
+          if pnpm --recursive --if-present run test; then
+            echo "Configured unit tests completed."
+          else
+            echo "::error::A configured unit-test script failed."
+            exit 1
+          fi
+
+      # Fail on known moderate, high, or critical production/development dependency advisories.
+      - name: Audit dependencies (moderate and above)
+        run: pnpm audit --audit-level=moderate
+
+      # Preserve diagnostics only on failures; absent report directories must not mask the failure.
+      - name: Upload failure diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-failure-diagnostics-node-${{ matrix.node-version }}
+          if-no-files-found: ignore
+          path: |
+            coverage/
+            **/coverage/
+            test-results/
+            **/test-results/
+            **/*.log
