@@ -15,9 +15,21 @@ type DeepgramResult = {
   is_final?: boolean;
 };
 
-export function InterviewMicrophone({ interviewId }: { interviewId: string }) {
+type ConversationStartResponse = { conversation: { state: string } };
+type GeneratedTurn = { turn: { id: string; text: string } };
+
+export function InterviewMicrophone({
+  interviewId,
+  disabled = false,
+  onStarted,
+}: {
+  interviewId: string;
+  disabled?: boolean;
+  onStarted?: () => void;
+}) {
   const [active, setActive] = useState(false);
-  const [transcript, setTranscript] = useState("");
+  const [starting, setStarting] = useState(false);
+  const [transcript, setTranscript] = useState<string[]>([]);
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState<string | null>(null);
   const connectionRef = useRef<{ close: () => void } | null>(null);
@@ -51,14 +63,20 @@ export function InterviewMicrophone({ interviewId }: { interviewId: string }) {
   }
 
   async function start() {
+    if (active || starting || disabled) return;
     try {
+      setStarting(true);
       setError(null);
       setStatus("Connecting microphone…");
+      const conversation = await apiClient<ConversationStartResponse>(
+        `/api/v1/interviews/${interviewId}/conversation/start`,
+        { method: "POST" },
+      );
+      onStarted?.();
       const { accessToken } = await apiClient<{ accessToken: string }>(
         `/api/v1/interviews/${interviewId}/voice-token`,
         { method: "POST" },
       );
-      await apiClient(`/api/v1/interviews/${interviewId}/conversation/start`, { method: "POST" });
       const client = new DeepgramClient({ accessToken });
       const connection = await client.listen.v1.connect({
         model: "nova-3",
@@ -82,17 +100,18 @@ export function InterviewMicrophone({ interviewId }: { interviewId: string }) {
           }
           setStatus("Listening — interviewer interrupted");
         }
-        setTranscript(text);
         if (result.is_final) {
+          setTranscript((turns) => [...turns, `You: ${text}`]);
           setStatus("Interviewer is thinking…");
           await apiClient(`/api/v1/interviews/${interviewId}/conversation/transcripts`, {
             method: "POST",
             body: { text } satisfies FinalizeTranscriptRequest,
           });
-          const next = await apiClient<{ turn: { id: string } }>(
+          const next = await apiClient<GeneratedTurn>(
             `/api/v1/interviews/${interviewId}/conversation/next-response`,
             { method: "POST" },
           );
+          setTranscript((turns) => [...turns, `Interviewer: ${next.turn.text}`]);
           await playAiTurn(next.turn.id);
         }
       });
@@ -111,14 +130,21 @@ export function InterviewMicrophone({ interviewId }: { interviewId: string }) {
       connectionRef.current = connection;
       recorderRef.current = recorder;
       setActive(true);
-      const greeting = await apiClient<{ turn: { id: string } }>(
-        `/api/v1/interviews/${interviewId}/conversation/next-response`,
-        { method: "POST" },
-      );
-      await playAiTurn(greeting.turn.id);
+      if (conversation.conversation.state === "GREETING") {
+        const greeting = await apiClient<GeneratedTurn>(
+          `/api/v1/interviews/${interviewId}/conversation/next-response`,
+          { method: "POST" },
+        );
+        setTranscript((turns) => [...turns, `Interviewer: ${greeting.turn.text}`]);
+        await playAiTurn(greeting.turn.id);
+      } else {
+        setStatus("Listening");
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not start the microphone.");
       setStatus("Ready");
+    } finally {
+      setStarting(false);
     }
   }
   function stop() {
@@ -131,15 +157,24 @@ export function InterviewMicrophone({ interviewId }: { interviewId: string }) {
   }
   return (
     <div className="rounded-xl border border-border p-4">
-      <Button onClick={active ? stop : start}>
+      <Button onClick={active ? stop : start} disabled={starting || disabled}>
         <>
           {active ? <MicOff className="size-4" /> : <Mic className="size-4" />}
-          {active ? "Stop microphone" : "Start microphone"}
+          {active ? "Stop microphone" : starting ? "Connecting…" : "Start microphone"}
         </>
       </Button>
       <p className="mt-3 text-sm text-muted-foreground">{status}</p>
       {error ? <p className="mt-2 text-sm text-destructive">{error}</p> : null}
-      {transcript ? <p className="mt-3 text-sm text-muted-foreground">{transcript}</p> : null}
+      {transcript.length ? (
+        <div
+          className="mt-4 max-h-64 space-y-2 overflow-y-auto rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground"
+          aria-live="polite"
+        >
+          {transcript.map((turn, index) => (
+            <p key={`${index}-${turn}`}>{turn}</p>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

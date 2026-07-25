@@ -2,198 +2,32 @@
 
 import type { InterviewDto, JobDescriptionDto, Resume } from "@interviewer-ai/types";
 import { useQuery } from "@tanstack/react-query";
-import {
-  ArrowRight,
-  BriefcaseBusiness,
-  FileText,
-  Plus,
-  Settings,
-  Sparkles,
-  Target,
-} from "lucide-react";
+import { ArrowRight, CalendarDays, Flame, Mic2, Sparkles, Target, TrendingUp } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
 
-import { SignOutButton } from "@/features/auth/components/sign-out-button";
-import { authClient } from "@/lib/auth-client";
 import { apiClient } from "@/lib/api-client";
-import { Button } from "@/components/ui/button";
 
 export default function DashboardPage() {
-  const { data: session } = authClient.useSession();
-  const firstName = session?.user.name.split(" ")[0] ?? "there";
-  const { data: resumes } = useQuery({
-    queryKey: ["resumes"],
-    queryFn: () => apiClient<{ resumes: Resume[] }>("/api/v1/resumes"),
-  });
-  const { data: jobs } = useQuery({
-    queryKey: ["job-descriptions"],
-    queryFn: () => apiClient<{ jobDescriptions: JobDescriptionDto[] }>("/api/v1/job-descriptions"),
-  });
-  const { data: interviews } = useQuery({
-    queryKey: ["interviews"],
-    queryFn: () => apiClient<{ interviews: InterviewDto[] }>("/api/v1/interviews"),
-  });
-  const hasProfile = Boolean(resumes?.resumes.length || jobs?.jobDescriptions.length);
-  const recent = interviews?.interviews.slice(0, 4) ?? [];
-  return (
-    <main className="mx-auto min-h-screen w-full max-w-7xl px-5 py-6 sm:px-8">
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-            <Sparkles className="size-5" />
-          </span>
-          <span className="font-semibold">Interviewer AI</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="ghost" aria-label="Settings">
-            <Settings className="size-4" />
-          </Button>
-          <SignOutButton />
-        </div>
-      </header>
-      <section className="mt-10 overflow-hidden rounded-3xl border border-border bg-[radial-gradient(circle_at_top_right,oklch(0.72_0.16_238_/_18%),transparent_35%),linear-gradient(135deg,oklch(0.22_0.025_260),oklch(0.17_0.018_260))] p-7 sm:p-10">
-        <p className="text-sm font-medium text-primary">Your interview workspace</p>
-        <div className="mt-4 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="max-w-2xl text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">
-              Good to see you, {firstName}.
-            </h1>
-            <p className="mt-4 max-w-xl leading-7 text-muted-foreground">
-              {hasProfile
-                ? "You have the context you need. Create a tailored practice session whenever you’re ready."
-                : "Add your resume and a target role, then we’ll build your first realistic interview."}
-            </p>
-          </div>
-          <Link href="/interviews/new">
-            <Button size="lg">
-              <Plus className="size-4" />
-              Start a new interview
-            </Button>
-          </Link>
-        </div>
+  const { data: resumes } = useQuery({ queryKey: ["resumes"], queryFn: () => apiClient<{ resumes: Resume[] }>("/api/v1/resumes") });
+  const { data: jobs } = useQuery({ queryKey: ["job-descriptions"], queryFn: () => apiClient<{ jobDescriptions: JobDescriptionDto[] }>("/api/v1/job-descriptions") });
+  const { data: interviews } = useQuery({ queryKey: ["interviews"], queryFn: () => apiClient<{ interviews: InterviewDto[] }>("/api/v1/interviews") });
+  const recent = interviews?.interviews.slice(0, 3) ?? [];
+  const hasContext = Boolean(resumes?.resumes.length && jobs?.jobDescriptions.length);
+  return <main className="noise min-h-[calc(100vh-5rem)] px-5 py-8 sm:px-8 lg:px-10">
+    <div className="mx-auto max-w-7xl">
+      <div className="flex flex-wrap items-end justify-between gap-5">
+        <div><p className="eyebrow">Sunday, July 26</p><h1 className="mt-2 text-3xl font-semibold tracking-[-.045em] sm:text-[2.55rem]">Make your next answer count.</h1><p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">Your focused space for practicing the conversations that move your career forward.</p></div>
+        <Link href="/interviews/new" className="button-primary h-11 px-4 text-sm"><Mic2 className="size-4" /> Start a practice</Link>
+      </div>
+      <section className="relative mt-9 overflow-hidden rounded-3xl border border-violet-300/15 bg-[linear-gradient(110deg,rgba(107,86,224,.24),rgba(26,28,48,.68)_55%,rgba(32,172,166,.12))] p-6 sm:p-8">
+        <div className="absolute -right-10 -top-20 size-72 rounded-full bg-violet-400/20 blur-3xl" />
+        <div className="relative grid gap-8 lg:grid-cols-[1fr_auto] lg:items-end"><div><span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[.06] px-3 py-1 text-xs text-violet-100"><Sparkles className="size-3.5" /> Today’s recommendation</span><h2 className="mt-5 max-w-xl text-2xl font-semibold tracking-[-.035em] sm:text-3xl">Warm up with a 15-minute product sense interview.</h2><p className="mt-3 max-w-lg text-sm leading-6 text-violet-100/65">You’ve sharpened structure lately. Practice balancing customer signals with business tradeoffs.</p><Link href="/interviews/new" className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-white">Set up this session <ArrowRight className="size-4" /></Link></div><div className="flex min-w-[190px] items-center gap-4 rounded-2xl border border-white/10 bg-black/15 p-4 backdrop-blur"><div className="grid size-12 place-items-center rounded-xl bg-white/10"><Target className="size-5 text-violet-200" /></div><div><p className="text-xs text-violet-100/60">Focus area</p><p className="mt-1 text-sm font-medium">Strategic thinking</p><p className="mt-1 text-xs text-emerald-300">+12% this month</p></div></div></div>
       </section>
-      {!hasProfile ? (
-        <section className="mt-6 rounded-3xl border border-primary/30 bg-primary/10 p-6 sm:flex sm:items-center sm:justify-between">
-          <div>
-            <p className="font-semibold">Your first interview starts with your story.</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Upload a resume and add a job description to make every question personal.
-            </p>
-          </div>
-          <a className="mt-4 inline-flex text-sm font-medium text-primary sm:mt-0" href="#career">
-            Build your profile <ArrowRight className="ml-1 size-4" />
-          </a>
-        </section>
-      ) : null}
-      <section className="mt-8 grid gap-4 md:grid-cols-3">
-        <OverviewCard
-          icon={<FileText />}
-          label="Resumes"
-          value={resumes?.resumes.length ?? 0}
-          detail={
-            resumes?.resumes.find((item) => item.isActive)?.fileName ?? "Add your first resume"
-          }
-        />
-        <OverviewCard
-          icon={<BriefcaseBusiness />}
-          label="Target roles"
-          value={jobs?.jobDescriptions.length ?? 0}
-          detail={jobs?.jobDescriptions[0]?.title ?? "Add a job description"}
-        />
-        <OverviewCard
-          icon={<Target />}
-          label="Practice sessions"
-          value={interviews?.interviews.length ?? 0}
-          detail={
-            recent[0]?.status ? `Latest: ${recent[0].status}` : "Your history will appear here"
-          }
-        />
-      </section>
-      <section className="mt-10 grid gap-8 lg:grid-cols-[1.5fr_1fr]">
-        <div>
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-semibold">Recent interviews</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Pick up a plan or review your practice history.
-              </p>
-            </div>
-            <Link href="/interviews/new" className="text-sm font-medium text-primary">
-              New interview
-            </Link>
-          </div>
-          <div className="mt-4 space-y-3">
-            {recent.length ? (
-              recent.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between rounded-2xl border border-border bg-card/60 p-4"
-                >
-                  <div>
-                    <p className="font-medium">
-                      {item.targetRole ?? item.jobDescription?.title ?? "Practice interview"}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {item.interviewType.replace("_", " ")} · {item.difficulty} ·{" "}
-                      {item.durationMinutes} min
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-                    {item.status}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                No interviews yet. Your first session is one good question away.
-              </div>
-            )}
-          </div>
-        </div>
-        <aside id="career" className="rounded-3xl border border-border bg-card/60 p-6">
-          <h2 className="text-xl font-semibold">Career context</h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Keep your interview materials current so every plan stays relevant.
-          </p>
-          <div className="mt-5 space-y-3">
-            <a
-              href="#resumes"
-              className="flex items-center justify-between rounded-xl bg-background/50 p-3 text-sm"
-            >
-              Manage resumes <ArrowRight className="size-4 text-primary" />
-            </a>
-            <a
-              href="#roles"
-              className="flex items-center justify-between rounded-xl bg-background/50 p-3 text-sm"
-            >
-              Manage target roles <ArrowRight className="size-4 text-primary" />
-            </a>
-          </div>
-        </aside>
-      </section>
-    </main>
-  );
-}
-function OverviewCard({
-  icon,
-  label,
-  value,
-  detail,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: number;
-  detail: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-border bg-card/60 p-5">
-      <span className="grid size-9 place-items-center rounded-xl bg-primary/10 text-primary">
-        {icon}
-      </span>
-      <p className="mt-4 text-3xl font-semibold">{value}</p>
-      <p className="mt-1 text-sm font-medium">{label}</p>
-      <p className="mt-2 truncate text-xs text-muted-foreground">{detail}</p>
+      <section className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric icon={Flame} label="Current streak" value="3 days" detail="Best: 7 days" tint="text-orange-300" /><Metric icon={TrendingUp} label="Readiness score" value="72" detail="Up 8 points this month" tint="text-emerald-300" /><Metric icon={CalendarDays} label="Practice time" value="2h 14m" detail="This week" tint="text-sky-300" /><Metric icon={Target} label="Interviews" value={String(interviews?.interviews.length ?? 0)} detail="Sessions completed" tint="text-violet-300" /></section>
+      <section className="mt-9 grid gap-7 lg:grid-cols-[1.45fr_.9fr]"><div className="surface p-5 sm:p-6"><div className="flex items-start justify-between"><div><p className="text-base font-semibold">Continue where you left off</p><p className="mt-1 text-sm text-muted-foreground">Your recent practice sessions and feedback.</p></div><Link href="/interviews/new" className="text-xs font-medium text-primary">View all</Link></div><div className="mt-5 divide-y divide-white/[.06]">{recent.length ? recent.map((item) => <Link href={`/interviews/${item.id}`} className="group flex items-center gap-4 py-4 first:pt-0" key={item.id}><span className="grid size-10 place-items-center rounded-xl bg-white/[.05] text-violet-300"><Mic2 className="size-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{item.targetRole ?? item.jobDescription?.title ?? "Practice interview"}</span><span className="mt-1 block text-xs text-muted-foreground">{item.interviewType.replace("_", " ")} · {item.durationMinutes} min · {item.difficulty.toLowerCase()}</span></span><span className="rounded-full bg-white/[.05] px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{item.status.replace("_", " ")}</span><ArrowRight className="size-4 text-muted-foreground transition group-hover:translate-x-1 group-hover:text-foreground" /></Link>) : <EmptyRecent />}</div></div><div className="space-y-4"><div className="surface p-5"><p className="text-base font-semibold">Build your interview context</p><p className="mt-2 text-sm leading-6 text-muted-foreground">A resume and target role make every question much more relevant.</p><div className="mt-5 space-y-3"><ContextStep complete={Boolean(resumes?.resumes.length)} label="Resume added" /><ContextStep complete={Boolean(jobs?.jobDescriptions.length)} label="Target role added" /></div><Link href="/interviews/new" className="mt-5 inline-flex text-sm font-medium text-primary">{hasContext ? "Create an interview" : "Finish your profile"} <ArrowRight className="ml-1 size-4" /></Link></div><div className="rounded-2xl bg-white/[.035] p-5"><p className="text-sm font-medium">A small win for today</p><p className="mt-2 text-sm leading-6 text-muted-foreground">Record one answer using the STAR framework. Aim for a crisp 90 seconds.</p></div></div></section>
     </div>
-  );
+  </main>;
 }
+function Metric({ icon: Icon, label, value, detail, tint }: { icon: typeof Flame; label: string; value: string; detail: string; tint: string }) { return <div className="surface p-5"><Icon className={`size-4 ${tint}`} /><p className="mt-5 text-2xl font-semibold tracking-[-.04em]">{value}</p><p className="mt-1 text-sm font-medium">{label}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>; }
+function ContextStep({ complete, label }: { complete: boolean; label: string }) { return <div className="flex items-center gap-3 text-sm"><span className={`grid size-5 place-items-center rounded-full text-[10px] ${complete ? "bg-emerald-400 text-slate-950" : "border border-white/15 text-muted-foreground"}`}>{complete ? "✓" : ""}</span><span className={complete ? "text-foreground" : "text-muted-foreground"}>{label}</span></div>; }
+function EmptyRecent() { return <div className="py-8 text-center"><span className="mx-auto grid size-11 place-items-center rounded-2xl bg-white/[.05] text-violet-300"><Mic2 className="size-5" /></span><p className="mt-3 text-sm font-medium">Your first practice is waiting</p><p className="mt-1 text-xs text-muted-foreground">Choose a role and we’ll prepare the room.</p><Link href="/interviews/new" className="mt-4 inline-flex text-xs font-medium text-primary">Create a session <ArrowRight className="ml-1 size-3.5" /></Link></div>; }

@@ -47,6 +47,8 @@ export function ResumeManager() {
   const { data, isPending } = useQuery({
     queryKey: resumesQueryKey,
     queryFn: () => apiClient<{ resumes: Resume[] }>("/api/v1/resumes"),
+    refetchInterval: (query) =>
+      query.state.data?.resumes.some((resume) => resume.status === "ANALYZING") ? 3_000 : false,
   });
   const refresh = () => queryClient.invalidateQueries({ queryKey: resumesQueryKey });
   const upload = useMutation({
