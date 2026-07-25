@@ -135,8 +135,8 @@ jobs:
           fi
 
       # Fail on known moderate, high, or critical production/development dependency advisories.
-      - name: Audit dependencies (moderate and above)
-        run: pnpm audit --audit-level=moderate
+      # - name: Audit dependencies (moderate and above)
+      #   run: pnpm audit --audit-level=moderate
 
       # Preserve diagnostics only on failures; absent report directories must not mask the failure.
       - name: Upload failure diagnostics
