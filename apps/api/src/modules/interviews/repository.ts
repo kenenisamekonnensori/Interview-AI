@@ -8,7 +8,7 @@ export class InterviewRepository {
       where: { id, userId },
       include: {
         plan: true,
-        conversation: true,
+        conversation: { include: { turns: { orderBy: { sequence: "asc" } } } },
         report: true,
         resume: { select: { id: true, fileName: true } },
         jobDescription: { select: { id: true, title: true, company: true } },
