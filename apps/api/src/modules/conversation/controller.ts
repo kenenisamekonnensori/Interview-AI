@@ -165,6 +165,25 @@ export function registerConversationRoutes(
   );
 
   app.post(
+    "/api/v1/interviews/:id/conversation/speaking",
+    { preHandler: app.requireVerifiedUser },
+    async (request, reply) => {
+      const params = conversationInterviewIdSchema.safeParse(request.params);
+      if (!params.success)
+        return reply
+          .status(400)
+          .send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
+      try {
+        return reply.send(
+          await service.notifyUserSpeechStarted(params.data.id, request.authContext!.user.id),
+        );
+      } catch (error) {
+        return sendConversationError(reply, error);
+      }
+    },
+  );
+
+  app.post(
     "/api/v1/interviews/:id/conversation/turns/:turnId/playback-completed",
     { preHandler: app.requireVerifiedUser },
     async (request, reply) => {

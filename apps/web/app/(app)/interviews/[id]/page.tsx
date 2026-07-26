@@ -8,7 +8,10 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { InterviewMicrophone } from "@/features/conversation/components/microphone";
+import {
+  InterviewMicrophone,
+  type VoiceSessionState,
+} from "@/features/conversation/components/microphone";
 import { apiClient } from "@/lib/api-client";
 
 type InterviewDetails = {
@@ -28,6 +31,7 @@ export default function LiveInterviewPage() {
   const { id } = useParams<{ id: string }>();
   const client = useQueryClient();
   const [now, setNow] = useState(() => Date.now());
+  const [voiceState, setVoiceState] = useState<VoiceSessionState>("IDLE");
   const queryKey = ["interview", id] as const;
   const { data, isPending, error } = useQuery({
     queryKey,
@@ -100,7 +104,7 @@ export default function LiveInterviewPage() {
           </div>
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1.5 rounded-full bg-rose-400/10 px-3 py-1.5 text-xs font-medium text-rose-300">
-              <Radio className="size-3" /> Recording
+              <Radio className="size-3" /> {voiceState === "IDLE" ? "Mic off" : "Voice session"}
             </span>
             <span className="grid size-8 place-items-center rounded-lg bg-white/[.05] text-emerald-300">
               <Wifi className="size-3.5" />
@@ -136,6 +140,7 @@ export default function LiveInterviewPage() {
                   interviewId={id}
                   disabled={end.isPending}
                   onStarted={() => client.invalidateQueries({ queryKey })}
+                  onSessionStateChange={setVoiceState}
                 />
               </div>
             )}
@@ -183,11 +188,23 @@ export default function LiveInterviewPage() {
               <div className="mt-4 space-y-3 text-xs text-muted-foreground">
                 <p className="flex justify-between">
                   <span>Microphone</span>
-                  <span className="text-emerald-300">Ready</span>
+                  <span className={voiceState === "ERROR" ? "text-rose-300" : "text-emerald-300"}>
+                    {voiceState === "IDLE"
+                      ? "Off"
+                      : voiceState === "ERROR"
+                        ? "Reconnect"
+                        : "Active"}
+                  </span>
                 </p>
                 <p className="flex justify-between">
                   <span>Network</span>
-                  <span className="text-emerald-300">Strong</span>
+                  <span
+                    className={
+                      voiceState === "RECONNECTING" ? "text-amber-300" : "text-emerald-300"
+                    }
+                  >
+                    {voiceState === "RECONNECTING" ? "Reconnecting" : "Connected"}
+                  </span>
                 </p>
                 <p className="flex justify-between">
                   <span>Mode</span>

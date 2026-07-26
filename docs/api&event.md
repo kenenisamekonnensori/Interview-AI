@@ -77,6 +77,7 @@ All endpoints below are under `/api/v1`, require an authenticated verified user,
 | `POST` | `/interviews/:id/conversation/start` | — | Transitions `READY -> IN_PROGRESS`, creates the conversation, and persists the initial AI greeting. Retries return the existing conversation without creating a second one. |
 | `POST` | `/interviews/:id/conversation/next-response` | — | Backend generates and persists an AI turn; the model cannot choose lifecycle state. |
 | `POST` | `/interviews/:id/conversation/transcripts` | `{ text, metadata? }` | Persists a finalized user transcript and moves the conversation to `THINKING`. |
+| `POST` | `/interviews/:id/conversation/speaking` | — | Publishes an authenticated candidate-speaking event; no audio or interim transcript is persisted. |
 | `POST` | `/interviews/:id/conversation/turns/:turnId/playback-completed` | — | Records completed AI playback and moves to `LISTENING`, or completes a closing turn. |
 | `POST` | `/interviews/:id/conversation/complete` | — | Idempotently moves an active interview to `COMPLETING`, finalizes the conversation, and queues evaluation/report generation. The worker marks it `COMPLETED` only after a valid report is persisted. |
 | `GET` | `/interviews/:id/conversation/turns/:turnId/audio` | — | Synthesizes persisted AI text for playback. |
@@ -106,6 +107,10 @@ Examples:
 Events should never contain business logic—they only communicate state changes.
 
 The client obtains a short-lived Deepgram token from `POST /api/v1/interviews/:id/voice-token`. It sends raw audio directly to Deepgram and sends only the finalized, validated transcript text to the API as a conversation turn. Raw audio is neither proxied through nor persisted by the API by default.
+
+### Voice transport decision
+
+The current transport is **direct browser-to-Deepgram live voice with API coordination**. The API issues the short-lived token and remains authoritative for interview ownership, conversation transitions, finalized transcripts, generated turns, playback acknowledgement, and typed event publication. The browser may reconnect with a fresh token; it never receives a long-lived provider credential. Recordings are not part of the MVP, so raw audio has no object-storage retention or playback surface.
 
 ## Typed real-time event contract
 

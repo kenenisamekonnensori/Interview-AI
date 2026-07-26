@@ -149,6 +149,7 @@ model Interview {
   jobDescription   JobDescription?     @relation(fields: [jobDescriptionId], references: [id], onDelete: SetNull)
   plan             InterviewPlan?
   conversation     Conversation?
+  memory           InterviewMemory?
   report           InterviewReport?
 
   @@index([userId, createdAt])
@@ -219,6 +220,23 @@ model InterviewPlan {
   interview     Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
 
   @@map("interview_plan")
+}
+
+model InterviewMemory {
+  id                       String   @id @default(uuid())
+  interviewId              String   @unique
+  askedQuestions           Json     @default("[]")
+  topicCoverage            Json     @default("[]")
+  candidateStrengths       Json     @default("[]")
+  weakAreas                Json     @default("[]")
+  missedFollowUps          Json     @default("[]")
+  questionDifficulty       InterviewDifficulty @default(MEDIUM)
+  remainingObjectives      Json     @default("[]")
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  interview                Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("interview_memory")
 }
 
 model InterviewReport {

@@ -13,8 +13,8 @@ export class ConversationRepository {
         interview: { userId, status: "IN_PROGRESS" },
       },
       include: {
-        interview: { include: { plan: true } },
-        turns: { orderBy: { sequence: "asc" } },
+        interview: { include: { plan: true, memory: true } },
+        turns: { orderBy: { sequence: "desc" }, take: 12 },
       },
     });
   }
@@ -93,6 +93,26 @@ export class ConversationRepository {
     return tx.conversation.updateMany({
       where: { id: input.conversationId, state: input.expectedState },
       data: { state: input.nextState },
+    });
+  }
+
+  updateMemory(
+    tx: Database,
+    interviewId: string,
+    data: {
+      askedQuestions: string[];
+      topicCoverage: Array<{ topic: string; outcome: string }>;
+      candidateStrengths: string[];
+      weakAreas: string[];
+      missedFollowUps: string[];
+      questionDifficulty: "EASY" | "MEDIUM" | "HARD" | "EXPERT";
+      remainingObjectives: string[];
+    },
+  ) {
+    return tx.interviewMemory.upsert({
+      where: { interviewId },
+      create: { interviewId, ...data },
+      update: data,
     });
   }
 }

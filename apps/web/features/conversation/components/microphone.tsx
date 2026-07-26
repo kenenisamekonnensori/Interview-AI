@@ -1,182 +1,350 @@
 "use client";
 
 import { DeepgramClient } from "@deepgram/sdk";
-import { Mic, MicOff } from "lucide-react";
-import { useRef, useState } from "react";
+import { LoaderCircle, Mic, MicOff, RotateCw, Volume2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { FinalizeTranscriptRequest } from "@interviewer-ai/types";
 
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api-client";
 import { webEnvironment } from "@/lib/env";
 
+export type VoiceSessionState =
+  "IDLE" | "CONNECTING" | "LISTENING" | "THINKING" | "SPEAKING" | "RECONNECTING" | "ERROR";
 type DeepgramResult = {
-  type?: string;
   channel?: { alternatives?: Array<{ transcript?: string }> };
   is_final?: boolean;
 };
-
+type LiveConnection = {
+  close: () => void;
+  connect: () => void;
+  waitForOpen: () => Promise<unknown>;
+  socket: { send: (data: Blob) => void };
+  on: (event: string, callback: (value?: unknown) => void) => void;
+};
+type GeneratedTurn = { turn: { id: string; text: string } };
 type ConversationStartResponse = {
   conversation: { state: string };
   greeting: GeneratedTurn | null;
 };
-type GeneratedTurn = { turn: { id: string; text: string } };
+
+const reconnectLimit = 2;
 
 export function InterviewMicrophone({
   interviewId,
   disabled = false,
   onStarted,
+  onSessionStateChange,
 }: {
   interviewId: string;
   disabled?: boolean;
   onStarted?: () => void;
+  onSessionStateChange?: (state: VoiceSessionState) => void;
 }) {
-  const [active, setActive] = useState(false);
-  const [starting, setStarting] = useState(false);
+  const [state, setState] = useState<VoiceSessionState>("IDLE");
   const [transcript, setTranscript] = useState<string[]>([]);
   const [partialTranscript, setPartialTranscript] = useState("");
-  const [status, setStatus] = useState("Ready");
   const [error, setError] = useState<string | null>(null);
-  const connectionRef = useRef<{ close: () => void } | null>(null);
+  const connectionRef = useRef<LiveConnection | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const sessionRef = useRef(0);
+  const reconnectAttemptsRef = useRef(0);
+  const finalizingRef = useRef(false);
+  const speakingNotifiedRef = useRef(false);
+  const playbackVersionRef = useRef(0);
 
-  async function playAiTurn(turnId: string) {
-    const response = await fetch(
-      `${webEnvironment.NEXT_PUBLIC_API_URL}/api/v1/interviews/${interviewId}/conversation/turns/${turnId}/audio`,
-      { credentials: "include" },
-    );
-    if (!response.ok) throw new Error("The interviewer response could not be played.");
-    const url = URL.createObjectURL(await response.blob());
-    audioRef.current?.pause();
-    audioRef.current = new Audio(url);
-    audioRef.current.dataset.turnId = turnId;
-    audioRef.current.onplay = () => setStatus("Interviewer is speaking…");
-    audioRef.current.onended = () => {
-      void apiClient(
-        `/api/v1/interviews/${interviewId}/conversation/turns/${turnId}/playback-completed`,
-        {
-          method: "POST",
-        },
-      )
-        .then(() => setStatus("Listening"))
-        .catch((cause: unknown) =>
-          setError(cause instanceof Error ? cause.message : "Could not update interview playback."),
-        );
-    };
-    await audioRef.current.play();
+  const active = state !== "IDLE" && state !== "ERROR";
+  function updateState(next: VoiceSessionState) {
+    setState(next);
+    onSessionStateChange?.(next);
+  }
+
+  useEffect(() => () => cleanupSession(), []);
+
+  function clearAudio() {
+    playbackVersionRef.current += 1;
+    const audio = audioRef.current;
+    if (audio) {
+      audio.onplay = null;
+      audio.onended = null;
+      audio.onerror = null;
+      audio.pause();
+      audio.src = "";
+    }
+    audioRef.current = null;
+    if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+    audioUrlRef.current = null;
+  }
+
+  function cleanupSession() {
+    sessionRef.current += 1;
+    if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
+    reconnectTimerRef.current = null;
+    clearAudio();
+    recorderRef.current?.stop();
+    recorderRef.current = null;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    connectionRef.current?.close();
+    connectionRef.current = null;
+    finalizingRef.current = false;
+    speakingNotifiedRef.current = false;
+  }
+
+  function assertBrowserSupport() {
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      throw new Error(
+        "Voice interviews require a secure browser with microphone and MediaRecorder support.",
+      );
+    }
+  }
+
+  function recorderOptions(): MediaRecorderOptions | undefined {
+    const types = ["audio/webm;codecs=opus", "audio/webm"];
+    const mimeType = types.find((type) => MediaRecorder.isTypeSupported(type));
+    return mimeType ? { mimeType } : undefined;
   }
 
   async function start() {
-    if (active || starting || disabled) return;
+    if (active || disabled) return;
     try {
-      setStarting(true);
+      assertBrowserSupport();
+      if (state === "ERROR") cleanupSession();
+      const session = sessionRef.current + 1;
+      sessionRef.current = session;
+      reconnectAttemptsRef.current = 0;
       setError(null);
-      setStatus("Connecting microphone…");
+      updateState("CONNECTING");
       const conversation = await apiClient<ConversationStartResponse>(
         `/api/v1/interviews/${interviewId}/conversation/start`,
         { method: "POST" },
       );
       onStarted?.();
-      const { accessToken } = await apiClient<{ accessToken: string }>(
-        `/api/v1/interviews/${interviewId}/voice-token`,
-        { method: "POST" },
-      );
-      const client = new DeepgramClient({ accessToken });
-      const connection = await client.listen.v1.connect({
-        model: "nova-3",
-        language: "en",
-        punctuate: "true",
-        interim_results: "true",
-        smart_format: "true",
-      });
-      connection.on("message", async (message: unknown) => {
-        const result = message as DeepgramResult;
-        const text = result.channel?.alternatives?.[0]?.transcript?.trim();
-        if (!text) return;
-        if (!result.is_final) {
-          setPartialTranscript(text);
-          return;
-        }
-        if (audioRef.current && !audioRef.current.paused) {
-          audioRef.current.pause();
-          const activeTurnId = audioRef.current.dataset.turnId;
-          if (activeTurnId) {
-            await apiClient(
-              `/api/v1/interviews/${interviewId}/conversation/turns/${activeTurnId}/playback-completed`,
-              { method: "POST" },
-            );
-          }
-          setStatus("Listening — interviewer interrupted");
-        }
-        if (result.is_final) {
-          setPartialTranscript("");
-          setTranscript((turns) => [...turns, `You: ${text}`]);
-          setStatus("Interviewer is thinking…");
-          await apiClient(`/api/v1/interviews/${interviewId}/conversation/transcripts`, {
-            method: "POST",
-            body: { text } satisfies FinalizeTranscriptRequest,
-          });
-          const next = await apiClient<GeneratedTurn>(
-            `/api/v1/interviews/${interviewId}/conversation/next-response`,
-            { method: "POST" },
-          );
-          setTranscript((turns) => [...turns, `Interviewer: ${next.turn.text}`]);
-          await playAiTurn(next.turn.id);
-        }
-      });
-      connection.on("error", () => {
-        setError("Voice connection disconnected. Stop and start the microphone to reconnect.");
-        setStatus("Disconnected");
-      });
-      connection.connect();
-      await connection.waitForOpen();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-      recorder.ondataavailable = (event) => {
-        if (event.data.size) connection.socket.send(event.data);
-      };
-      recorder.start(250);
-      connectionRef.current = connection;
-      recorderRef.current = recorder;
-      setActive(true);
+      streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      await connectVoice(session);
       if (conversation.greeting) {
-        const greeting = conversation.greeting;
-        setTranscript((turns) => [...turns, `Interviewer: ${greeting.turn.text}`]);
-        await playAiTurn(greeting.turn.id);
+        setTranscript((turns) => [...turns, `Interviewer: ${conversation.greeting!.turn.text}`]);
+        await playAiTurn(conversation.greeting.turn.id, session);
       } else if (conversation.conversation.state === "GREETING") {
         const greeting = await apiClient<GeneratedTurn>(
           `/api/v1/interviews/${interviewId}/conversation/next-response`,
           { method: "POST" },
         );
         setTranscript((turns) => [...turns, `Interviewer: ${greeting.turn.text}`]);
-        await playAiTurn(greeting.turn.id);
+        await playAiTurn(greeting.turn.id, session);
       } else {
-        setStatus("Listening");
+        updateState("LISTENING");
       }
     } catch (cause) {
+      cleanupSession();
       setError(cause instanceof Error ? cause.message : "Could not start the microphone.");
-      setStatus("Ready");
-    } finally {
-      setStarting(false);
+      updateState("ERROR");
     }
   }
-  function stop() {
-    audioRef.current?.pause();
-    recorderRef.current?.stop();
-    recorderRef.current?.stream.getTracks().forEach((track) => track.stop());
+
+  async function connectVoice(session: number) {
+    const { accessToken } = await apiClient<{ accessToken: string }>(
+      `/api/v1/interviews/${interviewId}/voice-token`,
+      { method: "POST" },
+    );
+    if (session !== sessionRef.current) return;
     connectionRef.current?.close();
-    setActive(false);
-    setStatus("Ready");
+    const client = new DeepgramClient({ accessToken });
+    const connection = (await client.listen.v1.connect({
+      model: "nova-3",
+      language: "en",
+      punctuate: "true",
+      interim_results: "true",
+      smart_format: "true",
+    })) as unknown as LiveConnection;
+    connection.on("message", (message) => void handleTranscript(message, session));
+    connection.on("error", () => scheduleReconnect(session));
+    connection.on("close", () => scheduleReconnect(session));
+    connection.connect();
+    await connection.waitForOpen();
+    if (session !== sessionRef.current) {
+      connection.close();
+      return;
+    }
+    connectionRef.current = connection;
+    if (!recorderRef.current && streamRef.current) {
+      const recorder = new MediaRecorder(streamRef.current, recorderOptions());
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) connectionRef.current?.socket.send(event.data);
+      };
+      recorder.start(250);
+      recorderRef.current = recorder;
+    }
+    if (state !== "SPEAKING" && state !== "THINKING") updateState("LISTENING");
   }
+
+  function scheduleReconnect(session: number) {
+    if (session !== sessionRef.current || state === "IDLE" || state === "ERROR") return;
+    if (reconnectAttemptsRef.current >= reconnectLimit) {
+      setError("Voice connection was lost. You can reconnect without restarting the interview.");
+      updateState("ERROR");
+      return;
+    }
+    reconnectAttemptsRef.current += 1;
+    updateState("RECONNECTING");
+    if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
+    reconnectTimerRef.current = window.setTimeout(() => {
+      void connectVoice(session).catch(() => scheduleReconnect(session));
+    }, 500 * reconnectAttemptsRef.current);
+  }
+
+  async function notifySpeaking() {
+    if (speakingNotifiedRef.current) return;
+    speakingNotifiedRef.current = true;
+    await apiClient(`/api/v1/interviews/${interviewId}/conversation/speaking`, { method: "POST" });
+  }
+
+  async function interruptPlayback(session: number) {
+    const audio = audioRef.current;
+    const turnId = audio?.dataset.turnId;
+    if (!audio || audio.paused || !turnId) return;
+    clearAudio();
+    if (session !== sessionRef.current) return;
+    await apiClient(
+      `/api/v1/interviews/${interviewId}/conversation/turns/${turnId}/playback-completed`,
+      {
+        method: "POST",
+      },
+    );
+    updateState("LISTENING");
+  }
+
+  async function handleTranscript(message: unknown, session: number) {
+    if (session !== sessionRef.current) return;
+    const result = message as DeepgramResult;
+    const text = result.channel?.alternatives?.[0]?.transcript?.trim();
+    if (!text) return;
+    try {
+      await notifySpeaking();
+      await interruptPlayback(session);
+      if (!result.is_final) {
+        setPartialTranscript(text);
+        return;
+      }
+      if (finalizingRef.current) return;
+      finalizingRef.current = true;
+      speakingNotifiedRef.current = false;
+      setPartialTranscript("");
+      setTranscript((turns) => [...turns, `You: ${text}`]);
+      updateState("THINKING");
+      await apiClient(`/api/v1/interviews/${interviewId}/conversation/transcripts`, {
+        method: "POST",
+        body: { text } satisfies FinalizeTranscriptRequest,
+      });
+      const next = await apiClient<GeneratedTurn>(
+        `/api/v1/interviews/${interviewId}/conversation/next-response`,
+        { method: "POST" },
+      );
+      if (session !== sessionRef.current) return;
+      setTranscript((turns) => [...turns, `Interviewer: ${next.turn.text}`]);
+      await playAiTurn(next.turn.id, session);
+    } catch (cause) {
+      if (session === sessionRef.current) {
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Could not process this response. Please try again.",
+        );
+        updateState("ERROR");
+      }
+    } finally {
+      finalizingRef.current = false;
+    }
+  }
+
+  async function playAiTurn(turnId: string, session: number) {
+    const response = await fetch(
+      `${webEnvironment.NEXT_PUBLIC_API_URL}/api/v1/interviews/${interviewId}/conversation/turns/${turnId}/audio`,
+      { credentials: "include" },
+    );
+    if (!response.ok) throw new Error("The interviewer response could not be played.");
+    if (session !== sessionRef.current) return;
+    clearAudio();
+    const version = playbackVersionRef.current;
+    const url = URL.createObjectURL(await response.blob());
+    audioUrlRef.current = url;
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    audio.dataset.turnId = turnId;
+    audio.onplay = () => {
+      if (session === sessionRef.current && version === playbackVersionRef.current)
+        updateState("SPEAKING");
+    };
+    audio.onended = () => {
+      if (session !== sessionRef.current || version !== playbackVersionRef.current) return;
+      clearAudio();
+      void apiClient(
+        `/api/v1/interviews/${interviewId}/conversation/turns/${turnId}/playback-completed`,
+        { method: "POST" },
+      )
+        .then(() => updateState("LISTENING"))
+        .catch((cause: unknown) => {
+          setError(cause instanceof Error ? cause.message : "Could not update interview playback.");
+          updateState("ERROR");
+        });
+    };
+    audio.onerror = () => {
+      if (session === sessionRef.current) {
+        setError("The interviewer audio could not be played. You can reconnect and continue.");
+        updateState("ERROR");
+      }
+    };
+    await audio.play();
+  }
+
+  function stop() {
+    if (!active) return;
+    cleanupSession();
+    setPartialTranscript("");
+    updateState("IDLE");
+  }
+
+  const status = {
+    IDLE: "Microphone ready",
+    CONNECTING: "Connecting microphone…",
+    LISTENING: "Listening",
+    THINKING: "Interviewer is thinking…",
+    SPEAKING: "Interviewer is speaking…",
+    RECONNECTING: "Reconnecting voice…",
+    ERROR: "Voice needs attention",
+  }[state];
+
   return (
     <div className="rounded-xl border border-border p-4">
-      <Button onClick={active ? stop : start} disabled={starting || disabled}>
-        <>
-          {active ? <MicOff className="size-4" /> : <Mic className="size-4" />}
-          {active ? "Stop microphone" : starting ? "Connecting…" : "Start microphone"}
-        </>
-      </Button>
-      <p className="mt-3 text-sm text-muted-foreground">{status}</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={active ? stop : start} disabled={disabled || state === "CONNECTING"}>
+          {state === "CONNECTING" || state === "RECONNECTING" ? (
+            <Mic className="size-4" />
+          ) : active ? (
+            <MicOff className="size-4" />
+          ) : (
+            <Mic className="size-4" />
+          )}
+          {state === "CONNECTING" ? "Connecting…" : active ? "Stop microphone" : "Start microphone"}
+        </Button>
+        {state === "RECONNECTING" || state === "CONNECTING" ? (
+          <LoaderCircle className="size-4 animate-spin text-primary" />
+        ) : null}
+        {state === "SPEAKING" ? <Volume2 className="size-4 text-primary" /> : null}
+        {state === "ERROR" ? (
+          <Button size="sm" variant="outline" onClick={() => void start()} disabled={disabled}>
+            <RotateCw className="size-3" />
+            Reconnect
+          </Button>
+        ) : null}
+      </div>
+      <p className="mt-3 text-sm text-muted-foreground" aria-live="polite">
+        {status}
+      </p>
       {error ? <p className="mt-2 text-sm text-destructive">{error}</p> : null}
       {partialTranscript ? (
         <p className="mt-3 text-sm italic text-muted-foreground">Listening: {partialTranscript}</p>

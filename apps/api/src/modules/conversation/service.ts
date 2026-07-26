@@ -9,6 +9,7 @@ import { interviewPlanSchema } from "@interviewer-ai/types";
 
 import { createAiProvider, type AiProvider } from "../ai/index.js";
 import type { InterviewService } from "../interviews/service.js";
+import { InterviewTools } from "../interviews/tools.js";
 import { ConversationEventPublisher } from "./events.js";
 import { grantDeepgramAccessToken, synthesizeSpeech } from "./deepgram.js";
 import { ConversationRepository } from "./repository.js";
@@ -31,6 +32,7 @@ export class ConversationError extends Error {
 
 export class ConversationService {
   readonly repository: ConversationRepository;
+  private readonly interviewTools: InterviewTools;
   private readonly aiProvider: AiProvider;
 
   constructor(
@@ -40,6 +42,7 @@ export class ConversationService {
     private readonly events: ConversationEventPublisher,
   ) {
     this.repository = new ConversationRepository(database);
+    this.interviewTools = new InterviewTools(database, interviewService);
     this.aiProvider = createAiProvider(environment);
   }
 
@@ -73,6 +76,14 @@ export class ConversationService {
 
     const plan = toPlan(conversation.interview.plan);
     const context = buildSessionContext(conversation, plan);
+    const actor = { userId };
+    const [resume, job, memory, selectedTopic, priorWeakAreas] = await Promise.all([
+      this.interviewTools.retrieveResumeAnalysis(actor, { interviewId }),
+      this.interviewTools.retrieveJobAnalysis(actor, { interviewId }),
+      this.interviewTools.retrieveMemory(actor, { interviewId }),
+      this.interviewTools.identifyNextPlannedTopic(actor, { interviewId }),
+      this.interviewTools.retrievePriorWeakAreas(actor, { interviewId }),
+    ]);
     const shouldClose = hasReachedPlanObjectives(plan, context);
     const response = await this.aiProvider.generateInterviewerResponse({
       interviewContext: {
@@ -82,15 +93,24 @@ export class ConversationService {
         objectives: plan.objectives,
         topics: plan.topics.map((topic) => topic.topic),
         durationRemainingSeconds: context.durationRemainingSeconds,
+        selectedTopic: selectedTopic
+          ? { topic: selectedTopic.topic, priority: selectedTopic.priority }
+          : undefined,
+        resumeSummary: resume?.summary,
+        resumeSkills: resume?.skills,
+        jobRequiredSkills: job?.requiredSkills,
+        priorWeakAreas: priorWeakAreas.slice(0, 6),
       },
       conversationMemory: {
         coveredTopics: context.coveredTopics,
         questionCount: context.questionCount,
         recentTurns: context.recentTurns,
         unresolvedFollowUps: context.unresolvedFollowUps,
+        askedQuestions: memory?.askedQuestions ?? [],
+        questionDifficulty: memory?.questionDifficulty ?? conversation.interview.difficulty,
       },
       latestCandidateAnswer:
-        [...conversation.turns].reverse().find((turn) => turn.speaker === "USER")?.text ?? null,
+        conversation.turns.find((turn) => turn.speaker === "USER")?.text ?? null,
     });
     if (
       !shouldClose &&
@@ -109,18 +129,50 @@ export class ConversationService {
           : response.responseType;
     const nextState: ConversationState = turnType === "CLOSING" ? "CLOSING" : "SPEAKING";
     assertConversationTransition(conversation.state, nextState);
+    if (
+      ["QUESTION", "FOLLOW_UP", "CLARIFICATION"].includes(turnType) &&
+      (memory?.askedQuestions ?? []).some(
+        (question) => normalizeQuestion(question) === normalizeQuestion(response.responseText),
+      )
+    ) {
+      throw new ConversationError(
+        "DUPLICATE_AI_QUESTION",
+        "The generated question duplicates an existing question. Retry for a new question.",
+      );
+    }
+    const validatedResponse = {
+      ...response,
+      topicReference: plan.topics.some((topic) => topic.topic === response.topicReference)
+        ? response.topicReference
+        : selectedTopic?.topic,
+      objectiveReference: plan.objectives.includes(response.objectiveReference ?? "")
+        ? response.objectiveReference
+        : undefined,
+    };
+    const memoryUpdate = buildMemoryUpdate({
+      memory,
+      plan,
+      selectedTopic,
+      response: validatedResponse,
+      turnType,
+      latestCandidateAnswer:
+        conversation.turns.find((turn) => turn.speaker === "USER")?.text ?? null,
+    });
 
-    const turn = await this.database.$transaction((tx) =>
-      this.repository.appendTurn(tx, {
+    const turn = await this.database.$transaction(async (tx) => {
+      const appended = await this.repository.appendTurn(tx, {
         conversationId: conversation.id,
         expectedSequence: conversation.sequence,
         expectedState: conversation.state,
         nextState,
         speaker: "AI",
         type: turnType,
-        text: response.responseText,
-      }),
-    );
+        text: validatedResponse.responseText,
+      });
+      if (!appended) return null;
+      await this.repository.updateMemory(tx, interviewId, memoryUpdate);
+      return appended;
+    });
     if (!turn)
       throw new ConversationError(
         "CONVERSATION_STATE_CONFLICT",
@@ -178,6 +230,19 @@ export class ConversationService {
         : { interviewId, conversationId: conversation.id, turn: asTurnDto(turn) },
     });
     return result;
+  }
+
+  async notifyUserSpeechStarted(interviewId: string, userId: string) {
+    const conversation = await this.requireActiveConversation(interviewId, userId);
+    this.events.publish({
+      name: "UserSpeechStarted",
+      payload: {
+        interviewId,
+        conversationId: conversation.id,
+        occurredAt: new Date().toISOString(),
+      },
+    });
+    return { conversationId: conversation.id };
   }
 
   async acknowledgePlayback(interviewId: string, turnId: string, userId: string) {
@@ -275,11 +340,12 @@ function buildSessionContext(
   plan: InterviewPlan,
 ): ConversationSessionContext {
   const topics = plan.topics;
-  const turns = conversation.turns;
+  const turns = [...conversation.turns].reverse();
   const transcript = turns.map((turn) => turn.text.toLowerCase()).join(" ");
+  const persistedCoverage = asPersistedCoverage(conversation.interview.memory?.topicCoverage);
   const coveredTopics = topics
     .map((topic) => topic.topic)
-    .filter((topic) => transcript.includes(topic.toLowerCase()));
+    .filter((topic) => persistedCoverage.has(topic) || transcript.includes(topic.toLowerCase()));
   const unansweredFollowUps = turns
     .filter((turn) => turn.speaker === "AI" && turn.type === "FOLLOW_UP")
     .filter(
@@ -344,4 +410,133 @@ function asTurnDto(turn: {
   createdAt: Date;
 }) {
   return { ...asTurnRecord(turn), createdAt: turn.createdAt.toISOString() };
+}
+
+type CompactMemory = {
+  askedQuestions: string[];
+  topicCoverage: Array<{ topic: string; outcome: "ASKED" | "FOLLOWED_UP" | "COMPLETED" }>;
+  candidateStrengths: string[];
+  weakAreas: string[];
+  missedFollowUps: string[];
+  questionDifficulty: string;
+  remainingObjectives: string[];
+};
+
+function buildMemoryUpdate({
+  memory,
+  plan,
+  selectedTopic,
+  response,
+  turnType,
+  latestCandidateAnswer,
+}: {
+  memory: CompactMemory | null;
+  plan: InterviewPlan;
+  selectedTopic: {
+    topic: string;
+    priority: "HIGH" | "MEDIUM" | "LOW";
+    reason: "UNCOVERED_PLAN_TOPIC";
+  } | null;
+  response: Awaited<ReturnType<AiProvider["generateInterviewerResponse"]>>;
+  turnType: "GREETING" | "QUESTION" | "FOLLOW_UP" | "CLARIFICATION" | "CLOSING";
+  latestCandidateAnswer: string | null;
+}) {
+  const current = memory ?? {
+    askedQuestions: [],
+    topicCoverage: [],
+    candidateStrengths: [],
+    weakAreas: [],
+    missedFollowUps: [],
+    questionDifficulty: "MEDIUM",
+    remainingObjectives: plan.objectives,
+  };
+  const askedQuestions = ["QUESTION", "FOLLOW_UP", "CLARIFICATION"].includes(turnType)
+    ? uniqueStrings([...current.askedQuestions, response.responseText], 12)
+    : current.askedQuestions;
+  const topic = response.topicReference ?? selectedTopic?.topic;
+  const topicCoverage =
+    topic && turnType !== "GREETING" && turnType !== "CLOSING"
+      ? mergeCoverage(
+          current.topicCoverage,
+          topic,
+          turnType === "FOLLOW_UP" ? "FOLLOWED_UP" : "ASKED",
+        )
+      : current.topicCoverage;
+  const assessmentLabel = topic ?? "the current topic";
+  const candidateStrengths =
+    response.assessment?.answerDepth === "STRONG" && latestCandidateAnswer
+      ? uniqueStrings([...current.candidateStrengths, `Strong evidence on ${assessmentLabel}`], 8)
+      : current.candidateStrengths;
+  const weakAreas =
+    response.assessment?.answerDepth === "SHALLOW" && latestCandidateAnswer
+      ? uniqueStrings([...current.weakAreas, `Needs deeper evidence on ${assessmentLabel}`], 8)
+      : current.weakAreas;
+  const missedFollowUps =
+    response.assessment?.followUpNeeded && turnType !== "FOLLOW_UP"
+      ? uniqueStrings([...current.missedFollowUps, `Follow up on ${assessmentLabel}`], 6)
+      : turnType === "FOLLOW_UP"
+        ? current.missedFollowUps.filter((item) => !item.includes(assessmentLabel))
+        : current.missedFollowUps;
+  const remainingObjectives =
+    response.objectiveReference && response.assessment?.answerDepth !== "SHALLOW"
+      ? current.remainingObjectives.filter((objective) => objective !== response.objectiveReference)
+      : current.remainingObjectives;
+  return {
+    askedQuestions,
+    topicCoverage,
+    candidateStrengths,
+    weakAreas,
+    missedFollowUps,
+    questionDifficulty: adjustDifficulty(
+      current.questionDifficulty,
+      response.assessment?.answerDepth,
+    ),
+    remainingObjectives,
+  };
+}
+
+function mergeCoverage(
+  coverage: CompactMemory["topicCoverage"],
+  topic: string,
+  outcome: "ASKED" | "FOLLOWED_UP",
+) {
+  const existing = coverage.find((item) => item.topic === topic);
+  return existing
+    ? coverage.map((item) => (item.topic === topic ? { ...item, outcome } : item))
+    : [...coverage, { topic, outcome }];
+}
+
+function uniqueStrings(values: string[], limit: number) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].slice(-limit);
+}
+
+function normalizeQuestion(value: string) {
+  return value
+    .toLocaleLowerCase()
+    .replaceAll(/[^a-z0-9\s]/g, "")
+    .replaceAll(/\s+/g, " ")
+    .trim();
+}
+
+function asPersistedCoverage(value: unknown) {
+  return new Set(
+    Array.isArray(value)
+      ? value.flatMap((item) =>
+          typeof item === "object" &&
+          item !== null &&
+          "topic" in item &&
+          typeof item.topic === "string"
+            ? [item.topic]
+            : [],
+        )
+      : [],
+  );
+}
+
+function adjustDifficulty(current: string, depth: "SHALLOW" | "ADEQUATE" | "STRONG" | undefined) {
+  const levels = ["EASY", "MEDIUM", "HARD", "EXPERT"] as const;
+  const index = Math.max(0, levels.indexOf(current as (typeof levels)[number]));
+  if (depth === "STRONG") return levels[Math.min(index + 1, levels.length - 1)]!;
+  if (depth === "SHALLOW") return levels[Math.max(index - 1, 0)]!;
+  return levels[index]!;
 }

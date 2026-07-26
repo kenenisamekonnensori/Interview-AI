@@ -13,6 +13,13 @@ export const interviewerResponseProposalSchema = z
     topicReference: z.string().trim().min(1).max(200).optional(),
     objectiveReference: z.string().trim().min(1).max(200).optional(),
     suggestedNextConversationState: z.enum(["SPEAKING", "CLOSING"]),
+    assessment: z
+      .object({
+        answerDepth: z.enum(["SHALLOW", "ADEQUATE", "STRONG"]),
+        followUpNeeded: z.boolean(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((proposal, context) => {

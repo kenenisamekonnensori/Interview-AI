@@ -148,6 +148,15 @@ export class InterviewService {
         create: { interviewId: id, startedAt },
         update: {},
       });
+      await tx.interviewMemory.upsert({
+        where: { interviewId: id },
+        create: {
+          interviewId: id,
+          remainingObjectives: interview.plan.objectives === null ? [] : interview.plan.objectives,
+          questionDifficulty: interview.difficulty,
+        },
+        update: {},
+      });
       return { conversation, started: true };
     });
     if (result.started)

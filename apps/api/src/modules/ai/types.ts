@@ -7,6 +7,11 @@ export type AiInterviewContext = {
   objectives: string[];
   topics: string[];
   durationRemainingSeconds: number;
+  selectedTopic?: { topic: string; priority: "HIGH" | "MEDIUM" | "LOW" } | undefined;
+  resumeSummary?: string | undefined;
+  resumeSkills?: string[] | undefined;
+  jobRequiredSkills?: string[] | undefined;
+  priorWeakAreas?: string[] | undefined;
 };
 
 export type AiConversationMemory = {
@@ -14,6 +19,8 @@ export type AiConversationMemory = {
   questionCount: number;
   recentTurns: Array<{ speaker: string; type: string; text: string }>;
   unresolvedFollowUps: string[];
+  askedQuestions: string[];
+  questionDifficulty: string;
 };
 
 export type GenerateInterviewerResponseInput = {
@@ -29,6 +36,8 @@ export type InterviewerResponseProposal = {
   topicReference?: string | undefined;
   objectiveReference?: string | undefined;
   suggestedNextConversationState: Extract<ConversationState, "SPEAKING" | "CLOSING">;
+  assessment?:
+    { answerDepth: "SHALLOW" | "ADEQUATE" | "STRONG"; followUpNeeded: boolean } | undefined;
 };
 
 export type AiStructuredRequest = { instructions: string; context: unknown };
