@@ -1,5 +1,6 @@
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 import type { createCareerAnalysisQueue } from "../../services/career-analysis-queue.js";
+import type { createReportQueue } from "../../services/report-queue.js";
 import type { InterviewConfiguration, InterviewStatus } from "@interviewer-ai/types";
 import {
   assertConversationTransition,
@@ -32,6 +33,7 @@ export class InterviewService {
   constructor(
     private readonly database: PrismaClient,
     private readonly queue: ReturnType<typeof createCareerAnalysisQueue>,
+    private readonly reportQueue: ReturnType<typeof createReportQueue>,
     private readonly events: InterviewEventPublisher,
   ) {
     this.repository = new InterviewRepository(database);
@@ -175,8 +177,8 @@ export class InterviewService {
       });
       if (!interview)
         throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
-      if (interview.status === "COMPLETED") return { interview, requested: false };
-      if (interview.status === "COMPLETING") return { interview, requested: false };
+      if (interview.status === "COMPLETED") return { interview, requested: false, enqueueReport: false };
+      if (interview.status === "COMPLETING") return { interview, requested: false, enqueueReport: false };
       if (interview.status !== "IN_PROGRESS" || !interview.conversation)
         throw new InterviewLifecycleError(
           "INTERVIEW_NOT_ACTIVE",
@@ -192,7 +194,7 @@ export class InterviewService {
           where: { id, userId },
           include: { conversation: true, report: true },
         });
-        if (current) return { interview: current, requested: false };
+        if (current) return { interview: current, requested: false, enqueueReport: false };
         throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
       }
       const completedAt = new Date();
@@ -204,11 +206,20 @@ export class InterviewService {
         where: { id: interview.conversation.id },
         data: { state: "COMPLETED", completedAt },
       });
+      const completed = await tx.interview.update({
+        where: { id },
+        data: { status: "COMPLETED", completedAt },
+      });
+      const report = await tx.interviewReport.upsert({
+        where: { interviewId: id },
+        create: { interviewId: id, status: "PENDING" },
+        update: {},
+      });
       const updated = await tx.interview.findUniqueOrThrow({
         where: { id },
         include: { conversation: true, report: true },
       });
-      return { interview: updated, requested: true };
+      return { interview: { ...updated, completedAt: completed.completedAt }, requested: true, enqueueReport: report.status === "PENDING" };
     });
     if (result.requested) {
       this.events.publish({
@@ -219,9 +230,29 @@ export class InterviewService {
           occurredAt: new Date().toISOString(),
         },
       });
+      this.events.publish({
+        name: "InterviewCompleted",
+        payload: {
+          interviewId: id,
+          conversationId: result.interview.conversation!.id,
+          occurredAt: result.interview.completedAt!.toISOString(),
+        },
+      });
     }
-    if (result.interview.status !== "COMPLETED")
-      await this.queue.enqueue({ kind: "interview-evaluation", interviewId: id, userId });
+    if (result.enqueueReport) {
+      try {
+        await this.reportQueue.enqueue({ interviewId: id, userId });
+      } catch {
+        // Completion is durable even when queue infrastructure is temporarily unavailable.
+        await this.database.interviewReport.updateMany({
+          where: { interviewId: id, status: "PENDING" },
+          data: {
+            status: "FAILED",
+            failureReason: "Your report could not be queued. Please try again.",
+          },
+        });
+      }
+    }
     return result.interview;
   }
 

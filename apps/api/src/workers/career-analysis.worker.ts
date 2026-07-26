@@ -2,8 +2,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { Worker } from "bullmq";
 import { serverEnvironmentSchema } from "@interviewer-ai/config";
-import { interviewEvaluationSchema, interviewPlanSchema } from "@interviewer-ai/types";
-import { buildEvaluationPrompt, buildReportPrompt } from "@interviewer-ai/prompts";
+import { interviewPlanSchema } from "@interviewer-ai/types";
 import { z } from "zod";
 
 import { createAuthDatabase } from "../modules/auth/database.js";
@@ -13,14 +12,10 @@ import { downloadResumeObject } from "../modules/resumes/storage.js";
 import type { CareerAnalysisJob } from "../services/career-analysis-queue.js";
 import { createRedisConnectionOptions } from "../services/redis-connection.js";
 import { assertInterviewTransition } from "../modules/conversation/state-machine.js";
-import { InterviewEventPublisher } from "../modules/interviews/events.js";
 
 const environment = serverEnvironmentSchema.parse(process.env);
 const database = createAuthDatabase(environment.DATABASE_URL);
 const aiProvider = createAiProvider(environment);
-const events = new InterviewEventPublisher({
-  info: (payload, message) => console.info(message, payload),
-});
 
 const stringListSchema = z.array(z.string().trim().min(1)).max(100);
 const resumeAnalysisSchema = z.object({
@@ -172,83 +167,6 @@ async function planInterview(interviewId: string) {
   }
 }
 
-const generatedReportSchema = z.object({
-  evaluation: interviewEvaluationSchema,
-  summary: z.string().trim().min(1).max(8_000),
-});
-
-async function evaluateInterview(interviewId: string) {
-  const interview = await database.interview.findUnique({
-    where: { id: interviewId },
-    include: {
-      conversation: { include: { turns: { orderBy: { sequence: "asc" } } } },
-      plan: true,
-      report: true,
-    },
-  });
-  if (!interview || interview.status === "COMPLETED") return;
-  if (interview.status !== "COMPLETING" || !interview.conversation || !interview.plan) return;
-  if (interview.conversation.state !== "COMPLETED" || !interview.conversation.completedAt)
-    throw new Error("A completed conversation is required before evaluation.");
-
-  const generated = generatedReportSchema.parse(
-    await aiProvider.generateReport({
-      instructions: `${buildEvaluationPrompt()} ${buildReportPrompt()} Return JSON with a 0-100 evaluation and a concise candidate-facing summary.`,
-      context: {
-        configuration: {
-          interviewType: interview.interviewType,
-          difficulty: interview.difficulty,
-          targetRole: interview.targetRole,
-        },
-        plan: interview.plan,
-        turns: interview.conversation.turns.map((turn) => ({
-          speaker: turn.speaker,
-          type: turn.type,
-          text: turn.text,
-        })),
-      },
-    }),
-  );
-
-  const result = await database.$transaction(async (tx) => {
-    const report = await tx.interviewReport.upsert({
-      where: { interviewId },
-      create: { interviewId, ...generated, model: environment.GEMINI_MODEL },
-      update: { ...generated, model: environment.GEMINI_MODEL, generatedAt: new Date() },
-    });
-    const completedAt = new Date();
-    const completed = await tx.interview.updateMany({
-      where: { id: interviewId, status: "COMPLETING" },
-      data: { status: "COMPLETED", completedAt },
-    });
-    return { report, completed: completed.count === 1, completedAt };
-  });
-  if (result.completed) {
-    events.publish({
-      name: "InterviewCompleted",
-      payload: {
-        interviewId,
-        conversationId: interview.conversation.id,
-        occurredAt: result.completedAt.toISOString(),
-      },
-    });
-    events.publish({
-      name: "ReportGenerated",
-      payload: {
-        interviewId,
-        report: {
-          id: result.report.id,
-          interviewId,
-          evaluation: result.report.evaluation as z.infer<typeof interviewEvaluationSchema>,
-          summary: result.report.summary,
-          generatedAt: result.report.generatedAt.toISOString(),
-        },
-        occurredAt: result.report.generatedAt.toISOString(),
-      },
-    });
-  }
-}
-
 const worker = new Worker<CareerAnalysisJob>(
   "career-analysis",
   async (job) =>
@@ -256,9 +174,7 @@ const worker = new Worker<CareerAnalysisJob>(
       ? analyzeResume(job.data.resumeId)
       : job.data.kind === "job-description"
         ? analyzeJobDescription(job.data.jobDescriptionId)
-        : job.data.kind === "interview-plan"
-          ? planInterview(job.data.interviewId)
-          : evaluateInterview(job.data.interviewId),
+        : planInterview(job.data.interviewId),
   {
     connection: createRedisConnectionOptions(environment.REDIS_URL, { worker: true }),
   },

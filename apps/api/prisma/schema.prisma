@@ -240,15 +240,36 @@ model InterviewMemory {
 }
 
 model InterviewReport {
-  id          String    @id @default(uuid())
-  interviewId String    @unique
-  evaluation  Json
-  summary     String
-  generatedAt DateTime  @default(now())
-  model       String
-  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  id                 String               @id @default(uuid())
+  interviewId        String               @unique
+  status             ReportStatus         @default(PENDING)
+  evaluation         Json?
+  summary            String?
+  evidence           Json                 @default("[]")
+  hiringRecommendation HiringRecommendation?
+  failureReason      String?
+  generationAttempts Int                  @default(0)
+  generatedAt        DateTime?
+  model              String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  interview          Interview            @relation(fields: [interviewId], references: [id], onDelete: Cascade)
 
   @@map("interview_report")
+}
+
+enum ReportStatus {
+  PENDING
+  GENERATING
+  READY
+  FAILED
+}
+
+enum HiringRecommendation {
+  STRONG_HIRE
+  HIRE
+  NO_HIRE
+  STRONG_NO_HIRE
 }
 
 model JobAnalysis {

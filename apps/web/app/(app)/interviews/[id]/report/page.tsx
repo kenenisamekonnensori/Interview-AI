@@ -1,8 +1,8 @@
 "use client";
 
-import type { InterviewEvaluation, InterviewStatus } from "@interviewer-ai/types";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowUpRight, Download, LoaderCircle, Sparkles } from "lucide-react";
+import type { InterviewEvaluation, ReportStatus } from "@interviewer-ai/types";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowUpRight, Download, LoaderCircle, RefreshCw, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -11,17 +11,24 @@ import { apiClient } from "@/lib/api-client";
 
 type ReportDetails = {
   id: string;
-  status: InterviewStatus;
-  report: { summary: string; evaluation: InterviewEvaluation; generatedAt: string } | null;
+  status: ReportStatus;
+  summary: string | null;
+  evaluation: InterviewEvaluation | null;
+  failureReason: string | null;
 };
 
 export default function InterviewReportPage() {
   const { id } = useParams<{ id: string }>();
+  const queryClient = useQueryClient();
   const { data, isPending, error } = useQuery({
-    queryKey: ["interview", id],
-    queryFn: () => apiClient<{ interview: ReportDetails }>(`/api/v1/interviews/${id}`),
+    queryKey: ["report", id],
+    queryFn: () => apiClient<{ report: ReportDetails }>(`/api/v1/interviews/${id}/report`),
     refetchInterval: (query) =>
-      query.state.data?.interview.status === "COMPLETING" ? 3_000 : false,
+      ["PENDING", "GENERATING"].includes(query.state.data?.report.status ?? "") ? 3_000 : false,
+  });
+  const retry = useMutation({
+    mutationFn: () => apiClient(`/api/v1/interviews/${id}/report/retry`, { method: "POST" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["report", id] }),
   });
   if (isPending)
     return (
@@ -35,8 +42,18 @@ export default function InterviewReportPage() {
         {error instanceof Error ? error.message : "Report not found."}
       </main>
     );
-  const { interview } = data;
-  if (!interview.report)
+  const { report } = data;
+  if (report.status === "FAILED")
+    return (
+      <main className="mx-auto max-w-xl px-5 py-16 text-center">
+        <p className="text-lg font-semibold">Your interview finished, but the report needs another try.</p>
+        <p className="mt-3 text-sm text-muted-foreground">{report.failureReason}</p>
+        <Button className="mt-6" disabled={retry.isPending} onClick={() => retry.mutate()}>
+          <RefreshCw className="mr-2 size-4" /> Retry report generation
+        </Button>
+      </main>
+    );
+  if (report.status !== "READY" || !report.evaluation || !report.summary)
     return (
       <main className="mx-auto max-w-xl px-5 py-16 text-center">
         <LoaderCircle className="mx-auto size-6 animate-spin text-primary" />
@@ -45,7 +62,7 @@ export default function InterviewReportPage() {
         </p>
       </main>
     );
-  const { evaluation } = interview.report;
+  const { evaluation } = report;
   return (
     <main className="noise min-h-[calc(100vh-5rem)] px-5 py-8 sm:px-8 lg:px-10">
       <div className="mx-auto max-w-6xl">
@@ -61,12 +78,13 @@ export default function InterviewReportPage() {
           </button>
         </div>
         <p className="mt-7 rounded-2xl border border-white/[.08] bg-card/50 p-5 text-sm leading-7 text-muted-foreground">
-          {interview.report.summary}
+          {report.summary}
         </p>
         <div className="mt-6 grid gap-4 sm:grid-cols-3">
           <Score label="Overall" score={evaluation.overallScore} />
           <Score label="Technical" score={evaluation.technical.score} />
           <Score label="Communication" score={evaluation.communication.score} />
+          <Score label="Problem solving" score={evaluation.problemSolving.score} />
         </div>
         <section className="mt-7 grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
           <Feedback title="Strengths" items={evaluation.strengths} />
@@ -112,15 +130,15 @@ function Score({ label, score }: { label: string; score: number }) {
     </div>
   );
 }
-function Feedback({ title, items }: { title: string; items: string[] }) {
+function Feedback({ title, items }: { title: string; items: Array<string | { text: string }> }) {
   return (
     <div className="rounded-2xl border border-white/[.08] bg-card/40 p-5">
       <h2 className="font-semibold">{title}</h2>
       <ul className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
         {items.map((item) => (
-          <li className="flex gap-3" key={item}>
+          <li className="flex gap-3" key={typeof item === "string" ? item : item.text}>
             <span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />
-            {item}
+            {typeof item === "string" ? item : item.text}
           </li>
         ))}
       </ul>

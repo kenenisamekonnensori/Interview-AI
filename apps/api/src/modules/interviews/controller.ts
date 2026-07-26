@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 import type { createCareerAnalysisQueue } from "../../services/career-analysis-queue.js";
+import type { createReportQueue } from "../../services/report-queue.js";
 import { createInterviewSchema, interviewIdSchema } from "./schema.js";
 import { InterviewEventPublisher } from "./events.js";
 import { InterviewLifecycleError, InterviewService } from "./service.js";
@@ -44,8 +45,9 @@ export function registerInterviewRoutes(
   app: FastifyInstance,
   database: PrismaClient,
   queue: ReturnType<typeof createCareerAnalysisQueue>,
+  reportQueue: ReturnType<typeof createReportQueue>,
 ) {
-  const service = new InterviewService(database, queue, new InterviewEventPublisher(app.log));
+  const service = new InterviewService(database, queue, reportQueue, new InterviewEventPublisher(app.log));
   app.decorate("interviewService", service);
 
   app.post(

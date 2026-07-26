@@ -79,7 +79,9 @@ All endpoints below are under `/api/v1`, require an authenticated verified user,
 | `POST` | `/interviews/:id/conversation/transcripts` | `{ text, metadata? }` | Persists a finalized user transcript and moves the conversation to `THINKING`. |
 | `POST` | `/interviews/:id/conversation/speaking` | — | Publishes an authenticated candidate-speaking event; no audio or interim transcript is persisted. |
 | `POST` | `/interviews/:id/conversation/turns/:turnId/playback-completed` | — | Records completed AI playback and moves to `LISTENING`, or completes a closing turn. |
-| `POST` | `/interviews/:id/conversation/complete` | — | Idempotently moves an active interview to `COMPLETING`, finalizes the conversation, and queues evaluation/report generation. The worker marks it `COMPLETED` only after a valid report is persisted. |
+| `POST` | `/interviews/:id/conversation/complete` | — | Idempotently finalizes an active conversation and transitions the interview through `COMPLETING` to `COMPLETED`. It creates one pending report and queues generation; a report failure never reopens or rolls back the completed interview. |
+| `GET` | `/interviews/:id/report` | — | Returns the owned report and its `PENDING`, `GENERATING`, `READY`, or `FAILED` status. |
+| `POST` | `/interviews/:id/report/retry` | — | Re-queues an owned failed report without changing interview lifecycle state or creating another report. |
 | `GET` | `/interviews/:id/conversation/turns/:turnId/audio` | — | Synthesizes persisted AI text for playback. |
 
 Errors use `ApiErrorShape`: `{ code, message, details? }`. Invalid lifecycle changes return `409 INVALID_STATE_TRANSITION` (or a more specific lifecycle error); the current persisted state remains authoritative.

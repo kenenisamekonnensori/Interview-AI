@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsup src/server.ts src/workers/auth-email.worker.ts src/workers/career-analysis.worker.ts --format esm --target node22 --external dotenv --external dotenv/config --clean",
+    "build": "tsup src/server.ts src/workers/auth-email.worker.ts src/workers/career-analysis.worker.ts src/workers/report.worker.ts --format esm --target node22 --external dotenv --external dotenv/config --clean",
     "dev": "tsx watch src/server.ts",
     "lint": "eslint .",
     "prisma:generate": "prisma generate",
@@ -12,6 +12,7 @@
     "start": "node dist/server.js",
     "start:auth-email-worker": "node dist/workers/auth-email.worker.js",
     "start:career-analysis-worker": "node dist/workers/career-analysis.worker.js",
+    "start:report-worker": "node dist/workers/report.worker.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -161,24 +161,48 @@ export type ConversationDto = z.infer<typeof conversationDtoSchema>;
 
 export const evaluationDimensionSchema = z.object({
   score: z.number().min(0).max(100),
-  feedback: z.string(),
+  feedback: z.string().trim().min(1).max(1_000),
+  evidenceTurnIds: z.array(z.uuid()).min(1).max(5),
 });
+export const reportEvidenceReferenceSchema = z.object({
+  turnId: z.uuid(),
+  claim: z.string().trim().min(1).max(1_000),
+});
+export type ReportEvidenceReference = z.infer<typeof reportEvidenceReferenceSchema>;
+export const evidenceBackedFindingSchema = z.object({
+  text: z.string().trim().min(1).max(1_000),
+  evidenceTurnIds: z.array(z.uuid()).min(1).max(5),
+});
+export type EvidenceBackedFinding = z.infer<typeof evidenceBackedFindingSchema>;
 export const interviewEvaluationSchema = z.object({
   overallScore: z.number().min(0).max(100),
   technical: evaluationDimensionSchema,
   communication: evaluationDimensionSchema,
   confidence: evaluationDimensionSchema,
-  strengths: z.array(z.string()),
-  weaknesses: z.array(z.string()),
-  recommendations: z.array(z.string()),
+  problemSolving: evaluationDimensionSchema,
+  categoryScores: z.record(z.string().trim().min(1).max(100), evaluationDimensionSchema),
+  strengths: z.array(evidenceBackedFindingSchema).max(10),
+  weaknesses: z.array(evidenceBackedFindingSchema).max(10),
+  missedOpportunities: z.array(evidenceBackedFindingSchema).max(10),
+  recommendations: z.array(z.string().trim().min(1).max(1_000)).max(10),
 });
 export type InterviewEvaluation = z.infer<typeof interviewEvaluationSchema>;
+export const reportStatuses = ["PENDING", "GENERATING", "READY", "FAILED"] as const;
+export const reportStatusSchema = z.enum(reportStatuses);
+export type ReportStatus = z.infer<typeof reportStatusSchema>;
+export const hiringRecommendations = ["STRONG_HIRE", "HIRE", "NO_HIRE", "STRONG_NO_HIRE"] as const;
+export const hiringRecommendationSchema = z.enum(hiringRecommendations);
+export type HiringRecommendation = z.infer<typeof hiringRecommendationSchema>;
 export const interviewReportSchema = z.object({
   id: z.uuid(),
   interviewId: z.uuid(),
-  evaluation: interviewEvaluationSchema,
-  summary: z.string(),
-  generatedAt: z.string().datetime(),
+  status: reportStatusSchema,
+  evaluation: interviewEvaluationSchema.nullable(),
+  summary: z.string().nullable(),
+  evidence: z.array(reportEvidenceReferenceSchema),
+  hiringRecommendation: hiringRecommendationSchema.nullable(),
+  failureReason: z.string().nullable(),
+  generatedAt: z.string().datetime().nullable(),
 });
 export type InterviewReport = z.infer<typeof interviewReportSchema>;
 

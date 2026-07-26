@@ -9,17 +9,21 @@ import { registerJobDescriptionRoutes } from "./modules/jobs/index.js";
 import { registerInterviewRoutes } from "./modules/interviews/index.js";
 import { registerConversationRoutes } from "./modules/conversation/index.js";
 import { createCareerAnalysisQueue } from "./services/career-analysis-queue.js";
+import { createReportQueue } from "./services/report-queue.js";
+import { registerReportRoutes } from "./modules/reports/index.js";
 
 export function createApp() {
   const environment = serverEnvironmentSchema.parse(process.env);
   const app = Fastify({ logger: true });
   const { auth, database, dispose } = createAuth(environment, app.log);
   const careerAnalysisQueue = createCareerAnalysisQueue(environment.REDIS_URL);
+  const reportQueue = createReportQueue(environment.REDIS_URL);
 
   app.decorate("auth", auth);
   app.decorateRequest("authContext", null);
   app.addHook("onClose", async () => {
     await careerAnalysisQueue.close();
+    await reportQueue.close();
     await dispose();
   });
 
@@ -35,7 +39,8 @@ export function createApp() {
 
   registerResumeRoutes(app, { database, environment, queue: careerAnalysisQueue });
   registerJobDescriptionRoutes(app, { database, queue: careerAnalysisQueue });
-  registerInterviewRoutes(app, database, careerAnalysisQueue);
+  registerInterviewRoutes(app, database, careerAnalysisQueue, reportQueue);
+  registerReportRoutes(app, database, environment, reportQueue);
   registerConversationRoutes(app, database, environment, app.interviewService);
 
   app.get("/health", async () => ({ status: "ok" }));
