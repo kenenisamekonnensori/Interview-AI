@@ -15,7 +15,10 @@ type DeepgramResult = {
   is_final?: boolean;
 };
 
-type ConversationStartResponse = { conversation: { state: string } };
+type ConversationStartResponse = {
+  conversation: { state: string };
+  greeting: GeneratedTurn | null;
+};
 type GeneratedTurn = { turn: { id: string; text: string } };
 
 export function InterviewMicrophone({
@@ -30,6 +33,7 @@ export function InterviewMicrophone({
   const [active, setActive] = useState(false);
   const [starting, setStarting] = useState(false);
   const [transcript, setTranscript] = useState<string[]>([]);
+  const [partialTranscript, setPartialTranscript] = useState("");
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState<string | null>(null);
   const connectionRef = useRef<{ close: () => void } | null>(null);
@@ -89,6 +93,10 @@ export function InterviewMicrophone({
         const result = message as DeepgramResult;
         const text = result.channel?.alternatives?.[0]?.transcript?.trim();
         if (!text) return;
+        if (!result.is_final) {
+          setPartialTranscript(text);
+          return;
+        }
         if (audioRef.current && !audioRef.current.paused) {
           audioRef.current.pause();
           const activeTurnId = audioRef.current.dataset.turnId;
@@ -101,6 +109,7 @@ export function InterviewMicrophone({
           setStatus("Listening — interviewer interrupted");
         }
         if (result.is_final) {
+          setPartialTranscript("");
           setTranscript((turns) => [...turns, `You: ${text}`]);
           setStatus("Interviewer is thinking…");
           await apiClient(`/api/v1/interviews/${interviewId}/conversation/transcripts`, {
@@ -130,7 +139,11 @@ export function InterviewMicrophone({
       connectionRef.current = connection;
       recorderRef.current = recorder;
       setActive(true);
-      if (conversation.conversation.state === "GREETING") {
+      if (conversation.greeting) {
+        const greeting = conversation.greeting;
+        setTranscript((turns) => [...turns, `Interviewer: ${greeting.turn.text}`]);
+        await playAiTurn(greeting.turn.id);
+      } else if (conversation.conversation.state === "GREETING") {
         const greeting = await apiClient<GeneratedTurn>(
           `/api/v1/interviews/${interviewId}/conversation/next-response`,
           { method: "POST" },
@@ -165,6 +178,9 @@ export function InterviewMicrophone({
       </Button>
       <p className="mt-3 text-sm text-muted-foreground">{status}</p>
       {error ? <p className="mt-2 text-sm text-destructive">{error}</p> : null}
+      {partialTranscript ? (
+        <p className="mt-3 text-sm italic text-muted-foreground">Listening: {partialTranscript}</p>
+      ) : null}
       {transcript.length ? (
         <div
           className="mt-4 max-h-64 space-y-2 overflow-y-auto rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground"

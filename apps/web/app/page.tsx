@@ -44,15 +44,36 @@ const capabilities = [
 ];
 
 const steps = [
-  ["Bring your context", "Add your resume and the role you’re aiming for. We’ll surface the signal that matters.", FileSearch],
-  ["Enter the room", "Choose a focus and speak with an interviewer that follows your thinking, not a script.", AudioLines],
-  ["Grow with clarity", "Leave with a candid read on your communication, reasoning, and next best move.", Gauge],
+  [
+    "Bring your context",
+    "Add your resume and the role you’re aiming for. We’ll surface the signal that matters.",
+    FileSearch,
+  ],
+  [
+    "Enter the room",
+    "Choose a focus and speak with an interviewer that follows your thinking, not a script.",
+    AudioLines,
+  ],
+  [
+    "Grow with clarity",
+    "Leave with a candid read on your communication, reasoning, and next best move.",
+    Gauge,
+  ],
 ] as const;
 
 const faqs = [
-  ["Is this a chatbot or a real interview simulation?", "It is a voice-first interview practice experience that adapts to your answers and asks follow-up questions based on your context."],
-  ["What kind of interviews can I practice?", "Start with behavioral, technical, mixed, and role-focused interviews. Your resume and target role make each plan personal."],
-  ["Do I need a resume to start?", "No. A resume makes practice more personal, but you can create a session with a target role and interview preferences."],
+  [
+    "Is this a chatbot or a real interview simulation?",
+    "It is a voice-first interview practice experience that adapts to your answers and asks follow-up questions based on your context.",
+  ],
+  [
+    "What kind of interviews can I practice?",
+    "Start with behavioral, technical, mixed, and role-focused interviews. Your resume and target role make each plan personal.",
+  ],
+  [
+    "Do I need a resume to start?",
+    "No. A resume makes practice more personal, but you can create a session with a target role and interview preferences.",
+  ],
 ];
 
 function BrandMark() {
@@ -256,18 +277,114 @@ export default function HomePage() {
 
       <section className="border-y border-border bg-card/20 py-24 lg:py-32">
         <div className="mx-auto max-w-7xl px-5 sm:px-8">
-          <div className="max-w-xl"><p className="text-sm font-medium text-primary">A more natural way to prepare</p><h2 className="mt-4 text-balance text-4xl font-semibold tracking-[-.045em] sm:text-5xl">The work is simple. The impact carries forward.</h2></div>
-          <div className="mt-14 grid gap-10 lg:grid-cols-3">{steps.map(([title, copy, Icon], index) => <div key={title}><span className="text-xs font-medium text-primary">0{index + 1}</span><div className="mt-5 grid size-12 place-items-center rounded-2xl border border-border bg-card text-primary"><Icon className="size-5" /></div><h3 className="mt-6 text-xl font-semibold">{title}</h3><p className="mt-3 max-w-sm leading-7 text-muted-foreground">{copy}</p></div>)}</div>
+          <div className="max-w-xl">
+            <p className="text-sm font-medium text-primary">A more natural way to prepare</p>
+            <h2 className="mt-4 text-balance text-4xl font-semibold tracking-[-.045em] sm:text-5xl">
+              The work is simple. The impact carries forward.
+            </h2>
+          </div>
+          <div className="mt-14 grid gap-10 lg:grid-cols-3">
+            {steps.map(([title, copy, Icon], index) => (
+              <div key={title}>
+                <span className="text-xs font-medium text-primary">0{index + 1}</span>
+                <div className="mt-5 grid size-12 place-items-center rounded-2xl border border-border bg-card text-primary">
+                  <Icon className="size-5" />
+                </div>
+                <h3 className="mt-6 text-xl font-semibold">{title}</h3>
+                <p className="mt-3 max-w-sm leading-7 text-muted-foreground">{copy}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-5 py-24 sm:px-8 lg:py-32">
-        <div className="grid gap-12 lg:grid-cols-[.85fr_1.15fr] lg:items-center"><div><p className="text-sm font-medium text-primary">Made for momentum</p><h2 className="mt-4 text-balance text-4xl font-semibold tracking-[-.045em] sm:text-5xl">See the pattern behind your progress.</h2><p className="mt-5 max-w-md leading-7 text-muted-foreground">Spot what is getting stronger, where your delivery loses clarity, and what deserves your next session.</p><div className="mt-7 space-y-4">{["Voice-first practice that feels conversational", "Feedback grounded in your actual responses", "A focused history—not an overwhelming dashboard"].map(item => <p className="flex gap-3 text-sm" key={item}><CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />{item}</p>)}</div></div><div className="overflow-hidden rounded-[2rem] border border-border bg-card/60 p-5 shadow-2xl shadow-black/20"><div className="flex items-center justify-between"><div><p className="text-sm font-medium">Interview readiness</p><p className="mt-1 text-xs text-muted-foreground">Last 30 days</p></div><span className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs text-emerald-300">+18%</span></div><div className="mt-10 flex h-48 items-end gap-2">{[32,45,38,58,49,64,56,75,69,83,78,91].map((height, i) => <span key={i} style={{height: `${height}%`}} className="flex-1 rounded-t-md bg-gradient-to-t from-primary/40 to-primary" />)}</div></div></div>
+        <div className="grid gap-12 lg:grid-cols-[.85fr_1.15fr] lg:items-center">
+          <div>
+            <p className="text-sm font-medium text-primary">Made for momentum</p>
+            <h2 className="mt-4 text-balance text-4xl font-semibold tracking-[-.045em] sm:text-5xl">
+              See the pattern behind your progress.
+            </h2>
+            <p className="mt-5 max-w-md leading-7 text-muted-foreground">
+              Spot what is getting stronger, where your delivery loses clarity, and what deserves
+              your next session.
+            </p>
+            <div className="mt-7 space-y-4">
+              {[
+                "Voice-first practice that feels conversational",
+                "Feedback grounded in your actual responses",
+                "A focused history—not an overwhelming dashboard",
+              ].map((item) => (
+                <p className="flex gap-3 text-sm" key={item}>
+                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+                  {item}
+                </p>
+              ))}
+            </div>
+          </div>
+          <div className="overflow-hidden rounded-[2rem] border border-border bg-card/60 p-5 shadow-2xl shadow-black/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Interview readiness</p>
+                <p className="mt-1 text-xs text-muted-foreground">Last 30 days</p>
+              </div>
+              <span className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs text-emerald-300">
+                +18%
+              </span>
+            </div>
+            <div className="mt-10 flex h-48 items-end gap-2">
+              {[32, 45, 38, 58, 49, 64, 56, 75, 69, 83, 78, 91].map((height, i) => (
+                <span
+                  key={i}
+                  style={{ height: `${height}%` }}
+                  className="flex-1 rounded-t-md bg-gradient-to-t from-primary/40 to-primary"
+                />
+              ))}
+            </div>
+          </div>
+        </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-5 pb-24 sm:px-8 lg:pb-32"><div className="rounded-[2rem] border border-border bg-card/45 p-7 sm:p-12"><Quote className="size-7 text-primary" /><blockquote className="mt-7 max-w-3xl text-balance text-2xl font-medium leading-relaxed tracking-[-.03em] sm:text-3xl">“The follow-up questions are what changed it for me. I stopped memorizing answers and started learning how to think out loud.”</blockquote><div className="mt-8 flex items-center gap-3"><span className="grid size-10 place-items-center rounded-full bg-gradient-to-br from-violet-300 to-cyan-300 text-xs font-bold text-slate-900">MP</span><div><p className="text-sm font-medium">Maya Patel</p><p className="text-xs text-muted-foreground">Product designer, London</p></div></div></div></section>
+      <section className="mx-auto max-w-7xl px-5 pb-24 sm:px-8 lg:pb-32">
+        <div className="rounded-[2rem] border border-border bg-card/45 p-7 sm:p-12">
+          <Quote className="size-7 text-primary" />
+          <blockquote className="mt-7 max-w-3xl text-balance text-2xl font-medium leading-relaxed tracking-[-.03em] sm:text-3xl">
+            “The follow-up questions are what changed it for me. I stopped memorizing answers and
+            started learning how to think out loud.”
+          </blockquote>
+          <div className="mt-8 flex items-center gap-3">
+            <span className="grid size-10 place-items-center rounded-full bg-gradient-to-br from-violet-300 to-cyan-300 text-xs font-bold text-slate-900">
+              MP
+            </span>
+            <div>
+              <p className="text-sm font-medium">Maya Patel</p>
+              <p className="text-xs text-muted-foreground">Product designer, London</p>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <section className="border-y border-border bg-card/20 py-24"><div className="mx-auto max-w-3xl px-5 sm:px-8"><div className="text-center"><p className="text-sm font-medium text-primary">Good questions</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.045em]">Everything you need to know.</h2></div><div className="mt-10 divide-y divide-border">{faqs.map(([question, answer]) => <details key={question} className="group py-5"><summary className="flex cursor-pointer list-none items-center justify-between gap-5 text-left text-sm font-medium">{question}<ChevronDown className="size-4 text-muted-foreground transition group-open:rotate-180" /></summary><p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">{answer}</p></details>)}</div></div></section>
+      <section className="border-y border-border bg-card/20 py-24">
+        <div className="mx-auto max-w-3xl px-5 sm:px-8">
+          <div className="text-center">
+            <p className="text-sm font-medium text-primary">Good questions</p>
+            <h2 className="mt-4 text-4xl font-semibold tracking-[-.045em]">
+              Everything you need to know.
+            </h2>
+          </div>
+          <div className="mt-10 divide-y divide-border">
+            {faqs.map(([question, answer]) => (
+              <details key={question} className="group py-5">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-5 text-left text-sm font-medium">
+                  {question}
+                  <ChevronDown className="size-4 text-muted-foreground transition group-open:rotate-180" />
+                </summary>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">{answer}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
 
       <section className="mx-auto max-w-7xl px-5 pb-24 sm:px-8 lg:pb-32">
         <div className="relative overflow-hidden rounded-[2rem] border border-primary/20 bg-[linear-gradient(115deg,oklch(0.25_0.07_250),oklch(0.19_0.03_260))] px-6 py-14 sm:px-12 lg:px-16">

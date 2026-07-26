@@ -23,5 +23,9 @@ function createQueryClient() {
 
 export function Providers({ children }: PropsWithChildren) {
   const [queryClient] = useState(createQueryClient);
-  return <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}><QueryClientProvider client={queryClient}>{children}</QueryClientProvider></ThemeProvider>;
+  return (
+    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </ThemeProvider>
+  );
 }

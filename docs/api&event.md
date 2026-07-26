@@ -74,7 +74,7 @@ All endpoints below are under `/api/v1`, require an authenticated verified user,
 | `GET` | `/interviews/:id/state` | — | Returns the authoritative lifecycle state, timestamps, conversation state, and report readiness. |
 | `DELETE` | `/interviews/:id` | — | Cancels only a cancellable interview. |
 | `POST` | `/interviews/:id/voice-token` | — | Returns a short-lived Deepgram browser token. |
-| `POST` | `/interviews/:id/conversation/start` | — | Transitions `READY -> IN_PROGRESS` and creates the conversation. |
+| `POST` | `/interviews/:id/conversation/start` | — | Transitions `READY -> IN_PROGRESS`, creates the conversation, and persists the initial AI greeting. Retries return the existing conversation without creating a second one. |
 | `POST` | `/interviews/:id/conversation/next-response` | — | Backend generates and persists an AI turn; the model cannot choose lifecycle state. |
 | `POST` | `/interviews/:id/conversation/transcripts` | `{ text, metadata? }` | Persists a finalized user transcript and moves the conversation to `THINKING`. |
 | `POST` | `/interviews/:id/conversation/turns/:turnId/playback-completed` | — | Records completed AI playback and moves to `LISTENING`, or completes a closing turn. |

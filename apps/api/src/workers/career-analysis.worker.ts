@@ -3,6 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { Worker } from "bullmq";
 import { serverEnvironmentSchema } from "@interviewer-ai/config";
 import { interviewEvaluationSchema, interviewPlanSchema } from "@interviewer-ai/types";
+import { buildEvaluationPrompt, buildReportPrompt } from "@interviewer-ai/prompts";
 import { z } from "zod";
 
 import { createAuthDatabase } from "../modules/auth/database.js";
@@ -192,8 +193,7 @@ async function evaluateInterview(interviewId: string) {
 
   const generated = generatedReportSchema.parse(
     await aiProvider.generateReport({
-      instructions:
-        "Evaluate this completed mock interview. Return JSON with a 0-100 evaluation and a concise candidate-facing summary. Base every finding on the supplied transcript.",
+      instructions: `${buildEvaluationPrompt()} ${buildReportPrompt()} Return JSON with a 0-100 evaluation and a concise candidate-facing summary.`,
       context: {
         configuration: {
           interviewType: interview.interviewType,

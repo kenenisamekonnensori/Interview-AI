@@ -216,6 +216,39 @@ export class InterviewService {
     return result.interview;
   }
 
+  /** Used only by backend orchestration when a session cannot safely continue. */
+  async failActiveSession(id: string, userId: string) {
+    return this.database.$transaction(async (tx) => {
+      const interview = await tx.interview.findFirst({
+        where: { id, userId },
+        include: { conversation: true },
+      });
+      if (!interview)
+        throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
+      if (interview.status === "FAILED") return interview;
+      if (interview.status !== "IN_PROGRESS" && interview.status !== "COMPLETING")
+        throw new InterviewLifecycleError(
+          "INTERVIEW_NOT_ACTIVE",
+          "Only an active interview can fail its session.",
+        );
+      assertInterviewTransition(interview.status, "FAILED");
+      const failed = await tx.interview.updateMany({
+        where: { id, userId, status: interview.status },
+        data: { status: "FAILED" },
+      });
+      if (!failed.count) return tx.interview.findUniqueOrThrow({ where: { id } });
+      if (interview.conversation && interview.conversation.state !== "COMPLETED") {
+        assertConversationTransition(interview.conversation.state, "CLOSING");
+        assertConversationTransition("CLOSING", "COMPLETED");
+        await tx.conversation.update({
+          where: { id: interview.conversation.id },
+          data: { state: "COMPLETED", completedAt: new Date() },
+        });
+      }
+      return tx.interview.findUniqueOrThrow({ where: { id } });
+    });
+  }
+
   async cancel(id: string, userId: string) {
     const interview = await this.repository.findOwned(id, userId);
     if (!interview)

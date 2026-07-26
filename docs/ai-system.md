@@ -6,7 +6,7 @@ This document defines the application-facing AI contract. It complements [archit
 
 ## Responsibilities
 
-The AI system reasons over supplied, minimized context and returns structured suggestions. Backend modules validate those suggestions and remain responsible for authorization, state transitions, persistence, scoring policy, and report publication.
+The AI system reasons over supplied, minimized context and returns structured suggestions. Backend modules validate those suggestions and remain responsible for authorization, state transitions, persistence, scoring policy, and report publication. Provider HTTP clients, retries, error normalization, structured-output schemas, and allowed tool bridges belong exclusively to `apps/api/src/modules/ai`.
 
 | Capability | Input | Output | Owner |
 | --- | --- | --- | --- |
@@ -24,6 +24,7 @@ Resume and job-description extraction use the AI module's internal structured-an
 3. Every provider response is parsed and validated against a domain schema before it is persisted or returned.
 4. Models may propose content, never call the database or make authorization decisions.
 5. Adding OpenAI later means implementing `AiProvider` and selecting it in composition/configuration. It does not mean adding OpenAI conditionals to controllers.
+6. An interviewer proposal is limited to response text, response type, recommended action, optional topic/objective references, and a suggested conversation state. The Conversation Manager validates that proposal against the persisted session before applying an allowed turn transition.
 
 ## Live-turn sequence
 
