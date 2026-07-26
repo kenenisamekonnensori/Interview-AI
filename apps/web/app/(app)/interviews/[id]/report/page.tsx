@@ -46,7 +46,9 @@ export default function InterviewReportPage() {
   if (report.status === "FAILED")
     return (
       <main className="mx-auto max-w-xl px-5 py-16 text-center">
-        <p className="text-lg font-semibold">Your interview finished, but the report needs another try.</p>
+        <p className="text-lg font-semibold">
+          Your interview finished, but the report needs another try.
+        </p>
         <p className="mt-3 text-sm text-muted-foreground">{report.failureReason}</p>
         <Button className="mt-6" disabled={retry.isPending} onClick={() => retry.mutate()}>
           <RefreshCw className="mr-2 size-4" /> Retry report generation

@@ -47,7 +47,12 @@ export function registerInterviewRoutes(
   queue: ReturnType<typeof createCareerAnalysisQueue>,
   reportQueue: ReturnType<typeof createReportQueue>,
 ) {
-  const service = new InterviewService(database, queue, reportQueue, new InterviewEventPublisher(app.log));
+  const service = new InterviewService(
+    database,
+    queue,
+    reportQueue,
+    new InterviewEventPublisher(app.log),
+  );
   app.decorate("interviewService", service);
 
   app.post(

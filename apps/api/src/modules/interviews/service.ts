@@ -177,8 +177,10 @@ export class InterviewService {
       });
       if (!interview)
         throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
-      if (interview.status === "COMPLETED") return { interview, requested: false, enqueueReport: false };
-      if (interview.status === "COMPLETING") return { interview, requested: false, enqueueReport: false };
+      if (interview.status === "COMPLETED")
+        return { interview, requested: false, enqueueReport: false };
+      if (interview.status === "COMPLETING")
+        return { interview, requested: false, enqueueReport: false };
       if (interview.status !== "IN_PROGRESS" || !interview.conversation)
         throw new InterviewLifecycleError(
           "INTERVIEW_NOT_ACTIVE",
@@ -219,7 +221,11 @@ export class InterviewService {
         where: { id },
         include: { conversation: true, report: true },
       });
-      return { interview: { ...updated, completedAt: completed.completedAt }, requested: true, enqueueReport: report.status === "PENDING" };
+      return {
+        interview: { ...updated, completedAt: completed.completedAt },
+        requested: true,
+        enqueueReport: report.status === "PENDING",
+      };
     });
     if (result.requested) {
       this.events.publish({

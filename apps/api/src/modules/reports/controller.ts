@@ -21,27 +21,54 @@ export function registerReportRoutes(
   environment: ServerEnvironment,
   queue: ReturnType<typeof createReportQueue>,
 ) {
-  const service = new ReportService(database, environment, queue, new InterviewEventPublisher(app.log));
-  app.get("/api/v1/interviews/:id/report", { preHandler: app.requireVerifiedUser }, async (request, reply) => {
-    const params = interviewIdSchema.safeParse(request.params);
-    if (!params.success) return reply.status(400).send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
-    try {
-      return { report: toDto(await service.details(params.data.id, request.authContext!.user.id)) };
-    } catch (error) {
-      if (error instanceof ReportLifecycleError)
-        return reply.status(error.code === "REPORT_NOT_FOUND" ? 404 : 409).send({ code: error.code, message: error.message });
-      throw error;
-    }
-  });
-  app.post("/api/v1/interviews/:id/report/retry", { preHandler: app.requireVerifiedUser }, async (request, reply) => {
-    const params = interviewIdSchema.safeParse(request.params);
-    if (!params.success) return reply.status(400).send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
-    try {
-      return reply.status(202).send({ report: toDto(await service.retry(params.data.id, request.authContext!.user.id)) });
-    } catch (error) {
-      if (error instanceof ReportLifecycleError)
-        return reply.status(error.code === "REPORT_NOT_FOUND" ? 404 : 409).send({ code: error.code, message: error.message });
-      throw error;
-    }
-  });
+  const service = new ReportService(
+    database,
+    environment,
+    queue,
+    new InterviewEventPublisher(app.log),
+  );
+  app.get(
+    "/api/v1/interviews/:id/report",
+    { preHandler: app.requireVerifiedUser },
+    async (request, reply) => {
+      const params = interviewIdSchema.safeParse(request.params);
+      if (!params.success)
+        return reply
+          .status(400)
+          .send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
+      try {
+        return {
+          report: toDto(await service.details(params.data.id, request.authContext!.user.id)),
+        };
+      } catch (error) {
+        if (error instanceof ReportLifecycleError)
+          return reply
+            .status(error.code === "REPORT_NOT_FOUND" ? 404 : 409)
+            .send({ code: error.code, message: error.message });
+        throw error;
+      }
+    },
+  );
+  app.post(
+    "/api/v1/interviews/:id/report/retry",
+    { preHandler: app.requireVerifiedUser },
+    async (request, reply) => {
+      const params = interviewIdSchema.safeParse(request.params);
+      if (!params.success)
+        return reply
+          .status(400)
+          .send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
+      try {
+        return reply.status(202).send({
+          report: toDto(await service.retry(params.data.id, request.authContext!.user.id)),
+        });
+      } catch (error) {
+        if (error instanceof ReportLifecycleError)
+          return reply
+            .status(error.code === "REPORT_NOT_FOUND" ? 404 : 409)
+            .send({ code: error.code, message: error.message });
+        throw error;
+      }
+    },
+  );
 }

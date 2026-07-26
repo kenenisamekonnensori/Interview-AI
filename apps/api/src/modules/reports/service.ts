@@ -11,7 +11,10 @@ import { ReportRepository } from "./repository.js";
 import { generatedReportSchema } from "./schema.js";
 
 export class ReportLifecycleError extends Error {
-  constructor(readonly code: string, message: string) {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
     super(message);
     this.name = "ReportLifecycleError";
   }
@@ -26,7 +29,10 @@ function publicFailureReason(error: unknown) {
 function validateEvidence(evidence: ReportEvidenceReference[], turnIds: Set<string>) {
   for (const reference of evidence) {
     if (!turnIds.has(reference.turnId))
-      throw new AiProviderError("INVALID_OUTPUT", "Report referenced a turn outside this interview.");
+      throw new AiProviderError(
+        "INVALID_OUTPUT",
+        "Report referenced a turn outside this interview.",
+      );
   }
 }
 
@@ -44,7 +50,10 @@ function validateScoreConsistency(evaluation: {
       evaluation.problemSolving.score) /
     4;
   if (Math.abs(evaluation.overallScore - average) > 25)
-    throw new AiProviderError("INVALID_OUTPUT", "Overall score is inconsistent with category scores.");
+    throw new AiProviderError(
+      "INVALID_OUTPUT",
+      "Overall score is inconsistent with category scores.",
+    );
 }
 
 export class ReportService {
@@ -81,7 +90,10 @@ export class ReportService {
         interviewId,
         "Your report could not be queued. Please try again.",
       );
-      throw new ReportLifecycleError("REPORT_QUEUE_UNAVAILABLE", "Report generation could not be queued.");
+      throw new ReportLifecycleError(
+        "REPORT_QUEUE_UNAVAILABLE",
+        "Report generation could not be queued.",
+      );
     }
     return this.details(interviewId, userId);
   }
@@ -97,7 +109,10 @@ export class ReportService {
         !interview.conversation ||
         interview.conversation.state !== "COMPLETED"
       )
-        throw new AiProviderError("INVALID_OUTPUT", "A completed interview with a plan is required.");
+        throw new AiProviderError(
+          "INVALID_OUTPUT",
+          "A completed interview with a plan is required.",
+        );
 
       const turns = interview.conversation.turns.map((turn) => ({
         id: turn.id,
@@ -149,7 +164,11 @@ export class ReportService {
           turnIds,
         );
 
-      const saved = await this.repository.saveReady(interviewId, generated, this.environment.GEMINI_MODEL);
+      const saved = await this.repository.saveReady(
+        interviewId,
+        generated,
+        this.environment.GEMINI_MODEL,
+      );
       if (!saved.count) return;
       const report = await this.repository.context(interviewId);
       const persisted = report ? await this.repository.findOwned(interviewId, report.userId) : null;
