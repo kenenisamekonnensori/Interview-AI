@@ -13,6 +13,7 @@
     "start:auth-email-worker": "node dist/workers/auth-email.worker.js",
     "start:career-analysis-worker": "node dist/workers/career-analysis.worker.js",
     "start:report-worker": "node dist/workers/report.worker.js",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -43,6 +44,7 @@
     "dotenv": "^17.4.2",
     "prisma": "^7.8.0",
     "tsup": "^8.5.0",
-    "tsx": "^4.20.6"
+    "tsx": "^4.20.6",
+    "vitest": "^4.1.10"
   }
 }

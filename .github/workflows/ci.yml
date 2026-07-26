@@ -123,16 +123,8 @@ jobs:
       - name: Build all applications
         run: pnpm build
 
-      # No workspace currently declares a test script. This intentionally runs only declared
-      # scripts, so adding test scripts automatically turns this into the unit-test gate.
-      - name: Run configured unit tests
-        run: |
-          if pnpm --recursive --if-present run test; then
-            echo "Configured unit tests completed."
-          else
-            echo "::error::A configured unit-test script failed."
-            exit 1
-          fi
+      - name: Run automated tests
+        run: pnpm test
 
       # Fail on known moderate, high, or critical production/development dependency advisories.
       # - name: Audit dependencies (moderate and above)
