@@ -82,6 +82,11 @@ All endpoints below are under `/api/v1`, require an authenticated verified user,
 | `POST` | `/interviews/:id/conversation/complete` | — | Idempotently finalizes an active conversation and transitions the interview through `COMPLETING` to `COMPLETED`. It creates one pending report and queues generation; a report failure never reopens or rolls back the completed interview. |
 | `GET` | `/interviews/:id/report` | — | Returns the owned report and its `PENDING`, `GENERATING`, `READY`, or `FAILED` status. |
 | `POST` | `/interviews/:id/report/retry` | — | Re-queues an owned failed report without changing interview lifecycle state or creating another report. |
+| `GET` | `/analytics/history` | Pagination and optional date/type/role/difficulty filters | Returns owned interview history, including planned, active, failed, and completed states. |
+| `GET` | `/analytics/interviews/:id` | — | Returns an owned completed interview only when it has a valid ready report. |
+| `GET` | `/analytics/reports` | Optional analytics filters | Returns historical reports backed by valid completed interviews. |
+| `GET` | `/analytics/trends` | Optional analytics filters | Returns 0–100 score series separated by interview type. |
+| `GET` | `/analytics/summary` | Optional analytics filters | Returns conservative progress summaries, improving areas, and recurring weaknesses. |
 | `GET` | `/interviews/:id/conversation/turns/:turnId/audio` | — | Synthesizes persisted AI text for playback. |
 
 Errors use `ApiErrorShape`: `{ code, message, details? }`. Invalid lifecycle changes return `409 INVALID_STATE_TRANSITION` (or a more specific lifecycle error); the current persisted state remains authoritative.

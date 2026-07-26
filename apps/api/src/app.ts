@@ -11,6 +11,7 @@ import { registerConversationRoutes } from "./modules/conversation/index.js";
 import { createCareerAnalysisQueue } from "./services/career-analysis-queue.js";
 import { createReportQueue } from "./services/report-queue.js";
 import { registerReportRoutes } from "./modules/reports/index.js";
+import { registerAnalyticsRoutes } from "./modules/analytics/index.js";
 
 export function createApp() {
   const environment = serverEnvironmentSchema.parse(process.env);
@@ -41,6 +42,7 @@ export function createApp() {
   registerJobDescriptionRoutes(app, { database, queue: careerAnalysisQueue });
   registerInterviewRoutes(app, database, careerAnalysisQueue, reportQueue);
   registerReportRoutes(app, database, environment, reportQueue);
+  registerAnalyticsRoutes(app, database);
   registerConversationRoutes(app, database, environment, app.interviewService);
 
   app.get("/health", async () => ({ status: "ok" }));
