@@ -8,6 +8,7 @@ import {
 } from "../conversation/state-machine.js";
 import { InterviewEventPublisher } from "./events.js";
 import { InterviewRepository } from "./repository.js";
+import type { CreateInterviewInput } from "./schema.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -39,30 +40,38 @@ export class InterviewService {
     this.repository = new InterviewRepository(database);
   }
 
-  async create(userId: string, input: InterviewConfiguration) {
+  async create(userId: string, input: CreateInterviewInput) {
+    const profile = await this.database.userProfile.findUnique({ where: { userId } });
+    const configuration: InterviewConfiguration = {
+      ...input,
+      difficulty: input.difficulty ?? profile?.defaultDifficulty ?? "MEDIUM",
+      durationMinutes: input.durationMinutes ?? profile?.defaultInterviewDuration ?? 30,
+      language: input.language ?? profile?.preferredLanguage ?? "en",
+      targetRole: input.targetRole ?? profile?.targetRole ?? undefined,
+    };
     const [resume, job] = await Promise.all([
-      input.resumeId
+      configuration.resumeId
         ? this.database.resume.findFirst({
             where: {
-              id: input.resumeId,
+              id: configuration.resumeId,
               userId,
               deletedAt: null,
               status: { in: ["READY", "ANALYZED"] },
             },
           })
         : null,
-      input.jobDescriptionId
+      configuration.jobDescriptionId
         ? this.database.jobDescription.findFirst({
-            where: { id: input.jobDescriptionId, userId, deletedAt: null },
+            where: { id: configuration.jobDescriptionId, userId, deletedAt: null },
           })
         : null,
     ]);
-    if (input.resumeId && !resume)
+    if (configuration.resumeId && !resume)
       throw new InterviewLifecycleError(
         "RESUME_NOT_FOUND",
         "Choose a resume you own that is ready to use.",
       );
-    if (input.jobDescriptionId && !job)
+    if (configuration.jobDescriptionId && !job)
       throw new InterviewLifecycleError(
         "JOB_DESCRIPTION_NOT_FOUND",
         "Choose a job description you own.",
@@ -70,11 +79,11 @@ export class InterviewService {
     return this.database.interview.create({
       data: {
         userId,
-        interviewType: input.interviewType,
-        difficulty: input.difficulty,
-        durationMinutes: input.durationMinutes,
-        language: input.language,
-        targetRole: input.targetRole ?? null,
+        interviewType: configuration.interviewType,
+        difficulty: configuration.difficulty,
+        durationMinutes: configuration.durationMinutes,
+        language: configuration.language,
+        targetRole: configuration.targetRole ?? null,
         resumeId: resume?.id ?? null,
         jobDescriptionId: job?.id ?? null,
       },

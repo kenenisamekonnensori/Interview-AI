@@ -23,8 +23,29 @@ model User {
   resumes         Resume[]
   jobDescriptions JobDescription[]
   interviews      Interview[]
+  profile         UserProfile?
 
   @@map("user")
+}
+
+model UserProfile {
+  id                       String              @id @default(uuid())
+  userId                   String              @unique
+  preferredName            String?
+  profession               String?
+  targetRole               String?
+  seniority                String?
+  yearsOfExperience        Int?
+  preferredLanguage        String              @default("en")
+  defaultInterviewDuration Int                 @default(30)
+  defaultDifficulty        InterviewDifficulty @default(MEDIUM)
+  voicePreference          String?
+  accessibilityPreferences Json                @default("{}")
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+  user                     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profile")
 }
 
 enum ResumeStatus {

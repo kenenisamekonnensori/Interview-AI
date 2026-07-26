@@ -87,6 +87,8 @@ All endpoints below are under `/api/v1`, require an authenticated verified user,
 | `GET` | `/analytics/reports` | Optional analytics filters | Returns historical reports backed by valid completed interviews. |
 | `GET` | `/analytics/trends` | Optional analytics filters | Returns 0–100 score series separated by interview type. |
 | `GET` | `/analytics/summary` | Optional analytics filters | Returns conservative progress summaries, improving areas, and recurring weaknesses. |
+| `GET` | `/profile` | — | Returns the authenticated user's reusable candidate profile and interview defaults. |
+| `PUT` | `/profile` | Profile/settings fields | Validates and updates reusable candidate context and preferences. Profile settings prefill future interviews but never override explicit interview fields. |
 | `GET` | `/interviews/:id/conversation/turns/:turnId/audio` | — | Synthesizes persisted AI text for playback. |
 
 Errors use `ApiErrorShape`: `{ code, message, details? }`. Invalid lifecycle changes return `409 INVALID_STATE_TRANSITION` (or a more specific lifecycle error); the current persisted state remains authoritative.

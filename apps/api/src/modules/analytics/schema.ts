@@ -1,9 +1,6 @@
-import {
-  interviewDifficultySchema,
-  interviewIdSchema,
-  interviewTypeSchema,
-} from "@interviewer-ai/types";
+import { interviewDifficultySchema, interviewTypeSchema } from "@interviewer-ai/types";
 import { z } from "zod";
+import { interviewIdSchema } from "../interviews/schema.js";
 
 export const analyticsFilterSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

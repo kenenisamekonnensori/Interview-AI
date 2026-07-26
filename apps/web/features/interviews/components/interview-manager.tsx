@@ -17,13 +17,19 @@ import {
   Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiClient } from "@/lib/api-client";
 
 const interviewsKey = ["interviews"] as const;
+type ProfileDefaults = {
+  targetRole: string | null;
+  preferredLanguage: string;
+  defaultInterviewDuration: number;
+  defaultDifficulty: InterviewConfiguration["difficulty"];
+};
 
 function configurationFor(interview: InterviewDto): InterviewConfiguration {
   return {
@@ -49,6 +55,7 @@ export function InterviewManager() {
   const [difficulty, setDifficulty] = useState<InterviewConfiguration["difficulty"]>("MEDIUM");
   const [durationMinutes, setDurationMinutes] = useState("30");
   const [targetRole, setTargetRole] = useState("");
+  const [language, setLanguage] = useState("en");
   const { data: resumes } = useQuery({
     queryKey: ["resumes"],
     queryFn: () => apiClient<{ resumes: Resume[] }>("/api/v1/resumes"),
@@ -71,6 +78,18 @@ export function InterviewManager() {
         ? 3_000
         : false,
   });
+  const { data: profile } = useQuery({
+    queryKey: ["profile"],
+    queryFn: () => apiClient<{ profile: ProfileDefaults }>("/api/v1/profile"),
+  });
+  useEffect(() => {
+    if (!open || !profile?.profile) return;
+    const defaults = profile.profile;
+    setDurationMinutes(String(defaults.defaultInterviewDuration));
+    setDifficulty(defaults.defaultDifficulty);
+    setTargetRole(defaults.targetRole ?? "");
+    setLanguage(defaults.preferredLanguage);
+  }, [open, profile]);
   const refresh = () => client.invalidateQueries({ queryKey: interviewsKey });
   const showError = (cause: unknown) =>
     setError(
@@ -89,7 +108,7 @@ export function InterviewManager() {
             difficulty,
             durationMinutes: Number(durationMinutes),
             targetRole: targetRole || undefined,
-            language: "en",
+            language,
           } satisfies InterviewConfiguration),
       }),
     onSuccess: () => {
@@ -195,6 +214,14 @@ export function InterviewManager() {
             min={10}
             max={120}
             placeholder="Minutes"
+            required
+          />
+          <Input
+            value={language}
+            onChange={(event) => setLanguage(event.target.value)}
+            minLength={2}
+            maxLength={10}
+            placeholder="Language (e.g. en)"
             required
           />
           <Input

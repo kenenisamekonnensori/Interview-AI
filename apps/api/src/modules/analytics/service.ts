@@ -1,4 +1,4 @@
-import { interviewEvaluationSchema } from "@interviewer-ai/types";
+import { interviewEvaluationSchema, type InterviewEvaluation } from "@interviewer-ai/types";
 import type { AnalyticsFilter } from "./schema.js";
 import { AnalyticsRepository } from "./repository.js";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
@@ -125,9 +125,17 @@ function validEvaluation(value: unknown) {
   const parsed = interviewEvaluationSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
 }
-function filterValidRows<
-  T extends { report: { evaluation: unknown } | null; completedAt: Date | null },
->(rows: T[], skillArea?: string) {
+type AnalyticsReportRow = {
+  id: string;
+  interviewType: string;
+  targetRole: string | null;
+  jobDescription: { title: string | null } | null;
+  report: { evaluation: unknown } | null;
+  completedAt: Date | null;
+};
+type ValidAnalyticsReportRow = AnalyticsReportRow & { evaluation: InterviewEvaluation };
+
+function filterValidRows<T extends AnalyticsReportRow>(rows: T[], skillArea?: string) {
   return rows
     .flatMap((row) => {
       const evaluation = validEvaluation(row.report?.evaluation);
@@ -141,7 +149,7 @@ function filterValidRows<
         ),
     );
 }
-function reportDto(row: ReturnType<typeof filterValidRows>[number]) {
+function reportDto(row: ValidAnalyticsReportRow) {
   return {
     interviewId: row.id,
     interviewType: row.interviewType,

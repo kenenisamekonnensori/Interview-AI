@@ -119,6 +119,7 @@ async function planInterview(interviewId: string) {
   const interview = await database.interview.findUnique({
     where: { id: interviewId },
     include: {
+      user: { include: { profile: true } },
       resume: { include: { analysis: true } },
       jobDescription: { include: { analysis: true } },
     },
@@ -133,6 +134,13 @@ async function planInterview(interviewId: string) {
         language: interview.language,
         targetRole: interview.targetRole,
       },
+      candidateProfile: interview.user.profile
+        ? {
+            profession: interview.user.profile.profession,
+            seniority: interview.user.profile.seniority,
+            yearsOfExperience: interview.user.profile.yearsOfExperience,
+          }
+        : null,
       resume: interview.resume?.analysis,
       jobDescription: interview.jobDescription?.analysis,
     };
