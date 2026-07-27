@@ -20,6 +20,9 @@ COPY packages/config packages/config
 COPY packages/prompts packages/prompts
 COPY packages/types packages/types
 
+ENV DATABASE_URL="postgresql://interviewer_ai:interviewer_ai@localhost:5432/interviewer_ai"
+
+ENV DATABASE_URL=$DATABASE_URL
 RUN pnpm --filter @interviewer-ai/api prisma:generate && pnpm --filter @interviewer-ai/api build
 
 FROM node:24-alpine AS runtime
