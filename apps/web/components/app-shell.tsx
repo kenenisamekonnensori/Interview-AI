@@ -1,19 +1,6 @@
 "use client";
 
-import {
-  BarChart3,
-  CircleHelp,
-  FileText,
-  History,
-  LayoutGrid,
-  Menu,
-  Mic2,
-  PanelLeftClose,
-  Settings,
-  Sparkles,
-  Trophy,
-  UserRound,
-} from "lucide-react";
+import { History, LayoutGrid, Menu, Mic2, PanelLeftClose, Settings, UserRound } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -30,15 +17,10 @@ const primary = [
   ["Overview", "/dashboard", LayoutGrid],
   ["Start interview", "/interviews/new", Mic2],
   ["Interview history", "/history", History],
-  ["Reports", "/reports", FileText],
-  ["Progress", "/progress", BarChart3],
-  ["Achievements", "/achievements", Trophy],
 ];
 const secondary = [
-  ["AI coach", "/coach", Sparkles],
   ["Profile", "/profile", UserRound],
   ["Settings", "/settings", Settings],
-  ["Help", "/help", CircleHelp],
 ];
 
 export function AppShell({ children }: PropsWithChildren) {
@@ -119,20 +101,6 @@ export function AppShell({ children }: PropsWithChildren) {
             onNavigate={() => setOpen(false)}
           />
         </nav>
-        <div className="m-3 rounded-2xl bg-[linear-gradient(135deg,rgba(132,109,255,.16),rgba(44,198,194,.08))] p-3.5">
-          <Sparkles className="size-4 text-violet-300" />
-          <p className={cn("mt-3 text-xs font-medium", compact && "lg:hidden")}>
-            You’re building momentum.
-          </p>
-          <p
-            className={cn(
-              "mt-1 text-[11px] leading-4 text-muted-foreground",
-              compact && "lg:hidden",
-            )}
-          >
-            Complete one practice session this week.
-          </p>
-        </div>
         <div className="border-t border-white/[.06] p-3">
           <div
             className={cn(
