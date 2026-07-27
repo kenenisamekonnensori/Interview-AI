@@ -8,7 +8,12 @@ export class InterviewRepository {
       where: { id, userId },
       include: {
         plan: true,
-        conversation: { include: { turns: { orderBy: { sequence: "asc" } } } },
+        conversation: {
+          include: {
+            // The live view needs recent context, not an unbounded transcript on every refresh.
+            turns: { orderBy: { sequence: "desc" }, take: 60 },
+          },
+        },
         report: true,
         resume: { select: { id: true, fileName: true, deletedAt: true } },
         jobDescription: { select: { id: true, title: true, company: true, deletedAt: true } },

@@ -68,7 +68,7 @@ All endpoints below are under `/api/v1`, require an authenticated verified user,
 | --- | --- | --- | --- |
 | `POST` | `/interviews` | `InterviewConfiguration` | Creates an `InterviewDto` in `DRAFT`. |
 | `GET` | `/interviews` | — | Lists `InterviewDto`s. |
-| `GET` | `/interviews/:id` | — | Returns the owned interview, plan, conversation, and report when present. |
+| `GET` | `/interviews/:id` | — | Returns the owned interview, plan, conversation snapshot, and report when present. The live snapshot contains the current state and the latest 60 persisted turns in sequence order for session restoration. |
 | `POST` | `/interviews/:id/prepare` | — | Transitions `DRAFT -> PREPARING` and queues plan generation. |
 | `GET` | `/interviews/:id/plan` | — | Returns the current status and `InterviewPlan` when ready. |
 | `GET` | `/interviews/:id/state` | — | Returns the authoritative lifecycle state, timestamps, conversation state, and report readiness. |

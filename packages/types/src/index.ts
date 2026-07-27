@@ -158,6 +158,10 @@ export const conversationDtoSchema = z.object({
   completedAt: z.string().datetime().nullable(),
 });
 export type ConversationDto = z.infer<typeof conversationDtoSchema>;
+export const liveConversationSnapshotSchema = conversationDtoSchema.extend({
+  turns: z.array(conversationTurnSchema).max(60),
+});
+export type LiveConversationSnapshot = z.infer<typeof liveConversationSnapshotSchema>;
 
 export const evaluationDimensionSchema = z.object({
   score: z.number().min(0).max(100),
