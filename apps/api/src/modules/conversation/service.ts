@@ -13,6 +13,7 @@ import { InterviewTools } from "../interviews/tools.js";
 import { ConversationEventPublisher } from "./events.js";
 import { grantDeepgramAccessToken, synthesizeSpeech } from "./deepgram.js";
 import { ConversationRepository } from "./repository.js";
+import { recoveryForAiResponseFailure, replayGeneratedResponse } from "./recovery.js";
 import { assertConversationTransition } from "./state-machine.js";
 import type {
   ConversationResult,
@@ -67,6 +68,11 @@ export class ConversationService {
   async generateResponse(interviewId: string, userId: string): Promise<ConversationResult> {
     const conversation = await this.requireActiveConversation(interviewId, userId);
     await this.completeIfExpired(conversation, userId);
+    const replay = replayGeneratedResponse(
+      conversation.state,
+      conversation.turns.map(asTurnRecord),
+    );
+    if (replay) return replay;
     if (conversation.state !== "GREETING" && conversation.state !== "THINKING") {
       throw new ConversationError(
         "INVALID_STATE_TRANSITION",
@@ -173,12 +179,18 @@ export class ConversationService {
       await this.repository.updateMemory(tx, interviewId, memoryUpdate);
       return appended;
     });
-    if (!turn)
+    if (!turn) {
+      const current = await this.repository.findActiveOwned(interviewId, userId);
+      const replay = current
+        ? replayGeneratedResponse(current.state, current.turns.map(asTurnRecord))
+        : null;
+      if (replay) return replay;
       throw new ConversationError(
         "CONVERSATION_STATE_CONFLICT",
         "The conversation changed while the response was generated. Retry the request.",
       );
-    const result = { turn: asTurnRecord(turn), state: nextState };
+    }
+    const result = { turn: asTurnRecord(turn), state: nextState, replayed: false };
     this.events.publish({
       name: "AIResponseGenerated",
       payload: { interviewId, conversationId: conversation.id, turn: asTurnDto(turn) },
@@ -274,6 +286,11 @@ export class ConversationService {
 
   async requestCompletion(interviewId: string, userId: string) {
     return this.interviewService.requestCompletion(interviewId, userId);
+  }
+
+  async getAiResponseFailureRecovery(interviewId: string, userId: string) {
+    const conversation = await this.repository.findActiveOwned(interviewId, userId);
+    return conversation ? recoveryForAiResponseFailure(conversation.state) : null;
   }
 
   async failUnrecoverableSession(interviewId: string, userId: string) {

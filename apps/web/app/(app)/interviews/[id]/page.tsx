@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   InterviewMicrophone,
+  type InterviewMode,
   type VoiceSessionState,
 } from "@/features/conversation/components/microphone";
 import { apiClient } from "@/lib/api-client";
@@ -32,6 +33,7 @@ export default function LiveInterviewPage() {
   const client = useQueryClient();
   const [now, setNow] = useState(() => Date.now());
   const [voiceState, setVoiceState] = useState<VoiceSessionState>("IDLE");
+  const [interactionMode, setInteractionMode] = useState<InterviewMode>("VOICE");
   const queryKey = ["interview", id] as const;
   const { data, isPending, error } = useQuery({
     queryKey,
@@ -104,9 +106,25 @@ export default function LiveInterviewPage() {
           </div>
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1.5 rounded-full bg-rose-400/10 px-3 py-1.5 text-xs font-medium text-rose-300">
-              <Radio className="size-3" /> {voiceState === "IDLE" ? "Mic off" : "Voice session"}
+              <Radio className="size-3" />{" "}
+              {interactionMode === "TEXT"
+                ? "Text mode"
+                : voiceState === "IDLE"
+                  ? "Mic off"
+                  : "Voice session"}
             </span>
-            <span className="grid size-8 place-items-center rounded-lg bg-white/[.05] text-emerald-300">
+            <span
+              className={`grid size-8 place-items-center rounded-lg bg-white/[.05] ${
+                interactionMode === "TEXT" || voiceState === "IDLE" || voiceState === "ERROR"
+                  ? "text-muted-foreground"
+                  : "text-emerald-300"
+              }`}
+              aria-label={
+                interactionMode === "TEXT" || voiceState === "IDLE" || voiceState === "ERROR"
+                  ? "Voice transport is not connected"
+                  : "Voice transport is connected"
+              }
+            >
               <Wifi className="size-3.5" />
             </span>
           </div>
@@ -141,6 +159,9 @@ export default function LiveInterviewPage() {
                   disabled={end.isPending}
                   onStarted={() => client.invalidateQueries({ queryKey })}
                   onSessionStateChange={setVoiceState}
+                  onModeChange={setInteractionMode}
+                  onEndInterview={() => end.mutate()}
+                  onResponseRecovered={() => client.invalidateQueries({ queryKey })}
                 />
               </div>
             )}
@@ -188,27 +209,49 @@ export default function LiveInterviewPage() {
               <div className="mt-4 space-y-3 text-xs text-muted-foreground">
                 <p className="flex justify-between">
                   <span>Microphone</span>
-                  <span className={voiceState === "ERROR" ? "text-rose-300" : "text-emerald-300"}>
-                    {voiceState === "IDLE"
-                      ? "Off"
-                      : voiceState === "ERROR"
-                        ? "Reconnect"
-                        : "Active"}
+                  <span
+                    className={
+                      interactionMode === "TEXT" || voiceState === "IDLE" || voiceState === "ERROR"
+                        ? "text-muted-foreground"
+                        : "text-emerald-300"
+                    }
+                  >
+                    {interactionMode === "TEXT"
+                      ? "Not in use"
+                      : voiceState === "IDLE"
+                        ? "Off"
+                        : voiceState === "ERROR"
+                          ? "Reconnect"
+                          : "Active"}
                   </span>
                 </p>
                 <p className="flex justify-between">
                   <span>Network</span>
                   <span
                     className={
-                      voiceState === "RECONNECTING" ? "text-amber-300" : "text-emerald-300"
+                      interactionMode === "TEXT" || voiceState === "IDLE" || voiceState === "ERROR"
+                        ? "text-muted-foreground"
+                        : voiceState === "RECONNECTING"
+                          ? "text-amber-300"
+                          : "text-emerald-300"
                     }
                   >
-                    {voiceState === "RECONNECTING" ? "Reconnecting" : "Connected"}
+                    {interactionMode === "TEXT"
+                      ? "Not in use"
+                      : voiceState === "IDLE"
+                        ? "Not connected"
+                        : voiceState === "ERROR"
+                          ? "Unavailable"
+                          : voiceState === "RECONNECTING"
+                            ? "Reconnecting"
+                            : "Connected"}
                   </span>
                 </p>
                 <p className="flex justify-between">
                   <span>Mode</span>
-                  <span className="text-foreground">Practice</span>
+                  <span className="text-foreground">
+                    {interactionMode === "TEXT" ? "Typing" : "Voice"}
+                  </span>
                 </p>
               </div>
             </div>

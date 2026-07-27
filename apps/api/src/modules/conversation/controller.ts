@@ -137,9 +137,14 @@ export function registerConversationRoutes(
         } else {
           logSafeError(request.log, "AI conversation response failed", error);
         }
+        const recovery = await service.getAiResponseFailureRecovery(
+          params.data.id,
+          request.authContext!.user.id,
+        );
         return reply.status(502).send({
           code: "AI_RESPONSE_FAILED",
-          message: "The interviewer could not respond. Please try again.",
+          message: "We could not generate the next question right now.",
+          ...(recovery ? { details: { recovery } } : {}),
         });
       }
     },

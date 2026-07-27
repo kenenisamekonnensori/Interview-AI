@@ -75,7 +75,7 @@ All endpoints below are under `/api/v1`, require an authenticated verified user,
 | `DELETE` | `/interviews/:id` | — | Cancels only a cancellable interview. |
 | `POST` | `/interviews/:id/voice-token` | — | Returns a short-lived Deepgram browser token. |
 | `POST` | `/interviews/:id/conversation/start` | — | Transitions `READY -> IN_PROGRESS`, creates the conversation, and persists the initial AI greeting. Retries return the existing conversation without creating a second one. |
-| `POST` | `/interviews/:id/conversation/next-response` | — | Backend generates and persists an AI turn; the model cannot choose lifecycle state. |
+| `POST` | `/interviews/:id/conversation/next-response` | — | Backend generates and persists an AI turn. When a prior request already persisted the pending turn, retries return that same turn without creating another. |
 | `POST` | `/interviews/:id/conversation/transcripts` | `{ text, metadata? }` | Persists a finalized user transcript and moves the conversation to `THINKING`. |
 | `POST` | `/interviews/:id/conversation/speaking` | — | Publishes an authenticated candidate-speaking event; no audio or interim transcript is persisted. |
 | `POST` | `/interviews/:id/conversation/turns/:turnId/playback-completed` | — | Records completed AI playback and moves to `LISTENING`, or completes a closing turn. |
@@ -138,6 +138,10 @@ Event names and payload types are exported by `@interviewer-ai/types` as `Realti
 
 The current voice transport is Deepgram's browser WebSocket, with REST acknowledgements for finalized transcripts and playback completion. A future application WebSocket/SSE transport must publish this exact event union rather than inventing a second event vocabulary.
 
+### Typed interview fallback
+
+Typed answers use `POST /interviews/:id/conversation/transcripts` with the same validated `{ text, metadata? }` request as a finalized voice transcript. The web app may offer text mode when voice capture, transport, or playback is unavailable, but it may show a composer only while the authoritative conversation is `LISTENING`. Interviewer text remains visible in the shared transcript; when audio cannot play, the client acknowledges the persisted AI turn through `playback-completed` before accepting the next typed answer.
+
 ---
 
 # AI Function Calls
@@ -165,9 +169,26 @@ Provider failure mappings:
 
 | Condition | API result | State behavior |
 | --- | --- | --- |
-| Gemini unavailable, invalid output, or timeout during a live turn | `502 AI_RESPONSE_FAILED` | Preserve the last valid state; client can retry. |
+| Gemini unavailable, invalid output, or timeout during a live turn | `502 AI_RESPONSE_FAILED` with `details.recovery` | Preserve `THINKING`; the safe recovery object reports that the transcript was saved and permits retry, typed continuation, or interview completion. Provider details are never returned. |
 | Gemini failure while creating a plan | Interview preparation fails | Do not create a guessed plan. |
 | Deepgram unavailable or unconfigured | `503 VOICE_UNAVAILABLE` | Keep non-voice interaction available where supported. |
+
+For a recoverable live-turn failure, `AI_RESPONSE_FAILED.details.recovery` has this application-only shape:
+
+```json
+{
+  "transcriptSaved": true,
+  "conversationState": "THINKING",
+  "retryable": true,
+  "actions": {
+    "retry": true,
+    "continueByTyping": true,
+    "endInterview": true
+  }
+}
+```
+
+This object intentionally contains no provider diagnostics. It is omitted when the interview is no longer active or the pending state is not recoverable.
 
 ---
 
