@@ -1,6 +1,6 @@
 "use client";
 
-import type { JobDescriptionDto, Resume } from "@interviewer-ai/types";
+import type { JobDescriptionDto, NextPracticeRecommendation, Resume } from "@interviewer-ai/types";
 import { Mic2 } from "lucide-react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
@@ -36,6 +36,7 @@ export default function DashboardPage() {
             <Mic2 className="size-4" /> Start a practice
           </Link>
         </div>
+        <NextPracticeCard />
         <section className="mt-8 rounded-3xl border border-violet-300/15 bg-card/55 p-6">
           <p className="text-base font-semibold">Interview context</p>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -55,5 +56,35 @@ export default function DashboardPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+function NextPracticeCard() {
+  const recommendation = useQuery({
+    queryKey: ["analytics", "next-practice"],
+    queryFn: () =>
+      apiClient<{ recommendation: NextPracticeRecommendation }>("/api/v1/analytics/next-practice"),
+  });
+  if (recommendation.isPending || recommendation.error || !recommendation.data) return null;
+  const value = recommendation.data.recommendation;
+  return (
+    <section className="mt-8 rounded-3xl border border-primary/25 bg-primary/[.07] p-6">
+      <p className="text-sm font-medium text-primary">Next recommended practice</p>
+      <h2 className="mt-2 text-xl font-semibold">
+        {value.suggestedTargetRole} · {value.interviewType.replaceAll("_", " ")}
+      </h2>
+      <p className="mt-2 text-sm text-muted-foreground">{value.reasons[0]}</p>
+      <p className="mt-2 text-xs font-medium uppercase tracking-wide text-primary">
+        Based on {value.basis === "HISTORY" ? "previous practice" : "your profile"}
+      </p>
+      <div className="mt-4 flex flex-wrap gap-3">
+        <Link href="/interviews/new" className="button-primary h-10 px-3 text-sm">
+          Start this practice
+        </Link>
+        <Link href="/interviews/new" className="text-sm font-medium text-primary">
+          Customize
+        </Link>
+      </div>
+    </section>
   );
 }

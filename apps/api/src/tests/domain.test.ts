@@ -20,6 +20,7 @@ import { serverEnvironmentSchema } from "@interviewer-ai/config";
 import { createRequestId, redactObservabilityAttributes } from "../services/observability.js";
 import { classifyQueueFailure, processQueueJob } from "../services/queue-worker.js";
 import { deleteOwnedAccount } from "../services/account-deletion.js";
+import { AnalyticsService } from "../modules/analytics/service.js";
 import {
   pendingAiResponseRecovery,
   recoveryForAiResponseFailure,
@@ -32,6 +33,32 @@ import {
 
 const firstTurn = "11111111-1111-4111-8111-111111111111";
 const secondTurn = "22222222-2222-4222-8222-222222222222";
+
+const recommendationEvaluation = (weaknesses: string[]) => {
+  const dimension = { score: 60, feedback: "Needs practice.", evidenceTurnIds: [firstTurn] };
+  return {
+    overallScore: 60,
+    technical: dimension,
+    communication: dimension,
+    confidence: dimension,
+    problemSolving: dimension,
+    categoryScores: { General: dimension },
+    strengths: [],
+    weaknesses: weaknesses.map((text) => ({ text, evidenceTurnIds: [firstTurn] })),
+    missedOpportunities: [],
+    recommendations: [],
+  };
+};
+
+function recommendationService(context: unknown) {
+  const service = new AnalyticsService({} as never);
+  (
+    service.repository as unknown as {
+      recommendationContext: (userId: string) => Promise<unknown>;
+    }
+  ).recommendationContext = async () => context;
+  return service;
+}
 
 test("interview lifecycle accepts only documented transitions", () => {
   assert.doesNotThrow(() => assertInterviewTransition("READY", "IN_PROGRESS"));
@@ -181,6 +208,46 @@ test("recommended and custom document combinations preserve explicit selections"
     resumeId,
   });
   assert.equal(recommended.resumeId, resumeId);
+});
+
+test("next-practice recommendation serves new and profile-only users conservatively", async () => {
+  const newUser = await recommendationService([null, null, null, []]).nextPracticeRecommendation(
+    "user",
+  );
+  assert.equal(newUser.basis, "PROFILE");
+  assert.equal(newUser.suggestedTargetRole, "General interview practice");
+  assert.ok(newUser.setupSuggestion);
+  const profileOnly = await recommendationService([
+    { targetRole: "Data analyst", defaultDifficulty: "HARD", defaultInterviewDuration: 45 },
+    null,
+    null,
+    [],
+  ]).nextPracticeRecommendation("user");
+  assert.equal(profileOnly.suggestedTargetRole, "Data analyst");
+  assert.equal(profileOnly.difficulty, "HARD");
+});
+
+test("next-practice recommendation uses valid report weaknesses and recurring evidence", async () => {
+  const report = (weaknesses: string[], id: string) => ({
+    id,
+    interviewType: "TECHNICAL",
+    report: { evaluation: recommendationEvaluation(weaknesses) },
+  });
+  const recommendation = await recommendationService([
+    { targetRole: "Backend engineer", defaultDifficulty: "MEDIUM", defaultInterviewDuration: 30 },
+    { id: "33333333-3333-4333-8333-333333333333", analysis: null },
+    null,
+    [report(["Explain trade-offs clearly."], "one")],
+  ]).nextPracticeRecommendation("user");
+  assert.equal(recommendation.basis, "HISTORY");
+  assert.deepEqual(recommendation.focusAreas, ["Explain trade-offs clearly."]);
+  const recurring = await recommendationService([
+    null,
+    null,
+    null,
+    [report(["Quantify impact."], "one"), report(["Quantify impact."], "two")],
+  ]).nextPracticeRecommendation("user");
+  assert.match(recurring.reasons.join(" "), /Recurring feedback/);
 });
 
 test("AI interviewer proposals reject inconsistent actions and extra fields", () => {

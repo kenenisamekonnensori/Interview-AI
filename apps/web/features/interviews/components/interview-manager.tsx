@@ -4,6 +4,7 @@ import type {
   InterviewConfiguration,
   InterviewDto,
   JobDescriptionDto,
+  NextPracticeRecommendation,
   Resume,
 } from "@interviewer-ai/types";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -51,6 +52,11 @@ export function InterviewManager() {
     queryKey: ["analytics-history", "recommendation"],
     queryFn: () => apiClient<InterviewHistory>("/api/v1/analytics/history?page=1&pageSize=1"),
   });
+  const nextPractice = useQuery({
+    queryKey: ["analytics", "next-practice"],
+    queryFn: () =>
+      apiClient<{ recommendation: NextPracticeRecommendation }>("/api/v1/analytics/next-practice"),
+  });
 
   const activeResume = useMemo(
     () =>
@@ -65,7 +71,7 @@ export function InterviewManager() {
     [jobs.data],
   );
   const defaults = profile.data?.profile;
-  const recommended = useMemo<InterviewConfiguration>(
+  const fallbackRecommendation = useMemo<InterviewConfiguration>(
     () => ({
       interviewType: "MIXED",
       difficulty: defaults?.defaultDifficulty ?? "MEDIUM",
@@ -103,7 +109,7 @@ export function InterviewManager() {
     },
     onSuccess: (id) => router.push(`/interviews/${id}`),
     onError: (cause) =>
-      setFailure(cause instanceof PreparationError ? cause.configuration : recommended),
+      setFailure(cause instanceof PreparationError ? cause.configuration : fallbackRecommendation),
   });
 
   const customConfiguration = (): InterviewConfiguration => ({
@@ -127,6 +133,20 @@ export function InterviewManager() {
       ? "your recent interview feedback"
       : null,
   ].filter(Boolean);
+  const recommendation = nextPractice.data?.recommendation;
+  const recommended = recommendation
+    ? {
+        interviewType: recommendation.interviewType,
+        difficulty: recommendation.difficulty,
+        durationMinutes: recommendation.suggestedDurationMinutes,
+        language: defaults?.preferredLanguage ?? "en",
+        targetRole: recommendation.suggestedTargetRole,
+        ...(recommendation.resumeId ? { resumeId: recommendation.resumeId } : {}),
+        ...(recommendation.jobDescriptionId
+          ? { jobDescriptionId: recommendation.jobDescriptionId }
+          : {}),
+      }
+    : fallbackRecommendation;
 
   if (failure)
     return (
@@ -158,9 +178,13 @@ export function InterviewManager() {
               Practice for {recommended.targetRole}
             </h2>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              {reasons.length
-                ? `Built from ${reasons.join(", ")}.`
-                : "A focused mixed interview you can start without any documents."}
+              {recommendation?.reasons.join(" ") ??
+                (reasons.length
+                  ? `Built from ${reasons.join(", ")}.`
+                  : "A focused mixed interview you can start without any documents.")}
+            </p>
+            <p className="mt-2 text-xs font-medium uppercase tracking-wide text-primary">
+              Based on {recommendation?.basis === "HISTORY" ? "previous practice" : "your profile"}
             </p>
           </div>
           <Button size="lg" onClick={() => launch.mutate(recommended)} disabled={launch.isPending}>

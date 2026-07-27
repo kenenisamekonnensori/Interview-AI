@@ -217,6 +217,20 @@ export const apiErrorSchema = z.object({
 });
 export type ApiErrorShape = z.infer<typeof apiErrorSchema>;
 
+export const nextPracticeRecommendationSchema = z.object({
+  suggestedTargetRole: z.string().min(1),
+  interviewType: interviewTypeSchema,
+  difficulty: interviewDifficultySchema,
+  suggestedDurationMinutes: z.number().int().min(10).max(120),
+  resumeId: z.uuid().optional(),
+  jobDescriptionId: z.uuid().optional(),
+  reasons: z.array(z.string().min(1)).max(3),
+  focusAreas: z.array(z.string().min(1)).max(3),
+  basis: z.enum(["PROFILE", "HISTORY"]),
+  setupSuggestion: z.string().min(1).optional(),
+});
+export type NextPracticeRecommendation = z.infer<typeof nextPracticeRecommendationSchema>;
+
 /** Safe, application-level guidance supplied when a persisted candidate turn awaits an AI turn. */
 export const aiResponseRecoverySchema = z.object({
   transcriptSaved: z.literal(true),

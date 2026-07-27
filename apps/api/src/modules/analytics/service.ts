@@ -1,4 +1,8 @@
-import { interviewEvaluationSchema, type InterviewEvaluation } from "@interviewer-ai/types";
+import {
+  interviewEvaluationSchema,
+  type InterviewEvaluation,
+  type NextPracticeRecommendation,
+} from "@interviewer-ai/types";
 import type { AnalyticsFilter } from "./schema.js";
 import { AnalyticsRepository } from "./repository.js";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
@@ -121,6 +125,60 @@ export class AnalyticsService {
     const interview = await this.repository.completedDetail(userId, interviewId);
     if (!interview || !validEvaluation(interview.report?.evaluation)) return null;
     return interview;
+  }
+
+  async nextPracticeRecommendation(userId: string): Promise<NextPracticeRecommendation> {
+    const [profile, activeResume, jobDescription, reports] =
+      await this.repository.recommendationContext(userId);
+    const validReports = reports.flatMap((report) => {
+      const evaluation = validEvaluation(report.report?.evaluation);
+      return evaluation ? [{ report, evaluation }] : [];
+    });
+    const weaknesses = validReports.flatMap(({ evaluation }) =>
+      evaluation.weaknesses.map((item) => item.text),
+    );
+    const counts = new Map<string, number>();
+    for (const weakness of weaknesses) counts.set(weakness, (counts.get(weakness) ?? 0) + 1);
+    const focusAreas = [...counts.entries()]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+      .slice(0, 3)
+      .map(([text]) => text);
+    const latest = validReports[0]?.report;
+    const primaryFocus = focusAreas[0];
+    const suggestedTargetRole =
+      profile?.targetRole ?? jobDescription?.title ?? "General interview practice";
+    const reasons = [
+      profile?.targetRole ? `Uses your profile target role: ${profile.targetRole}.` : null,
+      activeResume ? "Uses your active resume for relevant questions." : null,
+      jobDescription
+        ? `Uses your saved job description${jobDescription.title ? ` for ${jobDescription.title}` : ""}.`
+        : null,
+      primaryFocus
+        ? `${counts.get(primaryFocus)! > 1 ? "Recurring" : "Recent"} feedback suggests focusing on ${primaryFocus}.`
+        : null,
+    ]
+      .filter((reason): reason is string => Boolean(reason))
+      .slice(0, 3);
+    const basis = validReports.length ? "HISTORY" : "PROFILE";
+    return {
+      suggestedTargetRole,
+      interviewType:
+        (latest?.interviewType as NextPracticeRecommendation["interviewType"] | undefined) ??
+        "MIXED",
+      difficulty: profile?.defaultDifficulty ?? "MEDIUM",
+      suggestedDurationMinutes: profile?.defaultInterviewDuration ?? 30,
+      ...(activeResume ? { resumeId: activeResume.id } : {}),
+      ...(jobDescription ? { jobDescriptionId: jobDescription.id } : {}),
+      reasons: reasons.length ? reasons : ["Start with a focused role-based practice interview."],
+      focusAreas,
+      basis,
+      ...(!profile?.targetRole && !activeResume && !jobDescription
+        ? {
+            setupSuggestion:
+              "Add a target role, resume, or job description to make future practice more tailored.",
+          }
+        : {}),
+    };
   }
 }
 

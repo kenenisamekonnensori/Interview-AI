@@ -59,4 +59,24 @@ export class AnalyticsRepository {
       },
     });
   }
+
+  recommendationContext(userId: string) {
+    return Promise.all([
+      this.database.userProfile.findUnique({ where: { userId } }),
+      this.database.resume.findFirst({
+        where: { userId, isActive: true, deletedAt: null, status: { in: ["READY", "ANALYZED"] } },
+        include: { analysis: true },
+      }),
+      this.database.jobDescription.findFirst({
+        where: { userId, deletedAt: null, status: { in: ["READY", "ANALYZED"] } },
+        orderBy: { createdAt: "desc" },
+      }),
+      this.database.interview.findMany({
+        where: { userId, status: "COMPLETED", report: { is: { status: "READY" } } },
+        include: { report: true },
+        orderBy: { completedAt: "desc" },
+        take: 6,
+      }),
+    ]);
+  }
 }

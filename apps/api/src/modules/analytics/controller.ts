@@ -41,6 +41,13 @@ export function registerAnalyticsRoutes(app: FastifyInstance, database: PrismaCl
     filtered((userId, filter) => service.summary(userId, filter)),
   );
   app.get(
+    "/api/v1/analytics/next-practice",
+    { preHandler: app.requireVerifiedUser },
+    async (request) => ({
+      recommendation: await service.nextPracticeRecommendation(request.authContext!.user.id),
+    }),
+  );
+  app.get(
     "/api/v1/analytics/interviews/:id",
     { preHandler: app.requireVerifiedUser },
     async (request, reply) => {
