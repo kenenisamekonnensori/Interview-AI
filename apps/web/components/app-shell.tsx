@@ -34,7 +34,7 @@ export function AppShell({ children }: PropsWithChildren) {
         profile: {
           preferredName: string | null;
           targetRole: string | null;
-          accessibilityPreferences: { reduceMotion: boolean; highContrast: boolean };
+          accessibilityPreferences: { reduceMotion: boolean };
         };
       }>("/api/v1/profile"),
   });
@@ -50,10 +50,10 @@ export function AppShell({ children }: PropsWithChildren) {
       .toUpperCase() || "YO";
   return (
     <div
-      className={cn(
-        "min-h-screen bg-background",
-        profile.data?.profile.accessibilityPreferences.highContrast && "contrast-125",
-      )}
+      className={cn("min-h-screen bg-background")}
+      data-reduce-motion={
+        profile.data?.profile.accessibilityPreferences.reduceMotion ? "true" : undefined
+      }
     >
       <button
         className={cn("fixed inset-0 z-30 bg-black/60 lg:hidden", open ? "block" : "hidden")}

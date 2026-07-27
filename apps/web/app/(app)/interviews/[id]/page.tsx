@@ -25,6 +25,7 @@ type InterviewDetails = {
   targetRole: string | null;
   interviewType: string;
   difficulty: string;
+  language: string;
   durationMinutes: number;
   startedAt: string | null;
   completedAt: string | null;
@@ -38,6 +39,13 @@ export default function LiveInterviewPage() {
   const [now, setNow] = useState(() => Date.now());
   const [voiceState, setVoiceState] = useState<VoiceSessionState>("IDLE");
   const [interactionMode, setInteractionMode] = useState<InterviewMode>("VOICE");
+  const preferences = useQuery({
+    queryKey: ["profile", "interview-preferences"],
+    queryFn: () =>
+      apiClient<{ profile: { accessibilityPreferences: { captions: boolean } } }>(
+        "/api/v1/profile",
+      ),
+  });
   const queryKey = ["interview", id] as const;
   const { data, isPending, error } = useQuery({
     queryKey,
@@ -168,6 +176,10 @@ export default function LiveInterviewPage() {
                   interviewId={id}
                   disabled={end.isPending || expired}
                   restoredConversation={interview.conversation}
+                  interviewLanguage={interview.language}
+                  captionsEnabled={
+                    preferences.data?.profile.accessibilityPreferences.captions ?? true
+                  }
                   onStarted={() => client.invalidateQueries({ queryKey })}
                   onSessionStateChange={setVoiceState}
                   onModeChange={setInteractionMode}

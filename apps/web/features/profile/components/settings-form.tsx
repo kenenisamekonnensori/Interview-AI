@@ -5,7 +5,6 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { apiClient } from "@/lib/api-client";
 
@@ -44,7 +43,7 @@ function Editor({
   onSave: (value: Settings) => void;
 }) {
   const [value, setValue] = useState(initial);
-  const accessibility = (key: "captions" | "reduceMotion" | "highContrast", checked: boolean) =>
+  const accessibility = (key: "captions" | "reduceMotion", checked: boolean) =>
     setValue((current) => ({
       ...current,
       accessibilityPreferences: { ...current.accessibilityPreferences, [key]: checked },
@@ -82,7 +81,6 @@ function Editor({
               [
                 ["captions", "Keep interview transcripts visible"],
                 ["reduceMotion", "Reduce interface motion"],
-                ["highContrast", "Increase contrast"],
               ] as const
             ).map(([key, label]) => (
               <label className="flex items-center gap-3" key={key}>
@@ -100,13 +98,15 @@ function Editor({
           <h2 className="sm:col-span-3 font-semibold">Interview defaults</h2>
           <label className="text-sm">
             Interview language
-            <Input
-              className="mt-2"
+            <select
+              className="mt-2 h-10 w-full rounded-xl border border-input bg-background px-3"
               value={value.preferredLanguage}
               onChange={(event) => setValue({ ...value, preferredLanguage: event.target.value })}
-            />
+            >
+              <option value="en">English</option>
+            </select>
             <span className="mt-1 block text-xs text-muted-foreground">
-              Used to prefill future interview language.
+              English is currently the supported live voice language and prefills future interviews.
             </span>
           </label>
           <label className="text-sm">

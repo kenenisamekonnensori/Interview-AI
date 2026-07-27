@@ -21,6 +21,7 @@ import { createRequestId, redactObservabilityAttributes } from "../services/obse
 import { classifyQueueFailure, processQueueJob } from "../services/queue-worker.js";
 import { deleteOwnedAccount } from "../services/account-deletion.js";
 import { AnalyticsService } from "../modules/analytics/service.js";
+import { userProfileUpdateSchema } from "../modules/users/schema.js";
 import {
   pendingAiResponseRecovery,
   recoveryForAiResponseFailure,
@@ -248,6 +249,23 @@ test("next-practice recommendation uses valid report weaknesses and recurring ev
     [report(["Quantify impact."], "one"), report(["Quantify impact."], "two")],
   ]).nextPracticeRecommendation("user");
   assert.match(recurring.reasons.join(" "), /Recurring feedback/);
+});
+
+test("supported interview defaults and accessibility preferences persist as validated user settings", () => {
+  const parsed = userProfileUpdateSchema.parse({
+    preferredLanguage: "en",
+    defaultInterviewDuration: 45,
+    defaultDifficulty: "HARD",
+    accessibilityPreferences: {
+      captions: true,
+      reduceMotion: true,
+      highContrast: false,
+      keyboardNavigation: false,
+    },
+  });
+  assert.equal(parsed.preferredLanguage, "en");
+  assert.equal(parsed.accessibilityPreferences?.captions, true);
+  assert.equal(parsed.accessibilityPreferences?.reduceMotion, true);
 });
 
 test("AI interviewer proposals reject inconsistent actions and extra fields", () => {

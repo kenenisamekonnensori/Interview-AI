@@ -54,6 +54,8 @@ export function InterviewMicrophone({
   onResponseRecovered,
   onModeChange,
   restoredConversation,
+  interviewLanguage = "en",
+  captionsEnabled = true,
 }: {
   interviewId: string;
   disabled?: boolean;
@@ -63,6 +65,8 @@ export function InterviewMicrophone({
   onResponseRecovered?: () => void;
   onModeChange?: (mode: InterviewMode) => void;
   restoredConversation?: LiveConversationSnapshot | null;
+  interviewLanguage?: string;
+  captionsEnabled?: boolean;
 }) {
   const [state, setState] = useState<VoiceSessionState>("IDLE");
   const [transcript, setTranscript] = useState<string[]>([]);
@@ -189,6 +193,9 @@ export function InterviewMicrophone({
   }
 
   function assertBrowserSupport() {
+    if (interviewLanguage !== "en") {
+      throw new Error("Voice interviews currently support English. You can continue by typing.");
+    }
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
       throw new Error(
         "Voice interviews require a secure browser with microphone and MediaRecorder support.",
@@ -318,7 +325,7 @@ export function InterviewMicrophone({
     const client = new DeepgramClient({ accessToken });
     const connection = (await client.listen.v1.connect({
       model: "nova-3",
-      language: "en",
+      language: interviewLanguage,
       punctuate: "true",
       interim_results: "true",
       smart_format: "true",
@@ -676,10 +683,10 @@ export function InterviewMicrophone({
           </Button>
         </form>
       ) : null}
-      {partialTranscript ? (
+      {captionsEnabled && partialTranscript ? (
         <p className="mt-3 text-sm italic text-muted-foreground">Listening: {partialTranscript}</p>
       ) : null}
-      {transcript.length ? (
+      {captionsEnabled && transcript.length ? (
         <div
           className="mt-4 max-h-64 space-y-2 overflow-y-auto rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground"
           aria-live="polite"
