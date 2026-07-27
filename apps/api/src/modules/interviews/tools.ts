@@ -1,5 +1,5 @@
 import type { PrismaClient } from "../../../prisma/generated/client.js";
-import { interviewPlanSchema } from "@interviewer-ai/types";
+import { interviewEvaluationSchema, interviewPlanSchema } from "@interviewer-ai/types";
 import { z } from "zod";
 
 import type { InterviewService } from "./service.js";
@@ -119,8 +119,26 @@ export class InterviewTools {
   }
 
   async retrievePriorWeakAreas(actor: InterviewToolActor, rawInput: unknown) {
-    const memory = await this.retrieveMemory(actor, rawInput);
-    return memory?.weakAreas ?? [];
+    const { interviewId } = interviewIdInputSchema.parse(rawInput);
+    const [memory, completed] = await Promise.all([
+      this.retrieveMemory(actor, rawInput),
+      this.database.interview.findMany({
+        where: {
+          id: { not: interviewId },
+          userId: actor.userId,
+          status: "COMPLETED",
+          report: { is: { status: "READY" } },
+        },
+        include: { report: true },
+        orderBy: { completedAt: "desc" },
+        take: 4,
+      }),
+    ]);
+    const historical = completed.flatMap((interview) => {
+      const evaluation = interviewEvaluationSchema.safeParse(interview.report?.evaluation);
+      return evaluation.success ? evaluation.data.weaknesses.map((weakness) => weakness.text) : [];
+    });
+    return [...new Set([...(memory?.weakAreas ?? []), ...historical])].slice(0, 6);
   }
 
   async requestConversationCompletion(actor: InterviewToolActor, rawInput: unknown) {
