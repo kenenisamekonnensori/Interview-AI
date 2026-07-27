@@ -111,6 +111,21 @@ test("text submission is prevented outside the server-owned listening state", ()
   assert.throws(() => assertConversationTransition("THINKING", "TRANSCRIBING"));
 });
 
+test("a restored listening session can accept the next persisted transcript", () => {
+  assert.doesNotThrow(() => assertConversationTransition("LISTENING", "TRANSCRIBING"));
+});
+
+test("a restored thinking session accepts only the pending AI response or completion", () => {
+  assert.doesNotThrow(() => assertConversationTransition("THINKING", "SPEAKING"));
+  assert.doesNotThrow(() => assertConversationTransition("THINKING", "CLOSING"));
+  assert.throws(() => assertConversationTransition("THINKING", "TRANSCRIBING"));
+});
+
+test("a restored speaking session can safely acknowledge playback after reconnect", () => {
+  assert.doesNotThrow(() => assertConversationTransition("SPEAKING", "LISTENING"));
+  assert.throws(() => assertConversationTransition("SPEAKING", "THINKING"));
+});
+
 test("interview, resume, and job inputs enforce documented limits", () => {
   assert.equal(
     interviewConfigurationSchema.safeParse({

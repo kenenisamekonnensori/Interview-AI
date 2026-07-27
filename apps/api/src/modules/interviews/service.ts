@@ -341,7 +341,12 @@ export class InterviewService {
     const interview = await this.repository.findOwned(id, userId);
     if (!interview)
       throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
-    return interview;
+    return {
+      ...interview,
+      conversation: interview.conversation
+        ? { ...interview.conversation, turns: [...interview.conversation.turns].reverse() }
+        : null,
+    };
   }
 
   async state(id: string, userId: string) {

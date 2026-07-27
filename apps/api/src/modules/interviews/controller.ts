@@ -24,6 +24,22 @@ function toDto(interview: {
     company: string | null;
     deletedAt?: Date | null;
   } | null;
+  conversation?: {
+    id: string;
+    interviewId: string;
+    state: string;
+    sequence: number;
+    startedAt: Date;
+    completedAt: Date | null;
+    turns: Array<{
+      id: string;
+      sequence: number;
+      speaker: string;
+      type: string;
+      text: string;
+      createdAt: Date;
+    }>;
+  } | null;
 }) {
   const resume = interview.resume?.deletedAt
     ? null
@@ -46,6 +62,17 @@ function toDto(interview: {
     createdAt: interview.createdAt.toISOString(),
     startedAt: interview.startedAt?.toISOString() ?? null,
     completedAt: interview.completedAt?.toISOString() ?? null,
+    conversation: interview.conversation
+      ? {
+          ...interview.conversation,
+          startedAt: interview.conversation.startedAt.toISOString(),
+          completedAt: interview.conversation.completedAt?.toISOString() ?? null,
+          turns: interview.conversation.turns.map((turn) => ({
+            ...turn,
+            createdAt: turn.createdAt.toISOString(),
+          })),
+        }
+      : null,
   };
 }
 

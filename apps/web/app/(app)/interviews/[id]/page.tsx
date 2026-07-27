@@ -1,6 +1,10 @@
 "use client";
 
-import type { ConversationDto, InterviewPlan, InterviewStatus } from "@interviewer-ai/types";
+import type {
+  InterviewPlan,
+  InterviewStatus,
+  LiveConversationSnapshot,
+} from "@interviewer-ai/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleAlert, Clock3, LoaderCircle, Radio, ShieldCheck, Square, Wifi } from "lucide-react";
 import Link from "next/link";
@@ -25,7 +29,7 @@ type InterviewDetails = {
   startedAt: string | null;
   completedAt: string | null;
   plan: InterviewPlan | null;
-  conversation: ConversationDto | null;
+  conversation: LiveConversationSnapshot | null;
 };
 
 export default function LiveInterviewPage() {
@@ -90,6 +94,12 @@ export default function LiveInterviewPage() {
     : 0;
   const remaining = Math.max(0, interview.durationMinutes * 60 - elapsed);
   const completing = interview.status === "COMPLETING";
+  const expired = interview.status === "IN_PROGRESS" && remaining === 0;
+  const askedQuestions = interview.conversation?.turns.filter(
+    (turn) =>
+      turn.speaker === "AI" && ["QUESTION", "FOLLOW_UP", "CLARIFICATION"].includes(turn.type),
+  ).length;
+  const currentQuestion = Math.max(1, askedQuestions ?? 0);
   return (
     <main className="min-h-[calc(100vh-5rem)] bg-[radial-gradient(circle_at_50%_0%,oklch(0.3_0.08_275_/_20%),transparent_35rem)] px-5 py-7 sm:px-8 lg:px-10">
       <div className="mx-auto max-w-6xl">
@@ -144,7 +154,7 @@ export default function LiveInterviewPage() {
                 </div>
               </div>
               <span className="text-xs text-muted-foreground">
-                Question 1 of {interview.plan.topics.length}
+                Question {currentQuestion} of {interview.plan.topics.length}
               </span>
             </div>
             {completing ? (
@@ -156,7 +166,8 @@ export default function LiveInterviewPage() {
               <div className="mt-6">
                 <InterviewMicrophone
                   interviewId={id}
-                  disabled={end.isPending}
+                  disabled={end.isPending || expired}
+                  restoredConversation={interview.conversation}
                   onStarted={() => client.invalidateQueries({ queryKey })}
                   onSessionStateChange={setVoiceState}
                   onModeChange={setInteractionMode}
@@ -165,6 +176,22 @@ export default function LiveInterviewPage() {
                 />
               </div>
             )}
+            {expired ? (
+              <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-300/[.07] p-4 text-sm">
+                <p className="font-medium">Your interview time has ended.</p>
+                <p className="mt-1 text-muted-foreground">
+                  Your saved conversation is ready to be completed and evaluated.
+                </p>
+                <Button
+                  className="mt-3"
+                  size="sm"
+                  onClick={() => end.mutate()}
+                  disabled={end.isPending}
+                >
+                  End interview and get feedback
+                </Button>
+              </div>
+            ) : null}
             {end.error ? (
               <p className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                 {end.error instanceof Error
@@ -172,7 +199,7 @@ export default function LiveInterviewPage() {
                   : "The interview could not be ended. You can try again."}
               </p>
             ) : null}
-            {interview.status === "IN_PROGRESS" ? (
+            {interview.status === "IN_PROGRESS" && !expired ? (
               <div className="mt-6 flex justify-end border-t border-white/[.07] pt-5">
                 <Button
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"

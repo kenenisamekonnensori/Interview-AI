@@ -6,7 +6,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   aiResponseRecoverySchema,
   type AiResponseRecovery,
+  type ConversationState,
   type FinalizeTranscriptRequest,
+  type LiveConversationSnapshot,
 } from "@interviewer-ai/types";
 
 import { Button } from "@/components/ui/button";
@@ -15,7 +17,14 @@ import { webEnvironment } from "@/lib/env";
 import { canSubmitTypedAnswer } from "@/features/conversation/typed-mode";
 
 export type VoiceSessionState =
-  "IDLE" | "CONNECTING" | "LISTENING" | "THINKING" | "SPEAKING" | "RECONNECTING" | "ERROR";
+  | "IDLE"
+  | "CONNECTING"
+  | "LISTENING"
+  | "THINKING"
+  | "SPEAKING"
+  | "CLOSING"
+  | "RECONNECTING"
+  | "ERROR";
 export type InterviewMode = "VOICE" | "TEXT";
 type DeepgramResult = {
   channel?: { alternatives?: Array<{ transcript?: string }> };
@@ -44,6 +53,7 @@ export function InterviewMicrophone({
   onEndInterview,
   onResponseRecovered,
   onModeChange,
+  restoredConversation,
 }: {
   interviewId: string;
   disabled?: boolean;
@@ -52,6 +62,7 @@ export function InterviewMicrophone({
   onEndInterview?: () => void;
   onResponseRecovered?: () => void;
   onModeChange?: (mode: InterviewMode) => void;
+  restoredConversation?: LiveConversationSnapshot | null;
 }) {
   const [state, setState] = useState<VoiceSessionState>("IDLE");
   const [transcript, setTranscript] = useState<string[]>([]);
@@ -62,6 +73,7 @@ export function InterviewMicrophone({
   const [typedAnswer, setTypedAnswer] = useState("");
   const [mode, setMode] = useState<InterviewMode>("VOICE");
   const [voiceFallback, setVoiceFallback] = useState<string | null>(null);
+  const [restoredSpeakingTurnId, setRestoredSpeakingTurnId] = useState<string | null>(null);
   const connectionRef = useRef<LiveConnection | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -76,6 +88,7 @@ export function InterviewMicrophone({
   const recoveryRef = useRef<AiResponseRecovery | null>(null);
   const displayedAiTurnIdsRef = useRef(new Set<string>());
   const latestAiTurnRef = useRef<string | null>(null);
+  const restoredVersionRef = useRef("");
 
   const active = state !== "IDLE" && state !== "ERROR";
   function updateState(next: VoiceSessionState) {
@@ -94,6 +107,39 @@ export function InterviewMicrophone({
   }
 
   useEffect(() => () => cleanupSession(), []);
+
+  useEffect(() => {
+    if (disabled) stopVoiceTransport();
+  }, [disabled]);
+
+  useEffect(() => {
+    if (!restoredConversation) return;
+    const version = `${restoredConversation.id}:${restoredConversation.sequence}:${restoredConversation.state}`;
+    if (restoredVersionRef.current === version) return;
+    restoredVersionRef.current = version;
+    const turns = restoredConversation.turns;
+    setTranscript(
+      turns.map((turn) => `${turn.speaker === "AI" ? "Interviewer" : "You"}: ${turn.text}`),
+    );
+    displayedAiTurnIdsRef.current = new Set(
+      turns.filter((turn) => turn.speaker === "AI").map((turn) => turn.id),
+    );
+    const latestAiTurn = [...turns].reverse().find((turn) => turn.speaker === "AI");
+    latestAiTurnRef.current = latestAiTurn?.id ?? null;
+    // A restored page has no live microphone transport yet. Start safely in text mode until
+    // the user explicitly reconnects voice.
+    updateMode("TEXT");
+    setTypingMode(restoredConversation.state === "LISTENING");
+    setRestoredSpeakingTurnId(
+      restoredConversation.state === "SPEAKING" ? (latestAiTurn?.id ?? null) : null,
+    );
+    updateState(voiceStateForConversation(restoredConversation.state));
+    if (restoredConversation.state === "THINKING") {
+      updateRecovery(restoredAiFailureRecovery);
+    } else {
+      updateRecovery(null);
+    }
+  }, [restoredConversation]);
 
   function clearAudio() {
     playbackVersionRef.current += 1;
@@ -337,7 +383,7 @@ export function InterviewMicrophone({
   }
 
   async function handleTranscript(message: unknown, session: number) {
-    if (session !== sessionRef.current || recoveryRef.current) return;
+    if (disabled || session !== sessionRef.current || recoveryRef.current) return;
     const result = message as DeepgramResult;
     const text = result.channel?.alternatives?.[0]?.transcript?.trim();
     if (!text) return;
@@ -381,6 +427,7 @@ export function InterviewMicrophone({
   }
 
   async function requestPendingResponse(session: number, continueByTyping = false) {
+    if (disabled) return;
     try {
       const next = await apiClient<GeneratedTurn>(
         `/api/v1/interviews/${interviewId}/conversation/next-response`,
@@ -410,6 +457,7 @@ export function InterviewMicrophone({
   }
 
   async function submitTypedAnswer() {
+    if (disabled) return;
     const text = typedAnswer.trim();
     if (!canSubmitTypedAnswer(state, text, finalizingRef.current)) return;
     finalizingRef.current = true;
@@ -512,6 +560,7 @@ export function InterviewMicrophone({
     LISTENING: "Listening",
     THINKING: "Interviewer is thinking…",
     SPEAKING: "Interviewer is speaking…",
+    CLOSING: "Closing the interview…",
     RECONNECTING: "Reconnecting voice…",
     ERROR: "Voice needs attention",
   }[state];
@@ -560,6 +609,27 @@ export function InterviewMicrophone({
           <Button className="mt-3" size="sm" onClick={() => void switchToText()}>
             Continue in text mode
           </Button>
+        </div>
+      ) : null}
+      {restoredSpeakingTurnId && state === "SPEAKING" ? (
+        <div className="mt-4 rounded-xl border border-border bg-muted/40 p-4">
+          <p className="text-sm text-muted-foreground">
+            Session restored. The interviewer’s last question is shown in the transcript.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              onClick={() => {
+                setRestoredSpeakingTurnId(null);
+                void playAiTurn(restoredSpeakingTurnId, sessionRef.current);
+              }}
+            >
+              Replay audio
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => void switchToText()}>
+              Continue
+            </Button>
+          </div>
         </div>
       ) : null}
       {recovery ? (
@@ -629,4 +699,19 @@ function getAiResponseRecovery(cause: unknown): AiResponseRecovery | null {
   const recovery = cause.details?.recovery;
   const parsed = aiResponseRecoverySchema.safeParse(recovery);
   return parsed.success ? parsed.data : null;
+}
+
+const restoredAiFailureRecovery: AiResponseRecovery = {
+  transcriptSaved: true,
+  conversationState: "THINKING",
+  retryable: true,
+  actions: { retry: true, continueByTyping: true, endInterview: true },
+};
+
+function voiceStateForConversation(state: ConversationState): VoiceSessionState {
+  if (state === "LISTENING") return "LISTENING";
+  if (state === "THINKING" || state === "TRANSCRIBING") return "THINKING";
+  if (state === "SPEAKING" || state === "GREETING") return "SPEAKING";
+  if (state === "CLOSING" || state === "COMPLETED") return "CLOSING";
+  return "IDLE";
 }
