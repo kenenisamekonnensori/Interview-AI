@@ -18,9 +18,11 @@ import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type PropsWithChildren } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { SignOutButton } from "@/features/auth/components/sign-out-button";
 import { cn } from "@/lib/utils";
+import { apiClient } from "@/lib/api-client";
 import { Brand } from "./brand";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -43,9 +45,34 @@ export function AppShell({ children }: PropsWithChildren) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [compact, setCompact] = useState(false);
-  const reduceMotion = useReducedMotion();
+  const profile = useQuery({
+    queryKey: ["profile"],
+    queryFn: () =>
+      apiClient<{
+        profile: {
+          preferredName: string | null;
+          targetRole: string | null;
+          accessibilityPreferences: { reduceMotion: boolean; highContrast: boolean };
+        };
+      }>("/api/v1/profile"),
+  });
+  const reduceMotion =
+    useReducedMotion() || Boolean(profile.data?.profile.accessibilityPreferences.reduceMotion);
+  const identity = profile.data?.profile.preferredName ?? "Your profile";
+  const initials =
+    identity
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "YO";
   return (
-    <div className="min-h-screen bg-background">
+    <div
+      className={cn(
+        "min-h-screen bg-background",
+        profile.data?.profile.accessibilityPreferences.highContrast && "contrast-125",
+      )}
+    >
       <button
         className={cn("fixed inset-0 z-30 bg-black/60 lg:hidden", open ? "block" : "hidden")}
         onClick={() => setOpen(false)}
@@ -114,11 +141,13 @@ export function AppShell({ children }: PropsWithChildren) {
             )}
           >
             <span className="grid size-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-emerald-300 to-cyan-500 text-[11px] font-bold text-slate-950">
-              AK
+              {initials}
             </span>
             <span className={cn("min-w-0 flex-1", compact && "lg:hidden")}>
-              <span className="block truncate text-xs font-medium">Alex Kim</span>
-              <span className="block truncate text-[11px] text-muted-foreground">Free plan</span>
+              <span className="block truncate text-xs font-medium">{identity}</span>
+              <span className="block truncate text-[11px] text-muted-foreground">
+                {profile.data?.profile.targetRole ?? "Interview practice"}
+              </span>
             </span>
             <span className={cn(compact && "lg:hidden")}>
               <SignOutButton />
