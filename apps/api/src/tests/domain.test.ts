@@ -148,6 +148,41 @@ test("interview, resume, and job inputs enforce documented limits", () => {
   assert.equal(createJobDescriptionSchema.safeParse({ rawText: "x".repeat(100) }).success, true);
 });
 
+test("first-time and profile-only users can start a role-based interview without documents", () => {
+  const firstTime = {
+    interviewType: "MIXED",
+    difficulty: "MEDIUM",
+    durationMinutes: 30,
+    language: "en",
+    targetRole: "General interview practice",
+  };
+  assert.equal(interviewConfigurationSchema.safeParse(firstTime).success, true);
+  assert.equal(
+    interviewConfigurationSchema.safeParse({ ...firstTime, targetRole: "Frontend engineer" })
+      .success,
+    true,
+  );
+});
+
+test("recommended and custom document combinations preserve explicit selections", () => {
+  const resumeId = "11111111-1111-4111-8111-111111111111";
+  const jobDescriptionId = "22222222-2222-4222-8222-222222222222";
+  const base = { interviewType: "MIXED", difficulty: "HARD", durationMinutes: 45, language: "en" };
+  for (const configuration of [
+    { ...base, targetRole: "Platform engineer", resumeId },
+    { ...base, targetRole: "Platform engineer", jobDescriptionId },
+    { ...base, resumeId, jobDescriptionId },
+  ]) {
+    assert.equal(interviewConfigurationSchema.safeParse(configuration).success, true);
+  }
+  const recommended = interviewConfigurationSchema.parse({
+    ...base,
+    targetRole: "Platform engineer",
+    resumeId,
+  });
+  assert.equal(recommended.resumeId, resumeId);
+});
+
 test("AI interviewer proposals reject inconsistent actions and extra fields", () => {
   const valid = {
     responseText: "Tell me about a time you handled a production incident.",
