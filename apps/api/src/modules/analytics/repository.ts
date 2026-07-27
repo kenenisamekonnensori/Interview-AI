@@ -28,7 +28,7 @@ export class AnalyticsRepository {
     return Promise.all([
       this.database.interview.findMany({
         where,
-        include: { report: true, jobDescription: { select: { title: true } } },
+        include: { report: true, jobDescription: { select: { title: true, deletedAt: true } } },
         orderBy: { createdAt: "desc" },
         skip: (filter.page - 1) * filter.pageSize,
         take: filter.pageSize,
@@ -44,7 +44,7 @@ export class AnalyticsRepository {
         status: "COMPLETED",
         report: { is: { status: "READY" } },
       },
-      include: { report: true, jobDescription: { select: { title: true } } },
+      include: { report: true, jobDescription: { select: { title: true, deletedAt: true } } },
       orderBy: { completedAt: "asc" },
     });
   }

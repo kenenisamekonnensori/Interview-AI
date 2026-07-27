@@ -4,6 +4,8 @@ import type { FastifyReply, FastifyRequest, RouteOptions } from "fastify";
 
 import type { createAuth } from "./auth.js";
 import { credentialLoginSchema, credentialSignupSchema } from "./signup.js";
+import { logSafeError } from "../../services/security.js";
+import { observability } from "../../services/observability.js";
 
 type Auth = ReturnType<typeof createAuth>["auth"];
 
@@ -104,6 +106,7 @@ export function createAuthFastifyIntegration(auth: Auth, environment: ServerEnvi
             return;
           }
 
+          const authPath = request.url.split("?")[0];
           const url = new URL(request.url, environment.BETTER_AUTH_URL);
           const headers = fromNodeHeaders(request.headers);
           const body = request.body === undefined ? undefined : JSON.stringify(request.body);
@@ -115,11 +118,19 @@ export function createAuthFastifyIntegration(auth: Auth, environment: ServerEnvi
           const authRequest = new Request(url, requestInit);
           const response = await auth.handler(authRequest);
 
+          observability().event("authentication.lifecycle", {
+            requestId: request.id,
+            operation: authPath,
+            statusCode: response.status,
+          });
+
           reply.status(response.status);
           response.headers.forEach((value, key) => reply.header(key, value));
           return reply.send(response.body ? await response.text() : null);
         } catch (error) {
-          request.log.error(error, "Authentication handler failed");
+          logSafeError(request.log, "Authentication handler failed", error, {
+            requestId: request.id,
+          });
           return reply.status(500).send({
             code: "AUTH_FAILURE",
             message: "An authentication error occurred.",

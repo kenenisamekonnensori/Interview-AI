@@ -29,7 +29,7 @@ export class InterviewTools {
       include: { resume: { include: { analysis: true } } },
     });
     if (!interview) return null;
-    const analysis = interview.resume?.analysis;
+    const analysis = interview.resume?.deletedAt ? null : interview.resume?.analysis;
     return analysis
       ? {
           summary: analysis.summary,
@@ -46,7 +46,9 @@ export class InterviewTools {
       include: { jobDescription: { include: { analysis: true } } },
     });
     if (!interview) return null;
-    const analysis = interview.jobDescription?.analysis;
+    const analysis = interview.jobDescription?.deletedAt
+      ? null
+      : interview.jobDescription?.analysis;
     return analysis
       ? {
           requiredSkills: asStringList(analysis.requiredSkills, 20),

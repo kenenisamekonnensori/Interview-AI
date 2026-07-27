@@ -10,8 +10,8 @@ export class InterviewRepository {
         plan: true,
         conversation: { include: { turns: { orderBy: { sequence: "asc" } } } },
         report: true,
-        resume: { select: { id: true, fileName: true } },
-        jobDescription: { select: { id: true, title: true, company: true } },
+        resume: { select: { id: true, fileName: true, deletedAt: true } },
+        jobDescription: { select: { id: true, title: true, company: true, deletedAt: true } },
       },
     });
   }
@@ -20,8 +20,8 @@ export class InterviewRepository {
     return this.database.interview.findMany({
       where: { userId },
       include: {
-        resume: { select: { id: true, fileName: true } },
-        jobDescription: { select: { id: true, title: true, company: true } },
+        resume: { select: { id: true, fileName: true, deletedAt: true } },
+        jobDescription: { select: { id: true, title: true, company: true, deletedAt: true } },
       },
       orderBy: { createdAt: "desc" },
     });

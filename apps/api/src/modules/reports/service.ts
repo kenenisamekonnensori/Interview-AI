@@ -9,6 +9,7 @@ import type { createReportQueue } from "../../services/report-queue.js";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 import { ReportRepository } from "./repository.js";
 import { generatedReportSchema } from "./schema.js";
+import { logSafeError } from "../../services/security.js";
 
 export class ReportLifecycleError extends Error {
   constructor(
@@ -133,8 +134,10 @@ export class ReportService {
               targetRole: interview.targetRole,
             },
             plan: interview.plan,
-            resumeAnalysis: interview.resume?.analysis,
-            jobAnalysis: interview.jobDescription?.analysis,
+            resumeAnalysis: interview.resume?.deletedAt ? null : interview.resume?.analysis,
+            jobAnalysis: interview.jobDescription?.deletedAt
+              ? null
+              : interview.jobDescription?.analysis,
             memory: interview.memory,
             transcript: turns,
           },
@@ -193,7 +196,7 @@ export class ReportService {
         });
     } catch (error) {
       if (error instanceof AiProviderError)
-        console.error("Report generation failed", {
+        logSafeError(consoleLogger, "Report generation failed", error, {
           interviewId,
           category: error.category,
           diagnostic: error.diagnostic,
@@ -203,3 +206,7 @@ export class ReportService {
     }
   }
 }
+
+const consoleLogger = {
+  error: (payload: unknown, message?: string) => console.error(message, payload),
+} as const;

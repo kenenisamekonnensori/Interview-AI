@@ -2,6 +2,7 @@ import type { ServerEnvironment } from "@interviewer-ai/config";
 import { AiProviderError } from "../errors.js";
 import { withAiRetry } from "../retry.js";
 import type { AiStructuredRequest } from "../types.js";
+import { observability } from "../../../services/observability.js";
 
 export class GeminiAdapter {
   constructor(private readonly environment: ServerEnvironment) {}
@@ -11,7 +12,11 @@ export class GeminiAdapter {
       throw new AiProviderError("CONFIGURATION", "The AI provider is not configured.", {
         provider: "gemini",
       });
-    return withAiRetry(() => this.requestJson(instructions, context));
+    return observability().time(
+      "ai.provider.call",
+      { provider: "gemini", capability: "structured-json", model: this.environment.GEMINI_MODEL },
+      () => withAiRetry(() => this.requestJson(instructions, context)),
+    );
   }
 
   private async requestJson(instructions: string, context: unknown): Promise<unknown> {

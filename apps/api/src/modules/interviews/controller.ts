@@ -17,11 +17,32 @@ function toDto(interview: {
   createdAt: Date;
   startedAt?: Date | null;
   completedAt?: Date | null;
-  resume?: { id: string; fileName: string } | null;
-  jobDescription?: { id: string; title: string | null; company: string | null } | null;
+  resume?: { id: string; fileName: string; deletedAt?: Date | null } | null;
+  jobDescription?: {
+    id: string;
+    title: string | null;
+    company: string | null;
+    deletedAt?: Date | null;
+  } | null;
 }) {
+  const resume = interview.resume?.deletedAt
+    ? null
+    : interview.resume
+      ? { id: interview.resume.id, fileName: interview.resume.fileName }
+      : null;
+  const jobDescription = interview.jobDescription?.deletedAt
+    ? null
+    : interview.jobDescription
+      ? {
+          id: interview.jobDescription.id,
+          title: interview.jobDescription.title,
+          company: interview.jobDescription.company,
+        }
+      : null;
   return {
     ...interview,
+    resume,
+    jobDescription,
     createdAt: interview.createdAt.toISOString(),
     startedAt: interview.startedAt?.toISOString() ?? null,
     completedAt: interview.completedAt?.toISOString() ?? null,
@@ -109,7 +130,7 @@ export function registerInterviewRoutes(
       try {
         return reply
           .status(202)
-          .send(await service.prepare(params.data.id, request.authContext!.user.id));
+          .send(await service.prepare(params.data.id, request.authContext!.user.id, request.id));
       } catch (error) {
         return sendLifecycleError(reply, error);
       }

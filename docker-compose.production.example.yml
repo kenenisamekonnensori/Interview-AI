@@ -1,0 +1,55 @@
+name: interviewer-ai-production
+
+services:
+  migrate:
+    image: ${API_IMAGE:-interviewer-ai-api:latest}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command:
+      ["./node_modules/.bin/prisma", "migrate", "deploy", "--schema", "./prisma/schema.prisma"]
+    env_file: ${ENV_FILE:-.env.production}
+    profiles: ["release"]
+    restart: "no"
+
+  api:
+    image: ${API_IMAGE:-interviewer-ai-api:latest}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file: ${ENV_FILE:-.env.production}
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+
+  career-analysis-worker:
+    image: ${API_IMAGE:-interviewer-ai-api:latest}
+    command: ["node", "dist/workers/career-analysis.worker.js"]
+    env_file: ${ENV_FILE:-.env.production}
+    restart: unless-stopped
+
+  report-worker:
+    image: ${API_IMAGE:-interviewer-ai-api:latest}
+    command: ["node", "dist/workers/report.worker.js"]
+    env_file: ${ENV_FILE:-.env.production}
+    restart: unless-stopped
+
+  auth-email-worker:
+    image: ${API_IMAGE:-interviewer-ai-api:latest}
+    command: ["node", "dist/workers/auth-email.worker.js"]
+    env_file: ${ENV_FILE:-.env.production}
+    restart: unless-stopped
+
+  web:
+    image: ${WEB_IMAGE:-interviewer-ai-web:latest}
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started

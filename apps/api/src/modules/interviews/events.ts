@@ -10,6 +10,15 @@ export class InterviewEventPublisher {
   constructor(private readonly logger: LifecycleLogger) {}
 
   publish(event: RealtimeEvent) {
-    this.logger.info({ event }, "Interview lifecycle event published");
+    this.logger.info(
+      {
+        eventName: event.name,
+        interviewId: event.payload.interviewId,
+        ...("conversationId" in event.payload
+          ? { conversationId: event.payload.conversationId }
+          : {}),
+      },
+      "Interview lifecycle event published",
+    );
   }
 }

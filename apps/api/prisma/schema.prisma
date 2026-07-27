@@ -76,6 +76,7 @@ model Resume {
 
   @@index([userId, createdAt])
   @@index([userId, isActive])
+  @@index([userId, deletedAt, isActive, createdAt])
   @@map("resume")
 }
 
@@ -120,6 +121,7 @@ model JobDescription {
   interviews Interview[]
 
   @@index([userId, createdAt])
+  @@index([userId, deletedAt, createdAt])
   @@map("job_description")
 }
 
@@ -175,6 +177,7 @@ model Interview {
 
   @@index([userId, createdAt])
   @@index([status])
+  @@index([userId, status, completedAt])
   @@map("interview")
 }
 

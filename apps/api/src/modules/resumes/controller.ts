@@ -7,6 +7,7 @@ import { ResumeStorageConfigurationError, ResumeStorageError } from "./storage.j
 import { toResumeDto } from "./types.js";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 import type { createCareerAnalysisQueue } from "../../services/career-analysis-queue.js";
+import { observability } from "../../services/observability.js";
 
 export function registerResumeRoutes(
   app: FastifyInstance,
@@ -48,6 +49,10 @@ export function registerResumeRoutes(
           .send({ code: "VALIDATION_ERROR", message: "Upload a PDF or DOCX resume up to 10 MB." });
       try {
         const result = await service.requestUpload(userId(request), input.data);
+        observability().event("resume.upload.created", {
+          requestId: request.id,
+          resumeId: result.resume.id,
+        });
         return reply.status(201).send({
           resume: toResumeDto(result.resume),
           upload: {
@@ -77,7 +82,12 @@ export function registerResumeRoutes(
         });
       if (resume.status !== "ANALYZING") {
         await database.resume.update({ where: { id: resume.id }, data: { status: "ANALYZING" } });
-        await queue.enqueue({ kind: "resume", resumeId: resume.id, userId: resume.userId });
+        await queue.enqueue({
+          kind: "resume",
+          resumeId: resume.id,
+          userId: resume.userId,
+          correlationId: request.id,
+        });
       }
       return reply.status(202).send({ status: "ANALYZING" });
     },
@@ -116,7 +126,12 @@ export function registerResumeRoutes(
       if (!params.success)
         return reply.status(400).send({ code: "VALIDATION_ERROR", message: "Invalid resume ID." });
       try {
-        return { resume: toResumeDto(await service.complete(userId(request), params.data.id)) };
+        const resume = await service.complete(userId(request), params.data.id);
+        observability().event("resume.upload.completed", {
+          requestId: request.id,
+          resumeId: resume.id,
+        });
+        return { resume: toResumeDto(resume) };
       } catch (error) {
         return handleError(reply, error);
       }

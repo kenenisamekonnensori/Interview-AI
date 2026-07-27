@@ -6,8 +6,12 @@ import type { BetterAuthOptions } from "better-auth";
 import { createAuthEmailOutbox } from "./email-outbox.js";
 
 type AuthLogger = {
-  error: (error: unknown, message: string) => void;
+  error: (payload: unknown, message: string) => void;
 };
+
+function logOutboxError(logger: AuthLogger, error: unknown, message: string) {
+  logger.error({ errorType: error instanceof Error ? error.name : "UnknownError" }, message);
+}
 
 export function createAuthConfig(
   environment: ServerEnvironment,
@@ -50,6 +54,7 @@ export function createAuthConfig(
     },
     advanced: {
       useSecureCookies: environment.NODE_ENV === "production",
+      cookiePrefix: "interviewer-ai",
     },
     databaseHooks: {
       user: {
@@ -66,7 +71,7 @@ export function createAuthConfig(
                 name: user.name,
               })
               .catch((error: unknown) => {
-                logger.error(error, "Unable to enqueue Google welcome email");
+                logOutboxError(logger, error, "Unable to enqueue Google welcome email");
               });
           },
         },
@@ -85,7 +90,7 @@ export function createAuthConfig(
             },
           })
           .catch((error: unknown) => {
-            logger.error(error, "Unable to enqueue email verification message");
+            logOutboxError(logger, error, "Unable to enqueue email verification message");
           });
       },
       afterEmailVerification: async (user) => {
@@ -96,7 +101,7 @@ export function createAuthConfig(
             name: user.name,
           })
           .catch((error: unknown) => {
-            logger.error(error, "Unable to enqueue welcome email");
+            logOutboxError(logger, error, "Unable to enqueue welcome email");
           });
       },
     },

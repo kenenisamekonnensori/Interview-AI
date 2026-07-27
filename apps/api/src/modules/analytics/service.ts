@@ -19,7 +19,10 @@ export class AnalyticsService {
         status: interview.status,
         interviewType: interview.interviewType,
         difficulty: interview.difficulty,
-        targetRole: interview.targetRole ?? interview.jobDescription?.title ?? null,
+        targetRole:
+          interview.targetRole ??
+          (interview.jobDescription?.deletedAt ? null : interview.jobDescription?.title) ??
+          null,
         durationMinutes: interview.durationMinutes,
         createdAt: interview.createdAt.toISOString(),
         completedAt: interview.completedAt?.toISOString() ?? null,
@@ -129,7 +132,7 @@ type AnalyticsReportRow = {
   id: string;
   interviewType: string;
   targetRole: string | null;
-  jobDescription: { title: string | null } | null;
+  jobDescription: { title: string | null; deletedAt: Date | null } | null;
   report: { evaluation: unknown } | null;
   completedAt: Date | null;
 };
@@ -153,7 +156,8 @@ function reportDto(row: ValidAnalyticsReportRow) {
   return {
     interviewId: row.id,
     interviewType: row.interviewType,
-    targetRole: row.targetRole ?? row.jobDescription?.title ?? null,
+    targetRole:
+      row.targetRole ?? (row.jobDescription?.deletedAt ? null : row.jobDescription?.title) ?? null,
     completedAt: row.completedAt!.toISOString(),
     evaluation: row.evaluation,
   };

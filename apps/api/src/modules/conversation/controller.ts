@@ -12,6 +12,8 @@ import {
 } from "./schema.js";
 import { ConversationError, ConversationService } from "./service.js";
 import { InterviewLifecycleError, type InterviewService } from "../interviews/service.js";
+import { logSafeError } from "../../services/security.js";
+import { observability } from "../../services/observability.js";
 
 function sendConversationError(
   reply: { status: (code: number) => { send: (payload: unknown) => unknown } },
@@ -78,7 +80,12 @@ export function registerConversationRoutes(
           .status(400)
           .send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
       try {
-        return await service.createVoiceToken(params.data.id, request.authContext!.user.id);
+        const token = await service.createVoiceToken(params.data.id, request.authContext!.user.id);
+        observability().event("voice.token.created", {
+          requestId: request.id,
+          interviewId: params.data.id,
+        });
+        return token;
       } catch (error) {
         if (error instanceof DeepgramConfigurationError)
           return reply
@@ -123,12 +130,12 @@ export function registerConversationRoutes(
       } catch (error) {
         if (error instanceof ConversationError) return sendConversationError(reply, error);
         if (error instanceof AiProviderError) {
-          request.log.error(
-            { category: error.category, diagnostic: error.diagnostic },
-            "AI conversation response failed",
-          );
+          logSafeError(request.log, "AI conversation response failed", error, {
+            category: error.category,
+            diagnostic: error.diagnostic,
+          });
         } else {
-          request.log.error({ err: error }, "AI conversation response failed");
+          logSafeError(request.log, "AI conversation response failed", error);
         }
         return reply.status(502).send({
           code: "AI_RESPONSE_FAILED",

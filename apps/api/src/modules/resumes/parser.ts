@@ -10,6 +10,22 @@ export class ResumeParseError extends Error {
   }
 }
 
+function hasPrefix(bytes: Uint8Array, prefix: readonly number[]) {
+  return prefix.every((value, index) => bytes[index] === value);
+}
+
+export function assertResumeMimeMatchesContent(bytes: Uint8Array, mimeType: string) {
+  const matchesPdf = hasPrefix(bytes, [0x25, 0x50, 0x44, 0x46, 0x2d]);
+  const matchesZip = hasPrefix(bytes, [0x50, 0x4b, 0x03, 0x04]);
+  if (
+    (mimeType === "application/pdf" && !matchesPdf) ||
+    (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" &&
+      !matchesZip)
+  ) {
+    throw new ResumeParseError();
+  }
+}
+
 function normalizeText(text: string) {
   return text
     .replace(/\r\n/g, "\n")
@@ -20,6 +36,7 @@ function normalizeText(text: string) {
 
 export async function extractResumeText(bytes: Uint8Array, mimeType: string) {
   try {
+    assertResumeMimeMatchesContent(bytes, mimeType);
     const rawText =
       mimeType === "application/pdf"
         ? (await new PDFParse({ data: bytes }).getText()).text

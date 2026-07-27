@@ -22,7 +22,10 @@ export function createResumeService({
     async requestUpload(userId: string, input: CreateResumeUploadInput) {
       const storageKey = createResumeStorageKey(userId, input.fileName);
       const resume = await repository.create({ userId, storageKey, ...input });
-      const upload = await createResumeUploadUrl(environment, storageKey, input.mimeType);
+      const upload = await createResumeUploadUrl(environment, storageKey, input.mimeType, {
+        userId,
+        resumeId: resume.id,
+      });
       return { resume, upload };
     },
     list: (userId: string, includePending: boolean) => repository.list(userId, includePending),

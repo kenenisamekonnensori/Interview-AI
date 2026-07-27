@@ -93,6 +93,7 @@ export function registerJobDescriptionRoutes(
           kind: "job-description",
           jobDescriptionId: job.id,
           userId: job.userId,
+          correlationId: request.id,
         });
       }
       return reply.status(202).send({ status: "ANALYZING" });

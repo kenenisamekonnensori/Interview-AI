@@ -94,7 +94,7 @@ export class InterviewService {
     });
   }
 
-  async prepare(id: string, userId: string) {
+  async prepare(id: string, userId: string, correlationId?: string) {
     const interview = await this.repository.findOwned(id, userId);
     if (!interview)
       throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
@@ -119,7 +119,12 @@ export class InterviewService {
         "This interview cannot be prepared.",
       );
     }
-    await this.queue.enqueue({ kind: "interview-plan", interviewId: id, userId });
+    await this.queue.enqueue({
+      kind: "interview-plan",
+      interviewId: id,
+      userId,
+      ...(correlationId ? { correlationId } : {}),
+    });
     return { status: "PREPARING" as const };
   }
 

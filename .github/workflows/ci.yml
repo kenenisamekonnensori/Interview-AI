@@ -126,6 +126,14 @@ jobs:
       - name: Run automated tests
         run: pnpm test
 
+      # Build production images without credentials. This validates Dockerfile workspace inputs
+      # and the independently deployable API/worker and web artifacts.
+      - name: Build API and worker image
+        run: docker build --file apps/api/Dockerfile --tag interviewer-ai-api:ci .
+
+      - name: Build web image
+        run: docker build --file apps/web/Dockerfile --build-arg NEXT_PUBLIC_API_URL=https://api.example.invalid --tag interviewer-ai-web:ci .
+
       # Fail on known moderate, high, or critical production/development dependency advisories.
       # - name: Audit dependencies (moderate and above)
       #   run: pnpm audit --audit-level=moderate
