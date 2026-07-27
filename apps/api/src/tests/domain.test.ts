@@ -25,6 +25,10 @@ import {
   recoveryForAiResponseFailure,
   replayGeneratedResponse,
 } from "../modules/conversation/recovery.js";
+import {
+  DeepgramConfigurationError,
+  grantDeepgramAccessToken,
+} from "../modules/conversation/deepgram.js";
 
 const firstTurn = "11111111-1111-4111-8111-111111111111";
 const secondTurn = "22222222-2222-4222-8222-222222222222";
@@ -81,6 +85,30 @@ test("an interview can end after an AI failure without reopening the conversatio
   assert.doesNotThrow(() => assertConversationTransition("THINKING", "CLOSING"));
   assert.doesNotThrow(() => assertConversationTransition("CLOSING", "COMPLETED"));
   assert.throws(() => assertConversationTransition("COMPLETED", "THINKING"));
+});
+
+test("an unavailable voice token is explicit so a client can switch to text", async () => {
+  await assert.rejects(
+    grantDeepgramAccessToken({ DEEPGRAM_API_KEY: undefined } as never),
+    DeepgramConfigurationError,
+  );
+});
+
+test("a typed answer follows the same full conversation turn transitions", () => {
+  assert.doesNotThrow(() => assertConversationTransition("LISTENING", "TRANSCRIBING"));
+  assert.doesNotThrow(() => assertConversationTransition("TRANSCRIBING", "THINKING"));
+  assert.doesNotThrow(() => assertConversationTransition("THINKING", "SPEAKING"));
+  assert.doesNotThrow(() => assertConversationTransition("SPEAKING", "LISTENING"));
+});
+
+test("voice and playback failures can continue through the normal acknowledgement transition", () => {
+  assert.doesNotThrow(() => assertConversationTransition("SPEAKING", "LISTENING"));
+  assert.doesNotThrow(() => assertConversationTransition("LISTENING", "TRANSCRIBING"));
+});
+
+test("text submission is prevented outside the server-owned listening state", () => {
+  assert.throws(() => assertConversationTransition("SPEAKING", "TRANSCRIBING"));
+  assert.throws(() => assertConversationTransition("THINKING", "TRANSCRIBING"));
 });
 
 test("interview, resume, and job inputs enforce documented limits", () => {

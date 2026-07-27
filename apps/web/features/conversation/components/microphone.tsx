@@ -12,9 +12,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { ApiError, apiClient } from "@/lib/api-client";
 import { webEnvironment } from "@/lib/env";
+import { canSubmitTypedAnswer } from "@/features/conversation/typed-mode";
 
 export type VoiceSessionState =
   "IDLE" | "CONNECTING" | "LISTENING" | "THINKING" | "SPEAKING" | "RECONNECTING" | "ERROR";
+export type InterviewMode = "VOICE" | "TEXT";
 type DeepgramResult = {
   channel?: { alternatives?: Array<{ transcript?: string }> };
   is_final?: boolean;
@@ -41,6 +43,7 @@ export function InterviewMicrophone({
   onSessionStateChange,
   onEndInterview,
   onResponseRecovered,
+  onModeChange,
 }: {
   interviewId: string;
   disabled?: boolean;
@@ -48,6 +51,7 @@ export function InterviewMicrophone({
   onSessionStateChange?: (state: VoiceSessionState) => void;
   onEndInterview?: () => void;
   onResponseRecovered?: () => void;
+  onModeChange?: (mode: InterviewMode) => void;
 }) {
   const [state, setState] = useState<VoiceSessionState>("IDLE");
   const [transcript, setTranscript] = useState<string[]>([]);
@@ -56,6 +60,8 @@ export function InterviewMicrophone({
   const [recovery, setRecovery] = useState<AiResponseRecovery | null>(null);
   const [typingMode, setTypingMode] = useState(false);
   const [typedAnswer, setTypedAnswer] = useState("");
+  const [mode, setMode] = useState<InterviewMode>("VOICE");
+  const [voiceFallback, setVoiceFallback] = useState<string | null>(null);
   const connectionRef = useRef<LiveConnection | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -69,6 +75,7 @@ export function InterviewMicrophone({
   const playbackVersionRef = useRef(0);
   const recoveryRef = useRef<AiResponseRecovery | null>(null);
   const displayedAiTurnIdsRef = useRef(new Set<string>());
+  const latestAiTurnRef = useRef<string | null>(null);
 
   const active = state !== "IDLE" && state !== "ERROR";
   function updateState(next: VoiceSessionState) {
@@ -79,6 +86,11 @@ export function InterviewMicrophone({
   function updateRecovery(next: AiResponseRecovery | null) {
     recoveryRef.current = next;
     setRecovery(next);
+  }
+
+  function updateMode(next: InterviewMode) {
+    setMode(next);
+    onModeChange?.(next);
   }
 
   useEffect(() => () => cleanupSession(), []);
@@ -114,6 +126,20 @@ export function InterviewMicrophone({
     updateRecovery(null);
     setTypingMode(false);
     displayedAiTurnIdsRef.current.clear();
+    latestAiTurnRef.current = null;
+  }
+
+  function stopVoiceTransport() {
+    sessionRef.current += 1;
+    if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
+    reconnectTimerRef.current = null;
+    clearAudio();
+    recorderRef.current?.stop();
+    recorderRef.current = null;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    connectionRef.current?.close();
+    connectionRef.current = null;
   }
 
   function assertBrowserSupport() {
@@ -130,8 +156,8 @@ export function InterviewMicrophone({
     return mimeType ? { mimeType } : undefined;
   }
 
-  async function start() {
-    if (active || disabled) return;
+  async function startVoice() {
+    if ((active && mode === "VOICE") || disabled) return;
     try {
       assertBrowserSupport();
       if (state === "ERROR") cleanupSession();
@@ -139,6 +165,9 @@ export function InterviewMicrophone({
       sessionRef.current = session;
       reconnectAttemptsRef.current = 0;
       setError(null);
+      setVoiceFallback(null);
+      updateMode("VOICE");
+      setTypingMode(false);
       updateRecovery(null);
       updateState("CONNECTING");
       const conversation = await apiClient<ConversationStartResponse>(
@@ -146,24 +175,89 @@ export function InterviewMicrophone({
         { method: "POST" },
       );
       onStarted?.();
+      const greeting = await resolvePendingAiTurn(conversation);
+      if (greeting) appendAiTranscript(greeting.turn);
       streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
       await connectVoice(session);
-      if (conversation.greeting) {
-        appendAiTranscript(conversation.greeting.turn);
-        await playAiTurn(conversation.greeting.turn.id, session);
-      } else if (conversation.conversation.state === "GREETING") {
-        const greeting = await apiClient<GeneratedTurn>(
-          `/api/v1/interviews/${interviewId}/conversation/next-response`,
-          { method: "POST" },
-        );
-        appendAiTranscript(greeting.turn);
+      if (greeting) {
         await playAiTurn(greeting.turn.id, session);
       } else {
         updateState("LISTENING");
       }
     } catch (cause) {
-      cleanupSession();
+      stopVoiceTransport();
       setError(cause instanceof Error ? cause.message : "Could not start the microphone.");
+      setVoiceFallback("Voice is unavailable. You can continue by typing.");
+      updateState("ERROR");
+    }
+  }
+
+  async function startText() {
+    if (disabled) return;
+    try {
+      stopVoiceTransport();
+      const session = sessionRef.current + 1;
+      sessionRef.current = session;
+      updateMode("TEXT");
+      setTypingMode(true);
+      setError(null);
+      setVoiceFallback(null);
+      updateState("CONNECTING");
+      const conversation = await apiClient<ConversationStartResponse>(
+        `/api/v1/interviews/${interviewId}/conversation/start`,
+        { method: "POST" },
+      );
+      onStarted?.();
+      const greeting = await resolvePendingAiTurn(conversation);
+      if (greeting) {
+        appendAiTranscript(greeting.turn);
+        await acknowledgeTextTurn(greeting.turn.id);
+      } else {
+        updateState("LISTENING");
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not start text mode.");
+      updateState("ERROR");
+    }
+  }
+
+  async function resolvePendingAiTurn(conversation: ConversationStartResponse) {
+    if (conversation.greeting) return conversation.greeting;
+    if (["GREETING", "SPEAKING"].includes(conversation.conversation.state)) {
+      return apiClient<GeneratedTurn>(
+        `/api/v1/interviews/${interviewId}/conversation/next-response`,
+        {
+          method: "POST",
+        },
+      );
+    }
+    return null;
+  }
+
+  async function acknowledgeTextTurn(turnId: string) {
+    await apiClient(
+      `/api/v1/interviews/${interviewId}/conversation/turns/${turnId}/playback-completed`,
+      { method: "POST" },
+    );
+    updateState("LISTENING");
+  }
+
+  async function switchToText() {
+    if (disabled) return;
+    stopVoiceTransport();
+    updateMode("TEXT");
+    setTypingMode(true);
+    setVoiceFallback(null);
+    setError(null);
+    const turnId = latestAiTurnRef.current;
+    if (!turnId) {
+      if (state === "IDLE" || state === "ERROR") await startText();
+      return;
+    }
+    try {
+      await acknowledgeTextTurn(turnId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not continue in text mode.");
       updateState("ERROR");
     }
   }
@@ -207,7 +301,9 @@ export function InterviewMicrophone({
   function scheduleReconnect(session: number) {
     if (session !== sessionRef.current || state === "IDLE" || state === "ERROR") return;
     if (reconnectAttemptsRef.current >= reconnectLimit) {
-      setError("Voice connection was lost. You can reconnect without restarting the interview.");
+      stopVoiceTransport();
+      setError("Voice connection was lost.");
+      setVoiceFallback("You can continue this interview by typing, or try voice again later.");
       updateState("ERROR");
       return;
     }
@@ -295,12 +391,8 @@ export function InterviewMicrophone({
       appendAiTranscript(next.turn);
       onResponseRecovered?.();
       if (continueByTyping) {
-        await apiClient(
-          `/api/v1/interviews/${interviewId}/conversation/turns/${next.turn.id}/playback-completed`,
-          { method: "POST" },
-        );
+        await acknowledgeTextTurn(next.turn.id);
         setTypingMode(true);
-        updateState("LISTENING");
         return;
       }
       await playAiTurn(next.turn.id, session);
@@ -319,7 +411,7 @@ export function InterviewMicrophone({
 
   async function submitTypedAnswer() {
     const text = typedAnswer.trim();
-    if (!text || state !== "LISTENING" || finalizingRef.current) return;
+    if (!canSubmitTypedAnswer(state, text, finalizingRef.current)) return;
     finalizingRef.current = true;
     setTypedAnswer("");
     setTranscript((turns) => [...turns, `You: ${text}`]);
@@ -345,6 +437,7 @@ export function InterviewMicrophone({
   }
 
   function appendAiTranscript(turn: GeneratedTurn["turn"]) {
+    latestAiTurnRef.current = turn.id;
     if (displayedAiTurnIdsRef.current.has(turn.id)) return;
     displayedAiTurnIdsRef.current.add(turn.id);
     setTranscript((turns) => [...turns, `Interviewer: ${turn.text}`]);
@@ -355,7 +448,10 @@ export function InterviewMicrophone({
       `${webEnvironment.NEXT_PUBLIC_API_URL}/api/v1/interviews/${interviewId}/conversation/turns/${turnId}/audio`,
       { credentials: "include" },
     );
-    if (!response.ok) throw new Error("The interviewer response could not be played.");
+    if (!response.ok) {
+      showPlaybackFallback(turnId);
+      return;
+    }
     if (session !== sessionRef.current) return;
     clearAudio();
     const version = playbackVersionRef.current;
@@ -382,12 +478,25 @@ export function InterviewMicrophone({
         });
     };
     audio.onerror = () => {
-      if (session === sessionRef.current) {
-        setError("The interviewer audio could not be played. You can reconnect and continue.");
-        updateState("ERROR");
-      }
+      if (session === sessionRef.current) showPlaybackFallback(turnId);
     };
-    await audio.play();
+    try {
+      await audio.play();
+    } catch {
+      showPlaybackFallback(turnId);
+    }
+  }
+
+  function showPlaybackFallback(turnId: string) {
+    latestAiTurnRef.current = turnId;
+    clearAudio();
+    setTypingMode(false);
+    updateMode("TEXT");
+    setError(
+      "Audio playback is unavailable. The interviewer’s question is shown in the transcript.",
+    );
+    setVoiceFallback("Continue to acknowledge the question and type your answer.");
+    updateState("SPEAKING");
   }
 
   function stop() {
@@ -410,7 +519,10 @@ export function InterviewMicrophone({
   return (
     <div className="rounded-xl border border-border p-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Button onClick={active ? stop : start} disabled={disabled || state === "CONNECTING"}>
+        <Button
+          onClick={mode === "VOICE" && active ? stop : () => void startVoice()}
+          disabled={disabled || state === "CONNECTING"}
+        >
           {state === "CONNECTING" || state === "RECONNECTING" ? (
             <Mic className="size-4" />
           ) : active ? (
@@ -418,14 +530,21 @@ export function InterviewMicrophone({
           ) : (
             <Mic className="size-4" />
           )}
-          {state === "CONNECTING" ? "Connecting…" : active ? "Stop microphone" : "Start microphone"}
+          {state === "CONNECTING"
+            ? "Connecting…"
+            : mode === "VOICE" && active
+              ? "Stop microphone"
+              : "Voice"}
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => void switchToText()} disabled={disabled}>
+          Type instead
         </Button>
         {state === "RECONNECTING" || state === "CONNECTING" ? (
           <LoaderCircle className="size-4 animate-spin text-primary" />
         ) : null}
         {state === "SPEAKING" ? <Volume2 className="size-4 text-primary" /> : null}
         {state === "ERROR" ? (
-          <Button size="sm" variant="outline" onClick={() => void start()} disabled={disabled}>
+          <Button size="sm" variant="outline" onClick={() => void startVoice()} disabled={disabled}>
             <RotateCw className="size-3" />
             Reconnect
           </Button>
@@ -435,6 +554,14 @@ export function InterviewMicrophone({
         {status}
       </p>
       {error ? <p className="mt-2 text-sm text-destructive">{error}</p> : null}
+      {voiceFallback ? (
+        <div className="mt-4 rounded-xl border border-border bg-muted/40 p-4">
+          <p className="text-sm text-muted-foreground">{voiceFallback}</p>
+          <Button className="mt-3" size="sm" onClick={() => void switchToText()}>
+            Continue in text mode
+          </Button>
+        </div>
+      ) : null}
       {recovery ? (
         <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-300/[.07] p-4">
           <p className="text-sm font-medium text-foreground">Your answer was saved.</p>
@@ -474,7 +601,7 @@ export function InterviewMicrophone({
             placeholder="Type your answer"
             aria-label="Type your answer"
           />
-          <Button type="submit" size="sm" disabled={!typedAnswer.trim()}>
+          <Button type="submit" size="sm" disabled={!canSubmitTypedAnswer(state, typedAnswer)}>
             Send
           </Button>
         </form>
@@ -486,6 +613,7 @@ export function InterviewMicrophone({
         <div
           className="mt-4 max-h-64 space-y-2 overflow-y-auto rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground"
           aria-live="polite"
+          aria-label="Interview transcript"
         >
           {transcript.map((turn, index) => (
             <p key={`${index}-${turn}`}>{turn}</p>

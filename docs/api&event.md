@@ -138,6 +138,10 @@ Event names and payload types are exported by `@interviewer-ai/types` as `Realti
 
 The current voice transport is Deepgram's browser WebSocket, with REST acknowledgements for finalized transcripts and playback completion. A future application WebSocket/SSE transport must publish this exact event union rather than inventing a second event vocabulary.
 
+### Typed interview fallback
+
+Typed answers use `POST /interviews/:id/conversation/transcripts` with the same validated `{ text, metadata? }` request as a finalized voice transcript. The web app may offer text mode when voice capture, transport, or playback is unavailable, but it may show a composer only while the authoritative conversation is `LISTENING`. Interviewer text remains visible in the shared transcript; when audio cannot play, the client acknowledges the persisted AI turn through `playback-completed` before accepting the next typed answer.
+
 ---
 
 # AI Function Calls
