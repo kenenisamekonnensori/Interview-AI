@@ -213,6 +213,19 @@ export const apiErrorSchema = z.object({
 });
 export type ApiErrorShape = z.infer<typeof apiErrorSchema>;
 
+/** Safe, application-level guidance supplied when a persisted candidate turn awaits an AI turn. */
+export const aiResponseRecoverySchema = z.object({
+  transcriptSaved: z.literal(true),
+  conversationState: z.literal("THINKING"),
+  retryable: z.literal(true),
+  actions: z.object({
+    retry: z.literal(true),
+    continueByTyping: z.literal(true),
+    endInterview: z.literal(true),
+  }),
+});
+export type AiResponseRecovery = z.infer<typeof aiResponseRecoverySchema>;
+
 export const realtimeEventNames = [
   "InterviewStarted",
   "UserSpeechStarted",

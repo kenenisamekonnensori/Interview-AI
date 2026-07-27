@@ -21,4 +21,5 @@ export type ConversationSessionContext = {
 export type ConversationResult = {
   turn: ConversationTurnRecord;
   state: ConversationState;
+  replayed?: boolean;
 };

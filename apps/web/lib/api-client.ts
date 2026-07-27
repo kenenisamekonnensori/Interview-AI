@@ -12,12 +12,14 @@ type ApiErrorBody = Partial<ApiErrorShape>;
 export class ApiError extends Error {
   readonly code: string | undefined;
   readonly status: number;
+  readonly details: ApiErrorShape["details"];
 
-  constructor({ code, message, status }: ApiErrorBody & { status: number }) {
+  constructor({ code, message, details, status }: ApiErrorBody & { status: number }) {
     super(message ?? "The request could not be completed.");
     this.name = "ApiError";
     this.code = code;
     this.status = status;
+    this.details = details;
   }
 }
 

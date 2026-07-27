@@ -20,6 +20,11 @@ import { serverEnvironmentSchema } from "@interviewer-ai/config";
 import { createRequestId, redactObservabilityAttributes } from "../services/observability.js";
 import { classifyQueueFailure, processQueueJob } from "../services/queue-worker.js";
 import { deleteOwnedAccount } from "../services/account-deletion.js";
+import {
+  pendingAiResponseRecovery,
+  recoveryForAiResponseFailure,
+  replayGeneratedResponse,
+} from "../modules/conversation/recovery.js";
 
 const firstTurn = "11111111-1111-4111-8111-111111111111";
 const secondTurn = "22222222-2222-4222-8222-222222222222";
@@ -44,6 +49,38 @@ test("conversation lifecycle rejects terminal and skipped states", () => {
   assert.doesNotThrow(() => assertConversationTransition("LISTENING", "CLOSING"));
   assert.throws(() => assertConversationTransition("COMPLETED", "LISTENING"));
   assert.throws(() => assertConversationTransition("LISTENING", "SPEAKING"));
+});
+
+test("AI failure after transcript persistence returns safe recovery while keeping THINKING", () => {
+  assert.deepEqual(recoveryForAiResponseFailure("THINKING"), pendingAiResponseRecovery);
+  assert.equal(pendingAiResponseRecovery.transcriptSaved, true);
+  assert.equal(pendingAiResponseRecovery.retryable, true);
+  assert.equal(recoveryForAiResponseFailure("SPEAKING"), null);
+});
+
+test("a pending response retry advances from THINKING to SPEAKING only after an AI turn exists", () => {
+  assert.doesNotThrow(() => assertConversationTransition("THINKING", "SPEAKING"));
+  assert.throws(() => assertConversationTransition("THINKING", "LISTENING"));
+});
+
+test("repeated response retries replay the persisted AI turn without creating another turn", () => {
+  const turn = {
+    id: firstTurn,
+    sequence: 4,
+    speaker: "AI" as const,
+    type: "QUESTION" as const,
+    text: "What trade-offs did you consider?",
+    createdAt: new Date("2026-07-27T00:00:00.000Z"),
+  };
+  const result = replayGeneratedResponse("SPEAKING", [turn]);
+  assert.deepEqual(result, { turn, state: "SPEAKING", replayed: true });
+  assert.equal(replayGeneratedResponse("THINKING", [turn]), null);
+});
+
+test("an interview can end after an AI failure without reopening the conversation", () => {
+  assert.doesNotThrow(() => assertConversationTransition("THINKING", "CLOSING"));
+  assert.doesNotThrow(() => assertConversationTransition("CLOSING", "COMPLETED"));
+  assert.throws(() => assertConversationTransition("COMPLETED", "THINKING"));
 });
 
 test("interview, resume, and job inputs enforce documented limits", () => {

@@ -3,10 +3,14 @@
 import { DeepgramClient } from "@deepgram/sdk";
 import { LoaderCircle, Mic, MicOff, RotateCw, Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { FinalizeTranscriptRequest } from "@interviewer-ai/types";
+import {
+  aiResponseRecoverySchema,
+  type AiResponseRecovery,
+  type FinalizeTranscriptRequest,
+} from "@interviewer-ai/types";
 
 import { Button } from "@/components/ui/button";
-import { apiClient } from "@/lib/api-client";
+import { ApiError, apiClient } from "@/lib/api-client";
 import { webEnvironment } from "@/lib/env";
 
 export type VoiceSessionState =
@@ -35,16 +39,23 @@ export function InterviewMicrophone({
   disabled = false,
   onStarted,
   onSessionStateChange,
+  onEndInterview,
+  onResponseRecovered,
 }: {
   interviewId: string;
   disabled?: boolean;
   onStarted?: () => void;
   onSessionStateChange?: (state: VoiceSessionState) => void;
+  onEndInterview?: () => void;
+  onResponseRecovered?: () => void;
 }) {
   const [state, setState] = useState<VoiceSessionState>("IDLE");
   const [transcript, setTranscript] = useState<string[]>([]);
   const [partialTranscript, setPartialTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [recovery, setRecovery] = useState<AiResponseRecovery | null>(null);
+  const [typingMode, setTypingMode] = useState(false);
+  const [typedAnswer, setTypedAnswer] = useState("");
   const connectionRef = useRef<LiveConnection | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -56,11 +67,18 @@ export function InterviewMicrophone({
   const finalizingRef = useRef(false);
   const speakingNotifiedRef = useRef(false);
   const playbackVersionRef = useRef(0);
+  const recoveryRef = useRef<AiResponseRecovery | null>(null);
+  const displayedAiTurnIdsRef = useRef(new Set<string>());
 
   const active = state !== "IDLE" && state !== "ERROR";
   function updateState(next: VoiceSessionState) {
     setState(next);
     onSessionStateChange?.(next);
+  }
+
+  function updateRecovery(next: AiResponseRecovery | null) {
+    recoveryRef.current = next;
+    setRecovery(next);
   }
 
   useEffect(() => () => cleanupSession(), []);
@@ -93,6 +111,9 @@ export function InterviewMicrophone({
     connectionRef.current = null;
     finalizingRef.current = false;
     speakingNotifiedRef.current = false;
+    updateRecovery(null);
+    setTypingMode(false);
+    displayedAiTurnIdsRef.current.clear();
   }
 
   function assertBrowserSupport() {
@@ -118,6 +139,7 @@ export function InterviewMicrophone({
       sessionRef.current = session;
       reconnectAttemptsRef.current = 0;
       setError(null);
+      updateRecovery(null);
       updateState("CONNECTING");
       const conversation = await apiClient<ConversationStartResponse>(
         `/api/v1/interviews/${interviewId}/conversation/start`,
@@ -127,14 +149,14 @@ export function InterviewMicrophone({
       streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
       await connectVoice(session);
       if (conversation.greeting) {
-        setTranscript((turns) => [...turns, `Interviewer: ${conversation.greeting!.turn.text}`]);
+        appendAiTranscript(conversation.greeting.turn);
         await playAiTurn(conversation.greeting.turn.id, session);
       } else if (conversation.conversation.state === "GREETING") {
         const greeting = await apiClient<GeneratedTurn>(
           `/api/v1/interviews/${interviewId}/conversation/next-response`,
           { method: "POST" },
         );
-        setTranscript((turns) => [...turns, `Interviewer: ${greeting.turn.text}`]);
+        appendAiTranscript(greeting.turn);
         await playAiTurn(greeting.turn.id, session);
       } else {
         updateState("LISTENING");
@@ -219,7 +241,7 @@ export function InterviewMicrophone({
   }
 
   async function handleTranscript(message: unknown, session: number) {
-    if (session !== sessionRef.current) return;
+    if (session !== sessionRef.current || recoveryRef.current) return;
     const result = message as DeepgramResult;
     const text = result.channel?.alternatives?.[0]?.transcript?.trim();
     if (!text) return;
@@ -240,15 +262,16 @@ export function InterviewMicrophone({
         method: "POST",
         body: { text } satisfies FinalizeTranscriptRequest,
       });
-      const next = await apiClient<GeneratedTurn>(
-        `/api/v1/interviews/${interviewId}/conversation/next-response`,
-        { method: "POST" },
-      );
-      if (session !== sessionRef.current) return;
-      setTranscript((turns) => [...turns, `Interviewer: ${next.turn.text}`]);
-      await playAiTurn(next.turn.id, session);
+      await requestPendingResponse(session);
     } catch (cause) {
       if (session === sessionRef.current) {
+        const nextRecovery = getAiResponseRecovery(cause);
+        if (nextRecovery) {
+          setError(null);
+          updateRecovery(nextRecovery);
+          updateState("THINKING");
+          return;
+        }
         setError(
           cause instanceof Error
             ? cause.message
@@ -259,6 +282,72 @@ export function InterviewMicrophone({
     } finally {
       finalizingRef.current = false;
     }
+  }
+
+  async function requestPendingResponse(session: number, continueByTyping = false) {
+    try {
+      const next = await apiClient<GeneratedTurn>(
+        `/api/v1/interviews/${interviewId}/conversation/next-response`,
+        { method: "POST" },
+      );
+      if (session !== sessionRef.current) return;
+      updateRecovery(null);
+      appendAiTranscript(next.turn);
+      onResponseRecovered?.();
+      if (continueByTyping) {
+        await apiClient(
+          `/api/v1/interviews/${interviewId}/conversation/turns/${next.turn.id}/playback-completed`,
+          { method: "POST" },
+        );
+        setTypingMode(true);
+        updateState("LISTENING");
+        return;
+      }
+      await playAiTurn(next.turn.id, session);
+    } catch (cause) {
+      const nextRecovery = getAiResponseRecovery(cause);
+      if (nextRecovery) {
+        setError(null);
+        updateRecovery(nextRecovery);
+        updateState("THINKING");
+        return;
+      }
+      setError(cause instanceof Error ? cause.message : "Could not generate the next question.");
+      updateState("ERROR");
+    }
+  }
+
+  async function submitTypedAnswer() {
+    const text = typedAnswer.trim();
+    if (!text || state !== "LISTENING" || finalizingRef.current) return;
+    finalizingRef.current = true;
+    setTypedAnswer("");
+    setTranscript((turns) => [...turns, `You: ${text}`]);
+    updateState("THINKING");
+    try {
+      await apiClient(`/api/v1/interviews/${interviewId}/conversation/transcripts`, {
+        method: "POST",
+        body: { text } satisfies FinalizeTranscriptRequest,
+      });
+      await requestPendingResponse(sessionRef.current, true);
+    } catch (cause) {
+      const nextRecovery = getAiResponseRecovery(cause);
+      if (nextRecovery) {
+        updateRecovery(nextRecovery);
+        updateState("THINKING");
+      } else {
+        setError(cause instanceof Error ? cause.message : "Could not save your typed response.");
+        updateState("ERROR");
+      }
+    } finally {
+      finalizingRef.current = false;
+    }
+  }
+
+  function appendAiTranscript(turn: GeneratedTurn["turn"]) {
+    if (displayedAiTurnIdsRef.current.has(turn.id)) return;
+    displayedAiTurnIdsRef.current.add(turn.id);
+    setTranscript((turns) => [...turns, `Interviewer: ${turn.text}`]);
   }
 
   async function playAiTurn(turnId: string, session: number) {
@@ -346,6 +435,50 @@ export function InterviewMicrophone({
         {status}
       </p>
       {error ? <p className="mt-2 text-sm text-destructive">{error}</p> : null}
+      {recovery ? (
+        <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-300/[.07] p-4">
+          <p className="text-sm font-medium text-foreground">Your answer was saved.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            We could not generate the next question right now. You can safely try again, switch to
+            typing, or finish this interview and get feedback.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => void requestPendingResponse(sessionRef.current)}>
+              Try again
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void requestPendingResponse(sessionRef.current, true)}
+            >
+              Continue by typing
+            </Button>
+            <Button size="sm" variant="ghost" onClick={onEndInterview}>
+              End interview and get feedback
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {typingMode && state === "LISTENING" ? (
+        <form
+          className="mt-4 flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitTypedAnswer();
+          }}
+        >
+          <input
+            className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            value={typedAnswer}
+            onChange={(event) => setTypedAnswer(event.target.value)}
+            placeholder="Type your answer"
+            aria-label="Type your answer"
+          />
+          <Button type="submit" size="sm" disabled={!typedAnswer.trim()}>
+            Send
+          </Button>
+        </form>
+      ) : null}
       {partialTranscript ? (
         <p className="mt-3 text-sm italic text-muted-foreground">Listening: {partialTranscript}</p>
       ) : null}
@@ -361,4 +494,11 @@ export function InterviewMicrophone({
       ) : null}
     </div>
   );
+}
+
+function getAiResponseRecovery(cause: unknown): AiResponseRecovery | null {
+  if (!(cause instanceof ApiError) || cause.code !== "AI_RESPONSE_FAILED") return null;
+  const recovery = cause.details?.recovery;
+  const parsed = aiResponseRecoverySchema.safeParse(recovery);
+  return parsed.success ? parsed.data : null;
 }

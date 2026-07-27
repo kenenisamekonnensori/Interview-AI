@@ -141,6 +141,8 @@ export default function LiveInterviewPage() {
                   disabled={end.isPending}
                   onStarted={() => client.invalidateQueries({ queryKey })}
                   onSessionStateChange={setVoiceState}
+                  onEndInterview={() => end.mutate()}
+                  onResponseRecovered={() => client.invalidateQueries({ queryKey })}
                 />
               </div>
             )}
