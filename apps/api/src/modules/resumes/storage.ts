@@ -102,6 +102,33 @@ export async function createResumeUploadUrl(
   };
 }
 
+export async function uploadResumeObject(
+  environment: ServerEnvironment,
+  key: string,
+  contents: Uint8Array,
+  owner: { mimeType: string; userId: string; resumeId: string },
+) {
+  const configuration = getR2Configuration(environment);
+  try {
+    await observability().time("storage.r2.operation", { operation: "server-upload" }, () =>
+      createClient(configuration).send(
+        new PutObjectCommand({
+          Bucket: configuration.bucket,
+          Key: key,
+          Body: contents,
+          ContentType: owner.mimeType,
+          Metadata: {
+            [resumeOwnerMetadataKey]: owner.userId,
+            [resumeIdMetadataKey]: owner.resumeId,
+          },
+        }),
+      ),
+    );
+  } catch {
+    throw new ResumeStorageError();
+  }
+}
+
 export async function assertResumeObjectExists(
   environment: ServerEnvironment,
   key: string,

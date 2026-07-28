@@ -10,6 +10,7 @@ type ObservabilityLogger = {
 export type ObservabilityAttributes = Record<string, boolean | number | string | undefined>;
 export type Observability = {
   event: (name: string, attributes?: ObservabilityAttributes) => void;
+  error: (name: string, attributes: ObservabilityAttributes, error: Error) => void;
   metric: (name: string, value: number, attributes?: ObservabilityAttributes) => void;
   time: <T>(
     name: string,
@@ -48,6 +49,17 @@ function consoleObservability(logger: ObservabilityLogger): Observability {
     event: (name, attributes = {}) =>
       logger.info(
         { event: name, ...redactObservabilityAttributes(withCorrelation(attributes)) },
+        name,
+      ),
+    error: (name, attributes, error) =>
+      logger.error(
+        {
+          event: name,
+          errorType: error.name,
+          errorMessage: error.message,
+          errorStack: error.stack,
+          ...redactObservabilityAttributes(withCorrelation(attributes)),
+        },
         name,
       ),
     metric: (name, value, attributes = {}) =>

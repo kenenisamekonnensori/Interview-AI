@@ -1,3 +1,5 @@
+import "../load-environment.js";
+
 import { Worker } from "bullmq";
 import { serverEnvironmentSchema } from "@interviewer-ai/config";
 

@@ -53,7 +53,7 @@ Only these AI/voice environment variables are approved for the current stack:
 
 ```dotenv
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.5-flash-lite
+GEMINI_MODEL=gemini-3.5-flash-lite
 DEEPGRAM_API_KEY=
 ```
 

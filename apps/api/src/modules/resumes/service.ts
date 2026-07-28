@@ -6,6 +6,7 @@ import {
   createResumeStorageKey,
   createResumeUploadUrl,
   deleteResumeObject,
+  uploadResumeObject,
 } from "./storage.js";
 import type { CreateResumeUploadInput } from "./schema.js";
 
@@ -35,6 +36,21 @@ export function createResumeService({
       await assertResumeObjectExists(environment, resume.storageKey, resume);
       const completed = await repository.complete(resume.id);
       return (await repository.setActiveWhenNone(completed.id, userId)) ?? completed;
+    },
+    async uploadThroughApi(userId: string, id: string, contents: Uint8Array) {
+      const resume = await this.requireOwned(userId, id);
+      if (resume.status !== "PENDING_UPLOAD")
+        throw new ResumeConflictError(
+          "This resume has already been uploaded or cannot be uploaded.",
+        );
+      if (contents.byteLength !== resume.fileSize)
+        throw new ResumeConflictError("The uploaded file size does not match the selected resume.");
+      await uploadResumeObject(environment, resume.storageKey, contents, {
+        mimeType: resume.mimeType,
+        userId: resume.userId,
+        resumeId: resume.id,
+      });
+      return this.complete(userId, id);
     },
     async setActive(userId: string, id: string) {
       const resume = await this.requireOwned(userId, id);

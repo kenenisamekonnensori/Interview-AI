@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, LoaderCircle, Sparkles, Star, Trash2, Upload } from "lucide-react";
 import { useRef, useState, type ChangeEvent } from "react";
 
-import { apiClient } from "@/lib/api-client";
+import { apiBinaryClient, apiClient } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 
 const resumesQueryKey = ["resumes"] as const;
@@ -35,7 +35,17 @@ async function uploadResume(file: File) {
     method: "POST",
     body: payload,
   });
-  const response = await fetch(upload.url, { method: "PUT", headers: upload.headers, body: file });
+  let response: Response | null = null;
+  try {
+    response = await fetch(upload.url, { method: "PUT", headers: upload.headers, body: file });
+  } catch {
+    // Some networks or browser privacy settings cannot reach the storage origin directly.
+    // Use the authenticated API fallback, which applies the same ownership metadata and verification.
+    return apiBinaryClient<{ resume: Resume }>(`/api/v1/resumes/${resume.id}/content`, {
+      body: file,
+      contentType: file.type,
+    });
+  }
   if (!response.ok) throw new Error("Your file could not be uploaded. Please try again.");
   return apiClient<{ resume: Resume }>(`/api/v1/resumes/${resume.id}/complete`, { method: "POST" });
 }
@@ -63,7 +73,12 @@ export function ResumeManager() {
   });
   const remove = useMutation({
     mutationFn: (id: string) => apiClient(`/api/v1/resumes/${id}`, { method: "DELETE" }),
-    onSuccess: refresh,
+    onSuccess: () => {
+      setError(null);
+      refresh();
+    },
+    onError: (cause) =>
+      setError(cause instanceof Error ? cause.message : "Your resume could not be deleted."),
   });
   const analyze = useMutation({
     mutationFn: (id: string) => apiClient(`/api/v1/resumes/${id}/analyze`, { method: "POST" }),
@@ -111,7 +126,11 @@ export function ResumeManager() {
         onChange={onFileChange}
       />
       {error ? (
-        <p className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <p
+          aria-live="polite"
+          className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          role="alert"
+        >
           {error}
         </p>
       ) : null}
@@ -187,7 +206,7 @@ export function ResumeManager() {
                 variant="ghost"
                 aria-label={`Delete ${resume.fileName}`}
                 onClick={() => remove.mutate(resume.id)}
-                disabled={remove.isPending}
+                disabled={remove.isPending && remove.variables === resume.id}
               >
                 <Trash2 className="size-4" />
               </Button>

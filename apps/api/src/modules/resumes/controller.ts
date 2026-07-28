@@ -9,6 +9,12 @@ import type { PrismaClient } from "../../../prisma/generated/client.js";
 import type { createCareerAnalysisQueue } from "../../services/career-analysis-queue.js";
 import { observability } from "../../services/observability.js";
 
+const resumeContentTypes: string[] = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+];
+const maximumResumeFileSize = 10 * 1024 * 1024;
+
 export function registerResumeRoutes(
   app: FastifyInstance,
   {
@@ -21,6 +27,9 @@ export function registerResumeRoutes(
     queue: ReturnType<typeof createCareerAnalysisQueue>;
   },
 ) {
+  app.addContentTypeParser(resumeContentTypes, { parseAs: "buffer" }, (_request, body, done) =>
+    done(null, body),
+  );
   const service = createResumeService({ database, environment });
   const userId = (request: FastifyRequest) => request.authContext!.user.id;
   const handleError = (reply: FastifyReply, error: unknown) => {
@@ -90,6 +99,36 @@ export function registerResumeRoutes(
         });
       }
       return reply.status(202).send({ status: "ANALYZING" });
+    },
+  );
+
+  app.post(
+    "/api/v1/resumes/:id/content",
+    { preHandler: app.requireVerifiedUser, bodyLimit: maximumResumeFileSize },
+    async (request, reply) => {
+      const params = resumeIdSchema.safeParse(request.params);
+      if (!params.success)
+        return reply.status(400).send({ code: "VALIDATION_ERROR", message: "Invalid resume ID." });
+      if (!Buffer.isBuffer(request.body))
+        return reply.status(400).send({
+          code: "VALIDATION_ERROR",
+          message: "Upload the resume file as PDF or DOCX content.",
+        });
+      try {
+        const resume = await service.uploadThroughApi(
+          userId(request),
+          params.data.id,
+          request.body,
+        );
+        observability().event("resume.upload.completed", {
+          requestId: request.id,
+          resumeId: resume.id,
+          transport: "api-fallback",
+        });
+        return { resume: toResumeDto(resume) };
+      } catch (error) {
+        return handleError(reply, error);
+      }
     },
   );
 

@@ -1,3 +1,5 @@
+import "../load-environment.js";
+
 import { setTimeout as delay } from "node:timers/promises";
 
 import { serverEnvironmentSchema } from "@interviewer-ai/config";

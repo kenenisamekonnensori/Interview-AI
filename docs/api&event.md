@@ -92,6 +92,8 @@ All endpoints below are under `/api/v1`, require an authenticated verified user,
 | `PUT` | `/profile` | Profile/settings fields | Validates and updates reusable candidate context and preferences. Profile settings prefill future interviews but never override explicit interview fields. |
 | `GET` | `/interviews/:id/conversation/turns/:turnId/audio` | — | Synthesizes persisted AI text for playback. |
 
+Resume upload first creates an owned `PENDING_UPLOAD` record through `POST /resumes/uploads`. The browser normally uploads the supplied signed URL directly to object storage and calls `POST /resumes/:id/complete`. If that browser-to-storage request fails before receiving a response, the web app may instead send the same PDF or DOCX bytes to `POST /resumes/:id/content`; the API applies the same signed ownership metadata, stores the object, verifies it, and returns the ready resume. The fallback is authenticated, accepts at most 10 MB, and is not a second persistence model.
+
 Errors use `ApiErrorShape`: `{ code, message, details? }`. Invalid lifecycle changes return `409 INVALID_STATE_TRANSITION` (or a more specific lifecycle error); the current persisted state remains authoritative.
 
 ---

@@ -123,9 +123,9 @@ export class ReportService {
         text: turn.text,
         createdAt: turn.createdAt.toISOString(),
       }));
-      const generated = generatedReportSchema.parse(
-        await this.aiProvider.generateReport({
-          instructions: `${buildEvaluationPrompt()}\n${buildReportPrompt()} Return only the required JSON. Every evidence reference and evidenceTurnIds value must be a supplied transcript turn id. Do not make claims without transcript evidence.`,
+      const generated = await this.aiProvider.generateStructured(
+        {
+          instructions: `${buildEvaluationPrompt()}\n${buildReportPrompt()}`,
           context: {
             interview: {
               interviewType: interview.interviewType,
@@ -141,7 +141,8 @@ export class ReportService {
             memory: interview.memory,
             transcript: turns,
           },
-        }),
+        },
+        generatedReportSchema.parse,
       );
       const turnIds = new Set(turns.map((turn) => turn.id));
       validateScoreConsistency(generated.evaluation);

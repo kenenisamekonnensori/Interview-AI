@@ -20,6 +20,7 @@ import {
   setRequestCorrelationId,
 } from "./services/observability.js";
 import {
+  allowedCorsMethods,
   configuredCorsOrigins,
   logSafeError,
   sendSafeRateLimitError,
@@ -104,6 +105,7 @@ export function createApp() {
   app.register(cors, {
     origin: configuredCorsOrigins(environment),
     credentials: true,
+    methods: allowedCorsMethods,
   });
 
   const authIntegration = createAuthFastifyIntegration(auth, environment);

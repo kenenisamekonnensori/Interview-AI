@@ -2,6 +2,13 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 
 type SafeLogger = { error: (payload: unknown, message?: string) => unknown };
 
+/**
+ * Cross-origin browser requests must explicitly permit every REST method used
+ * by the application. In particular, JSON PUT/PATCH/DELETE requests require a
+ * successful CORS preflight before they reach an authenticated controller.
+ */
+export const allowedCorsMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
+
 export function configuredCorsOrigins(environment: {
   WEB_URL: string;
   CORS_ALLOWED_ORIGINS: string[];

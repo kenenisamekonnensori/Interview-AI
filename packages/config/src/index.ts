@@ -30,7 +30,7 @@ export const serverEnvironmentSchema = z
     GOOGLE_CLIENT_SECRET: z.string().min(1),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     GEMINI_API_KEY: optionalEnvironmentString,
-    GEMINI_MODEL: z.string().min(1).default("gemini-2.5-flash-lite"),
+    GEMINI_MODEL: z.string().min(1).default("gemini-3.5-flash-lite"),
     REDIS_URL: z.url(),
     RESEND_API_KEY: z.string().min(1),
     R2_ACCESS_KEY_ID: optionalEnvironmentString,
