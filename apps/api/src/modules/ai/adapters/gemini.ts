@@ -9,9 +9,7 @@ export class GeminiAdapter {
 
   async generateJson({ instructions, context }: AiStructuredRequest): Promise<unknown> {
     if (!this.environment.GEMINI_API_KEY)
-      throw new AiProviderError("CONFIGURATION", "The AI provider is not configured.", {
-        provider: "gemini",
-      });
+      return this.fail("CONFIGURATION", "The AI provider is not configured.");
     return observability().time(
       "ai.provider.call",
       { provider: "gemini", capability: "structured-json", model: this.environment.GEMINI_MODEL },
@@ -34,9 +32,9 @@ export class GeminiAdapter {
           }),
         },
       );
-    } catch {
-      throw new AiProviderError("TRANSIENT", "The AI provider could not be reached.", {
-        provider: "gemini",
+    } catch (cause) {
+      return this.fail("TRANSIENT", "The AI provider could not be reached.", {
+        transportErrorType: cause instanceof Error ? cause.name : "UnknownError",
       });
     }
     if (!response.ok) {
@@ -44,29 +42,55 @@ export class GeminiAdapter {
         response.status === 408 || response.status === 429 || response.status >= 500
           ? "TRANSIENT"
           : "PROVIDER";
-      throw new AiProviderError(category, "The AI provider returned an error.", {
-        provider: "gemini",
+      const providerRequestId =
+        response.headers.get("x-goog-request-id") ?? response.headers.get("x-request-id");
+      return this.fail(category, "The AI provider returned an error.", {
         status: response.status,
+        ...(providerRequestId ? { providerRequestId } : {}),
       });
     }
-    const body = (await response.json()) as {
+    let body: {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
     };
+    try {
+      body = (await response.json()) as typeof body;
+    } catch {
+      return this.fail("INVALID_OUTPUT", "The AI provider returned an invalid response.");
+    }
     const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text)
-      throw new AiProviderError(
-        "INVALID_OUTPUT",
-        "The AI provider returned no structured output.",
-        {
-          provider: "gemini",
-        },
-      );
+    if (!text) return this.fail("INVALID_OUTPUT", "The AI provider returned no structured output.");
     try {
       return JSON.parse(text) as unknown;
     } catch {
-      throw new AiProviderError("INVALID_OUTPUT", "The AI provider returned invalid JSON.", {
-        provider: "gemini",
-      });
+      return this.fail("INVALID_OUTPUT", "The AI provider returned invalid JSON.");
     }
+  }
+
+  private fail(
+    category: AiProviderError["category"],
+    message: string,
+    diagnostic: Omit<AiProviderError["diagnostic"], "provider"> & {
+      transportErrorType?: string;
+    } = {},
+  ): never {
+    const error = new AiProviderError(category, message, {
+      provider: "gemini",
+      ...(diagnostic.status !== undefined ? { status: diagnostic.status } : {}),
+      ...(diagnostic.providerRequestId ? { providerRequestId: diagnostic.providerRequestId } : {}),
+    });
+    observability().error(
+      "ai.provider.failed",
+      {
+        provider: "gemini",
+        capability: "structured-json",
+        model: this.environment.GEMINI_MODEL,
+        failureCategory: category,
+        providerStatus: diagnostic.status,
+        providerRequestId: diagnostic.providerRequestId,
+        transportErrorType: diagnostic.transportErrorType,
+      },
+      error,
+    );
+    throw error;
   }
 }

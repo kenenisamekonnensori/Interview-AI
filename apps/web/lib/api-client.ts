@@ -8,6 +8,12 @@ type ApiRequestOptions = Omit<RequestInit, "body" | "headers" | "method"> & {
 };
 
 type ApiErrorBody = Partial<ApiErrorShape>;
+type BinaryApiRequestOptions = Omit<RequestInit, "body" | "headers" | "method"> & {
+  body: BodyInit;
+  contentType: string;
+  headers?: HeadersInit;
+  method?: "POST" | "PUT";
+};
 
 export class ApiError extends Error {
   readonly code: string | undefined;
@@ -76,5 +82,33 @@ export async function apiClient<T>(
     });
   }
 
+  return responseBody as T;
+}
+
+export async function apiBinaryClient<T>(
+  path: string,
+  { body, contentType, headers, method = "POST", credentials, ...options }: BinaryApiRequestOptions,
+): Promise<T> {
+  const requestHeaders = new Headers(headers);
+  requestHeaders.set("Accept", "application/json");
+  requestHeaders.set("Content-Type", contentType);
+  const response = await fetch(buildUrl(path), {
+    ...options,
+    body,
+    credentials: credentials ?? "include",
+    headers: requestHeaders,
+    method,
+  });
+  const responseBody = await readResponseBody(response);
+  if (!response.ok) {
+    if (responseBody && typeof responseBody === "object") {
+      throw new ApiError({ ...(responseBody as ApiErrorBody), status: response.status });
+    }
+    throw new ApiError({
+      message:
+        typeof responseBody === "string" ? responseBody : "The request could not be completed.",
+      status: response.status,
+    });
+  }
   return responseBody as T;
 }

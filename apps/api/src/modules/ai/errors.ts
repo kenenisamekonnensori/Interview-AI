@@ -4,7 +4,12 @@ export class AiProviderError extends Error {
   constructor(
     readonly category: AiFailureCategory,
     message: string,
-    readonly diagnostic: { provider: string; status?: number; attempt?: number } = {
+    readonly diagnostic: {
+      provider: string;
+      status?: number;
+      attempt?: number;
+      providerRequestId?: string;
+    } = {
       provider: "unknown",
     },
   ) {

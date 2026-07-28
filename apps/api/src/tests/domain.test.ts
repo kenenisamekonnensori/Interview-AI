@@ -14,14 +14,20 @@ import { interviewerResponseProposalSchema } from "../modules/ai/output-schema.j
 import { AiProviderError } from "../modules/ai/errors.js";
 import { withAiRetry } from "../modules/ai/retry.js";
 import { RequestRateLimiter, requestRateLimitPolicy } from "../services/request-rate-limit.js";
-import { configuredCorsOrigins } from "../services/security.js";
+import { allowedCorsMethods, configuredCorsOrigins } from "../services/security.js";
 import { assertResumeMimeMatchesContent, ResumeParseError } from "../modules/resumes/parser.js";
 import { serverEnvironmentSchema } from "@interviewer-ai/config";
-import { createRequestId, redactObservabilityAttributes } from "../services/observability.js";
+import {
+  configureObservability,
+  createRequestId,
+  redactObservabilityAttributes,
+} from "../services/observability.js";
 import { classifyQueueFailure, processQueueJob } from "../services/queue-worker.js";
 import { deleteOwnedAccount } from "../services/account-deletion.js";
+import { careerAnalysisJobId } from "../services/career-analysis-queue.js";
 import { AnalyticsService } from "../modules/analytics/service.js";
 import { userProfileUpdateSchema } from "../modules/users/schema.js";
+import { UserProfileRepository } from "../modules/users/repository.js";
 import {
   pendingAiResponseRecovery,
   recoveryForAiResponseFailure,
@@ -268,6 +274,39 @@ test("supported interview defaults and accessibility preferences persist as vali
   assert.equal(parsed.accessibilityPreferences?.reduceMotion, true);
 });
 
+test("profile updates are atomically persisted for the authenticated user without overwriting other settings", async () => {
+  let upsertArguments: unknown;
+  const repository = new UserProfileRepository({
+    userProfile: {
+      upsert: async (arguments_: unknown) => {
+        upsertArguments = arguments_;
+        return {};
+      },
+    },
+  } as never);
+
+  await repository.update("candidate-1", {
+    preferredName: "Ada",
+    targetRole: "Platform engineer",
+    yearsOfExperience: 6,
+  });
+
+  assert.deepEqual(upsertArguments, {
+    where: { userId: "candidate-1" },
+    create: {
+      userId: "candidate-1",
+      preferredName: "Ada",
+      targetRole: "Platform engineer",
+      yearsOfExperience: 6,
+    },
+    update: {
+      preferredName: "Ada",
+      targetRole: "Platform engineer",
+      yearsOfExperience: 6,
+    },
+  });
+});
+
 test("AI interviewer proposals reject inconsistent actions and extra fields", () => {
   const valid = {
     responseText: "Tell me about a time you handled a production incident.",
@@ -376,7 +415,7 @@ test("rate limiter rejects requests over its configured limit", async () => {
   assert.equal(result?.resetSeconds, 60);
 });
 
-test("CORS origins are explicit and resume content must match its declared MIME type", () => {
+test("CORS origins and REST methods allow authenticated browser writes", () => {
   assert.deepEqual(
     configuredCorsOrigins({
       WEB_URL: "https://app.example.com",
@@ -384,6 +423,18 @@ test("CORS origins are explicit and resume content must match its declared MIME 
     }),
     ["https://app.example.com", "https://preview.example.com"],
   );
+  assert.deepEqual(allowedCorsMethods, [
+    "GET",
+    "HEAD",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+  ]);
+});
+
+test("resume content must match its declared MIME type", () => {
   assert.doesNotThrow(() =>
     assertResumeMimeMatchesContent(
       new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]),
@@ -414,6 +465,7 @@ test("TRUST_PROXY only enables proxy trust for an explicit true value", () => {
   };
   assert.equal(serverEnvironmentSchema.parse({ ...base, TRUST_PROXY: "false" }).TRUST_PROXY, false);
   assert.equal(serverEnvironmentSchema.parse({ ...base, TRUST_PROXY: "true" }).TRUST_PROXY, true);
+  assert.equal(serverEnvironmentSchema.parse(base).GEMINI_MODEL, "gemini-3.5-flash-lite");
 });
 
 test("request IDs propagate valid caller IDs and observability attributes redact candidate data", () => {
@@ -435,6 +487,30 @@ test("request IDs propagate valid caller IDs and observability attributes redact
   );
 });
 
+test("provider diagnostics log safe metadata and a local stack without provider payloads", () => {
+  const entries: unknown[] = [];
+  const telemetry = configureObservability({
+    info: () => undefined,
+    warn: () => undefined,
+    error: (payload) => entries.push(payload),
+  });
+  telemetry.error(
+    "ai.provider.failed",
+    { provider: "gemini", providerStatus: 403, apiKey: "must-not-log" },
+    new Error("The AI provider returned an error."),
+  );
+  assert.deepEqual(entries[0], {
+    event: "ai.provider.failed",
+    errorType: "Error",
+    errorMessage: "The AI provider returned an error.",
+    errorStack: (entries[0] as { errorStack: string }).errorStack,
+    provider: "gemini",
+    providerStatus: 403,
+    apiKey: "[REDACTED]",
+  });
+  configureObservability(console);
+});
+
 test("queue failure policy retries only transient dependencies and preserves safe terminal codes", async () => {
   const transient = new AiProviderError("TRANSIENT", "provider timed out");
   assert.deepEqual(classifyQueueFailure(transient), {
@@ -443,6 +519,10 @@ test("queue failure policy retries only transient dependencies and preserves saf
   });
   assert.deepEqual(classifyQueueFailure(new ResumeParseError()), {
     code: "DOCUMENT_INVALID",
+    retryable: false,
+  });
+  assert.deepEqual(classifyQueueFailure(new AiProviderError("INVALID_OUTPUT", "schema mismatch")), {
+    code: "AI_INVALID_OUTPUT",
     retryable: false,
   });
 
@@ -475,6 +555,21 @@ test("queue failure policy retries only transient dependencies and preserves saf
     /QUEUE_FAILURE:DOCUMENT_INVALID/,
   );
   assert.equal(terminalFailures, 1);
+});
+
+test("career-analysis queue job IDs are idempotent and safe for BullMQ Redis keys", () => {
+  const entityId = "11111111-1111-4111-8111-111111111111";
+  const jobs = [
+    { kind: "resume" as const, resumeId: entityId, userId: "candidate" },
+    { kind: "job-description" as const, jobDescriptionId: entityId, userId: "candidate" },
+    { kind: "interview-plan" as const, interviewId: entityId, userId: "candidate" },
+  ];
+  assert.deepEqual(jobs.map(careerAnalysisJobId), [
+    `resume-${entityId}`,
+    `job-description-${entityId}`,
+    `interview-plan-${entityId}`,
+  ]);
+  assert.ok(jobs.map(careerAnalysisJobId).every((jobId) => !jobId.includes(":")));
 });
 
 test("account deletion removes only owned object keys before deleting the owned account", async () => {

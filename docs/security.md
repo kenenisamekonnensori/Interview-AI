@@ -25,3 +25,23 @@ Request logs redact authorization/cookie headers, passwords, tokens, transcript 
 Resume upload URLs require signed metadata binding the object to the requesting user and resume record. The API verifies this metadata, content type, and exact file size before marking an upload ready and again before a worker parses it. The worker also checks the queued user ID against the persisted resume owner.
 
 For browser-direct R2 uploads, configure the bucket CORS policy to allow only the same explicit origins and the `PUT` method. It must allow the request headers `Content-Type`, `x-amz-meta-owner-user-id`, and `x-amz-meta-resume-id`; do not use a wildcard origin for credentialed application traffic.
+
+For example, replace the origin with the actual web application origin (and add the local development origin only when needed):
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://app.example.com", "http://localhost:3000"],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": [
+      "Content-Type",
+      "x-amz-meta-owner-user-id",
+      "x-amz-meta-resume-id"
+    ],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+The API also needs `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, and `R2_ENDPOINT`. Restart the API after changing those values.

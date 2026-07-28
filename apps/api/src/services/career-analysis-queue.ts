@@ -19,6 +19,17 @@ const options: JobsOptions = {
 
 export const careerAnalysisJobOptions = options;
 
+/** BullMQ reserves colons for its Redis key format, so custom IDs must not contain one. */
+export function careerAnalysisJobId(job: CareerAnalysisJob) {
+  const entityId =
+    job.kind === "resume"
+      ? job.resumeId
+      : job.kind === "job-description"
+        ? job.jobDescriptionId
+        : job.interviewId;
+  return `${job.kind}-${entityId}`;
+}
+
 export function createCareerAnalysisQueue(redisUrl: string) {
   const queue = new Queue<CareerAnalysisJob>("career-analysis", {
     connection: createRedisConnectionOptions(redisUrl),
@@ -31,7 +42,7 @@ export function createCareerAnalysisQueue(redisUrl: string) {
         { ...job, correlationId },
         {
           ...options,
-          jobId: `${job.kind}:${job.kind === "resume" ? job.resumeId : job.kind === "job-description" ? job.jobDescriptionId : job.interviewId}`,
+          jobId: careerAnalysisJobId(job),
         },
       );
       observability().event("queue.job.enqueued", {

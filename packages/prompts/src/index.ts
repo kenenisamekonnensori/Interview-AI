@@ -1,6 +1,7 @@
 export { buildEvaluationPrompt } from "./evaluation.js";
 export { buildFollowUpGuidance } from "./follow-up.js";
 export { buildInterviewerBehaviorPrompt, type InterviewerPromptInput } from "./interviewer.js";
+export { buildInterviewPlanPrompt } from "./interview-plan.js";
 export { buildReportPrompt } from "./report.js";
 export { safetyPrivacyPrompt } from "./safety.js";
 

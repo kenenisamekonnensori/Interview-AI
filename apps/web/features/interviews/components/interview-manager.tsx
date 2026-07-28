@@ -8,10 +8,17 @@ import type {
   Resume,
 } from "@interviewer-ai/types";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowRight, CircleAlert, LoaderCircle, SlidersHorizontal, Sparkles } from "lucide-react";
+import {
+  ArrowRight,
+  CircleAlert,
+  Info,
+  LoaderCircle,
+  SlidersHorizontal,
+  Sparkles,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,18 +30,18 @@ type ProfileDefaults = {
   defaultInterviewDuration: number;
   defaultDifficulty: InterviewConfiguration["difficulty"];
 };
-type CustomMode = "ROLE" | "ROLE_RESUME" | "ROLE_JOB" | "RESUME_JOB";
 type InterviewHistory = { items: Array<{ status: string; reportStatus: string | null }> };
+type InterviewStartInput = Pick<InterviewConfiguration, "interviewType"> &
+  Partial<Omit<InterviewConfiguration, "interviewType">>;
 
 export function InterviewManager() {
   const router = useRouter();
   const [customOpen, setCustomOpen] = useState(false);
-  const [customMode, setCustomMode] = useState<CustomMode>("ROLE");
   const [role, setRole] = useState("");
-  const [difficulty, setDifficulty] = useState<InterviewConfiguration["difficulty"]>("MEDIUM");
+  const [difficulty, setDifficulty] = useState<InterviewConfiguration["difficulty"] | "">("");
   const [resumeId, setResumeId] = useState("");
   const [jobDescriptionId, setJobDescriptionId] = useState("");
-  const [failure, setFailure] = useState<InterviewConfiguration | null>(null);
+  const [failure, setFailure] = useState<InterviewStartInput | null>(null);
 
   const profile = useQuery({
     queryKey: ["profile"],
@@ -84,14 +91,8 @@ export function InterviewManager() {
     [activeResume, defaults, relevantJob],
   );
 
-  useEffect(() => {
-    if (!defaults) return;
-    setRole((current) => current || defaults.targetRole || "");
-    setDifficulty(defaults.defaultDifficulty);
-  }, [defaults]);
-
   const launch = useMutation({
-    mutationFn: async (configuration: InterviewConfiguration) => {
+    mutationFn: async (configuration: InterviewStartInput) => {
       const { interview } = await apiClient<{ interview: InterviewDto }>("/api/v1/interviews", {
         method: "POST",
         body: configuration,
@@ -112,18 +113,12 @@ export function InterviewManager() {
       setFailure(cause instanceof PreparationError ? cause.configuration : fallbackRecommendation),
   });
 
-  const customConfiguration = (): InterviewConfiguration => ({
+  const customConfiguration = (): InterviewStartInput => ({
     interviewType: "MIXED",
-    difficulty,
-    durationMinutes: defaults?.defaultInterviewDuration ?? 30,
-    language: defaults?.preferredLanguage ?? "en",
     ...(role.trim() ? { targetRole: role.trim() } : {}),
-    ...((customMode === "ROLE_RESUME" || customMode === "RESUME_JOB") && resumeId
-      ? { resumeId }
-      : {}),
-    ...((customMode === "ROLE_JOB" || customMode === "RESUME_JOB") && jobDescriptionId
-      ? { jobDescriptionId }
-      : {}),
+    ...(difficulty ? { difficulty } : {}),
+    ...(resumeId ? { resumeId } : {}),
+    ...(jobDescriptionId ? { jobDescriptionId } : {}),
   });
   const reasons = [
     activeResume ? `your active resume (${activeResume.fileName})` : null,
@@ -215,8 +210,6 @@ export function InterviewManager() {
         </div>
         {customOpen ? (
           <CustomSetup
-            mode={customMode}
-            setMode={setCustomMode}
             role={role}
             setRole={setRole}
             difficulty={difficulty}
@@ -233,11 +226,8 @@ export function InterviewManager() {
         ) : null}
       </section>
       <p className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
-        <Link className="underline underline-offset-4" href="/resumes">
-          Manage resumes
-        </Link>
-        <Link className="underline underline-offset-4" href="/job-descriptions">
-          Manage job descriptions
+        <Link className="underline underline-offset-4" href="/profile">
+          Manage your resume and job descriptions in Profile
         </Link>
       </p>
     </div>
@@ -245,12 +235,10 @@ export function InterviewManager() {
 }
 
 function CustomSetup(props: {
-  mode: CustomMode;
-  setMode: (mode: CustomMode) => void;
   role: string;
   setRole: (value: string) => void;
-  difficulty: InterviewConfiguration["difficulty"];
-  setDifficulty: (value: InterviewConfiguration["difficulty"]) => void;
+  difficulty: InterviewConfiguration["difficulty"] | "";
+  setDifficulty: (value: InterviewConfiguration["difficulty"] | "") => void;
   resumes: Resume[];
   jobs: JobDescriptionDto[];
   resumeId: string;
@@ -260,86 +248,66 @@ function CustomSetup(props: {
   pending: boolean;
   onStart: () => void;
 }) {
-  const { mode, setMode } = props;
+  const usesProfileOnly =
+    !props.role.trim() && !props.difficulty && !props.resumeId && !props.jobDescriptionId;
   return (
     <div className="mt-6 space-y-4 border-t border-border pt-5">
-      <div className="grid gap-2 sm:grid-cols-2">
-        {(
-          [
-            ["ROLE", "Role and difficulty only"],
-            ["ROLE_RESUME", "Role plus resume"],
-            ["ROLE_JOB", "Role plus job description"],
-            ["RESUME_JOB", "Resume plus job description"],
-          ] as const
-        ).map(([value, label]) => (
-          <button
-            type="button"
-            key={value}
-            onClick={() => setMode(value)}
-            className={`rounded-xl border px-3 py-3 text-left text-sm ${mode === value ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/50"}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      {mode !== "RESUME_JOB" ? (
-        <Input
-          value={props.role}
-          onChange={(event) => props.setRole(event.target.value)}
-          placeholder="Target role"
-        />
-      ) : null}
+      <p className="text-sm text-muted-foreground">
+        Every option is optional. Add any combination that helps, or leave them blank for a
+        profile-based practice session.
+      </p>
+      <Input
+        value={props.role}
+        onChange={(event) => props.setRole(event.target.value)}
+        placeholder="Target role (optional)"
+      />
       <select
         className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
         value={props.difficulty}
         onChange={(event) =>
-          props.setDifficulty(event.target.value as InterviewConfiguration["difficulty"])
+          props.setDifficulty(event.target.value as InterviewConfiguration["difficulty"] | "")
         }
       >
+        <option value="">Use your profile difficulty (or Medium)</option>
         {["EASY", "MEDIUM", "HARD", "EXPERT"].map((value) => (
           <option key={value}>{value}</option>
         ))}
       </select>
-      {mode === "ROLE_RESUME" || mode === "RESUME_JOB" ? (
-        <select
-          className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
-          value={props.resumeId}
-          onChange={(event) => props.setResumeId(event.target.value)}
-        >
-          <option value="">Choose a resume</option>
-          {props.resumes
-            .filter((resume) => ["READY", "ANALYZED"].includes(resume.status))
-            .map((resume) => (
-              <option key={resume.id} value={resume.id}>
-                {resume.fileName}
-                {resume.isActive ? " · Active" : ""}
-              </option>
-            ))}
-        </select>
-      ) : null}
-      {mode === "ROLE_JOB" || mode === "RESUME_JOB" ? (
-        <select
-          className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
-          value={props.jobDescriptionId}
-          onChange={(event) => props.setJobDescriptionId(event.target.value)}
-        >
-          <option value="">Choose a job description</option>
-          {props.jobs.map((job) => (
-            <option key={job.id} value={job.id}>
-              {job.title ?? "Saved job description"}
+      <select
+        className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+        value={props.resumeId}
+        onChange={(event) => props.setResumeId(event.target.value)}
+      >
+        <option value="">No resume for this interview</option>
+        {props.resumes
+          .filter((resume) => ["READY", "ANALYZED"].includes(resume.status))
+          .map((resume) => (
+            <option key={resume.id} value={resume.id}>
+              {resume.fileName}
+              {resume.isActive ? " · Active" : ""}
             </option>
           ))}
-        </select>
-      ) : null}
-      <Button
-        onClick={props.onStart}
-        disabled={
-          props.pending ||
-          (mode !== "RESUME_JOB" && !props.role.trim()) ||
-          ((mode === "ROLE_RESUME" || mode === "RESUME_JOB") && !props.resumeId) ||
-          ((mode === "ROLE_JOB" || mode === "RESUME_JOB") && !props.jobDescriptionId)
-        }
+      </select>
+      <select
+        className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+        value={props.jobDescriptionId}
+        onChange={(event) => props.setJobDescriptionId(event.target.value)}
       >
+        <option value="">No job description for this interview</option>
+        {props.jobs.map((job) => (
+          <option key={job.id} value={job.id}>
+            {job.title ?? "Saved job description"}
+          </option>
+        ))}
+      </select>
+      {usesProfileOnly ? (
+        <p className="flex gap-2 rounded-xl border border-primary/25 bg-primary/10 p-3 text-sm text-muted-foreground">
+          <Info className="mt-0.5 size-4 shrink-0 text-primary" />
+          No custom context was added. This interview will use your saved profile settings. You can
+          still start now.
+        </p>
+      ) : null}
+      <Button onClick={props.onStart} disabled={props.pending}>
         {props.pending ? "Preparing your interview…" : "Start interview"}{" "}
         <ArrowRight className="size-4" />
       </Button>
@@ -394,7 +362,7 @@ function simpleConfiguration(profile?: ProfileDefaults): InterviewConfiguration 
   };
 }
 class PreparationError extends Error {
-  constructor(readonly configuration: InterviewConfiguration) {
+  constructor(readonly configuration: InterviewStartInput) {
     super("Preparation failed.");
   }
 }

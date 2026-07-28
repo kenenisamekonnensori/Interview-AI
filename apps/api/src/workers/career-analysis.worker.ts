@@ -1,5 +1,8 @@
+import "../load-environment.js";
+
 import { Worker } from "bullmq";
 import { serverEnvironmentSchema } from "@interviewer-ai/config";
+import { buildInterviewPlanPrompt } from "@interviewer-ai/prompts";
 import { interviewPlanSchema } from "@interviewer-ai/types";
 import { z } from "zod";
 
@@ -52,8 +55,12 @@ const jobAnalysisSchema = z.object({
   seniority: z.string().trim().min(1).max(100).nullable(),
   technologyStack: stringListSchema,
 });
-async function structuredAnalysis(instructions: string, content: unknown) {
-  return aiProvider.generateStructured({ instructions, context: content }, (value) => value);
+async function structuredAnalysis<T>(
+  instructions: string,
+  content: unknown,
+  parse: (value: unknown) => T,
+) {
+  return aiProvider.generateStructured({ instructions, context: content }, parse);
 }
 
 async function analyzeResume(resumeId: string, userId: string) {
@@ -68,11 +75,10 @@ async function analyzeResume(resumeId: string, userId: string) {
   }
   const bytes = await downloadResumeObject(environment, resume);
   const resumeText = await extractResumeText(bytes, resume.mimeType);
-  const analysis = resumeAnalysisSchema.parse(
-    await structuredAnalysis(
-      "Extract resume fields as JSON with summary, skills, technologies, experience, education, projects, certifications. Never invent facts.",
-      resumeText,
-    ),
+  const analysis = await structuredAnalysis(
+    "Extract resume fields as JSON with summary, skills, technologies, experience, education, projects, certifications. Never invent facts.",
+    resumeText,
+    resumeAnalysisSchema.parse,
   );
   await database.resumeAnalysis.upsert({
     where: { resumeId },
@@ -98,11 +104,10 @@ async function analyzeJobDescription(jobDescriptionId: string) {
     });
     return;
   }
-  const analysis = jobAnalysisSchema.parse(
-    await structuredAnalysis(
-      "Extract JSON with requiredSkills, preferredSkills, responsibilities, keywords, seniority, technologyStack from this job description. Never infer requirements.",
-      job.rawText,
-    ),
+  const analysis = await structuredAnalysis(
+    "Extract JSON with requiredSkills, preferredSkills, responsibilities, keywords, seniority, technologyStack from this job description. Never infer requirements.",
+    job.rawText,
+    jobAnalysisSchema.parse,
   );
   await database.jobAnalysis.upsert({
     where: { jobDescriptionId },
@@ -151,11 +156,10 @@ async function planInterview(interviewId: string) {
     resume: interview.resume?.deletedAt ? null : interview.resume?.analysis,
     jobDescription: interview.jobDescription?.deletedAt ? null : interview.jobDescription?.analysis,
   };
-  const plan = interviewPlanSchema.parse(
-    await structuredAnalysis(
-      "Create a realistic interview plan. Cover the role requirements and candidate evidence. Allocate no more than the requested duration. Do not expose this plan to the candidate.",
-      context,
-    ),
+  const plan = await structuredAnalysis(
+    buildInterviewPlanPrompt(),
+    context,
+    interviewPlanSchema.parse,
   );
   await database.interviewPlan.upsert({
     where: { interviewId },
