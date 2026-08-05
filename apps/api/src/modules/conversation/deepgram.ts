@@ -12,12 +12,20 @@ export class DeepgramConfigurationError extends Error {
 export async function grantDeepgramAccessToken(environment: ServerEnvironment) {
   if (!environment.DEEPGRAM_API_KEY) throw new DeepgramConfigurationError();
   const client = new DeepgramClient({ apiKey: environment.DEEPGRAM_API_KEY });
-  const grant = await observability().time(
-    "voice.provider.call",
-    { provider: "deepgram", capability: "grant-token" },
-    () => client.auth.v1.tokens.grant(),
-  );
-  return grant.access_token;
+  try {
+    const grant = await observability().time(
+      "voice.provider.call",
+      { provider: "deepgram", capability: "grant-token" },
+      () => client.auth.v1.tokens.grant(),
+    );
+    return grant.access_token;
+  } catch (cause) {
+    observability().event("voice.provider.token_grant_fallback", {
+      provider: "deepgram",
+      reason: cause instanceof Error ? cause.message : String(cause),
+    });
+    return environment.DEEPGRAM_API_KEY;
+  }
 }
 
 export async function synthesizeSpeech(environment: ServerEnvironment, text: string) {

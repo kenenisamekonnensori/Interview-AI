@@ -322,13 +322,14 @@ export function InterviewMicrophone({
     );
     if (session !== sessionRef.current) return;
     connectionRef.current?.close();
-    const client = new DeepgramClient({ accessToken });
+    const client = new DeepgramClient({ apiKey: accessToken });
     const connection = (await client.listen.v1.connect({
       model: "nova-3",
       language: interviewLanguage,
       punctuate: "true",
       interim_results: "true",
       smart_format: "true",
+      protocols: ["token", accessToken],
     })) as unknown as LiveConnection;
     connection.on("message", (message) => void handleTranscript(message, session));
     connection.on("error", () => scheduleReconnect(session));
@@ -343,7 +344,14 @@ export function InterviewMicrophone({
     if (!recorderRef.current && streamRef.current) {
       const recorder = new MediaRecorder(streamRef.current, recorderOptions());
       recorder.ondataavailable = (event) => {
-        if (event.data.size) connectionRef.current?.socket.send(event.data);
+        if (event.data.size && connectionRef.current) {
+          const conn = connectionRef.current as unknown as { sendMedia?: (blob: Blob) => void; socket?: { send: (blob: Blob) => void } };
+          if (typeof conn.sendMedia === "function") {
+            conn.sendMedia(event.data);
+          } else if (conn.socket?.send) {
+            conn.socket.send(event.data);
+          }
+        }
       };
       recorder.start(250);
       recorderRef.current = recorder;

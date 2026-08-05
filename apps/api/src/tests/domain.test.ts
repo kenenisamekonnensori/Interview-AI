@@ -599,17 +599,22 @@ test("account deletion removes only owned object keys before deleting the owned 
   assert.deepEqual(result, { deleted: true, objectCount: 2 });
 });
 
-test("monolith mode defaults to true and executes tasks in-process without requiring workers", () => {
+test("monolith mode defaults to true and executes tasks in-process without requiring workers", async () => {
   const originalMode = process.env.WORKER_MODE;
   try {
     delete process.env.WORKER_MODE;
     const {
       isMonolithMode,
       MonolithExecutionManager,
-    } = require("../services/monolith-execution.js");
+    } = await import("../services/monolith-execution.js");
     assert.equal(isMonolithMode(), true);
 
-    const manager = new MonolithExecutionManager({} as never, {} as never);
+    const mockDb = {
+      resume: { updateMany: async () => ({ count: 0 }) },
+      jobDescription: { updateMany: async () => ({ count: 0 }) },
+      interview: { updateMany: async () => ({ count: 0 }) },
+    };
+    const manager = new MonolithExecutionManager(mockDb as never, {} as never);
     assert.equal(manager.dispatchResumeAnalysis("res-1", "user-1"), true);
     assert.equal(manager.dispatchJobAnalysis("job-1", "user-1"), true);
     assert.equal(manager.dispatchInterviewPlan("int-1", "user-1"), true);
