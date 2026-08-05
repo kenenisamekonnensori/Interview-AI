@@ -30,7 +30,22 @@ export function careerAnalysisJobId(job: CareerAnalysisJob) {
   return `${job.kind}-${entityId}`;
 }
 
-export function createCareerAnalysisQueue(redisUrl: string) {
+export function createCareerAnalysisQueue(redisUrl?: string) {
+  if (!redisUrl) {
+    return {
+      enqueue: async (job: CareerAnalysisJob) => {
+        const correlationId = job.correlationId ?? randomUUID();
+        observability().event("queue.job.bypassed", {
+          queue: "career-analysis",
+          jobKind: job.kind,
+          correlationId,
+          mode: "monolith",
+        });
+        return { id: careerAnalysisJobId(job), data: { ...job, correlationId } };
+      },
+      close: async () => {},
+    };
+  }
   const queue = new Queue<CareerAnalysisJob>("career-analysis", {
     connection: createRedisConnectionOptions(redisUrl),
   });

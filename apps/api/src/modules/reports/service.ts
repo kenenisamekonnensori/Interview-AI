@@ -57,6 +57,8 @@ function validateScoreConsistency(evaluation: {
     );
 }
 
+import type { MonolithExecutionManager } from "../../services/monolith-execution.js";
+
 export class ReportService {
   readonly repository: ReportRepository;
   private readonly aiProvider;
@@ -66,6 +68,7 @@ export class ReportService {
     private readonly environment: ServerEnvironment,
     private readonly queue: ReturnType<typeof createReportQueue>,
     private readonly events: InterviewEventPublisher,
+    private readonly monolith?: MonolithExecutionManager,
   ) {
     this.repository = new ReportRepository(database);
     this.aiProvider = createAiProvider(environment);
@@ -84,17 +87,20 @@ export class ReportService {
       if (!report) throw new ReportLifecycleError("REPORT_NOT_FOUND", "Report not found.");
       throw new ReportLifecycleError("REPORT_NOT_RETRYABLE", "This report is not ready to retry.");
     }
-    try {
-      await this.queue.enqueue({ interviewId, userId });
-    } catch {
-      await this.repository.markPendingFailed(
-        interviewId,
-        "Your report could not be queued. Please try again.",
-      );
-      throw new ReportLifecycleError(
-        "REPORT_QUEUE_UNAVAILABLE",
-        "Report generation could not be queued.",
-      );
+    const dispatched = this.monolith?.dispatchReportGeneration(this, interviewId);
+    if (!dispatched) {
+      try {
+        await this.queue.enqueue({ interviewId, userId });
+      } catch {
+        await this.repository.markPendingFailed(
+          interviewId,
+          "Your report could not be queued. Please try again.",
+        );
+        throw new ReportLifecycleError(
+          "REPORT_QUEUE_UNAVAILABLE",
+          "Report generation could not be queued.",
+        );
+      }
     }
     return this.details(interviewId, userId);
   }

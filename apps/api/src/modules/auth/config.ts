@@ -13,12 +13,15 @@ function logOutboxError(logger: AuthLogger, error: unknown, message: string) {
   logger.error({ errorType: error instanceof Error ? error.name : "UnknownError" }, message);
 }
 
+import type { MonolithExecutionManager } from "../../services/monolith-execution.js";
+
 export function createAuthConfig(
   environment: ServerEnvironment,
   database: PrismaClient,
   logger: AuthLogger,
+  monolith?: MonolithExecutionManager,
 ): BetterAuthOptions {
-  const emailOutbox = createAuthEmailOutbox(database);
+  const emailOutbox = createAuthEmailOutbox(database, monolith);
 
   return {
     baseURL: environment.BETTER_AUTH_URL,

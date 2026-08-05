@@ -16,6 +16,8 @@ if ((action !== "inspect" && action !== "retry") || !queueName || !supportedQueu
 if (action === "retry" && !jobId) throw new Error("A failed job ID is required for retry.");
 
 const environment = serverEnvironmentSchema.parse(process.env);
+if (!environment.REDIS_URL)
+  throw new Error("REDIS_URL environment variable is required to run queue recovery.");
 const queue = new Queue(queueName, {
   connection: createRedisConnectionOptions(environment.REDIS_URL),
 });

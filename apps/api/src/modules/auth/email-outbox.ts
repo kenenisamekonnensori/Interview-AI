@@ -21,7 +21,9 @@ export const authEmailMessageSchema = z.discriminatedUnion("kind", [
 
 export type AuthEmailMessage = z.infer<typeof authEmailMessageSchema>;
 
-export function createAuthEmailOutbox(database: PrismaClient) {
+import type { MonolithExecutionManager } from "../../services/monolith-execution.js";
+
+export function createAuthEmailOutbox(database: PrismaClient, monolith?: MonolithExecutionManager) {
   return {
     enqueue: async ({
       userId,
@@ -43,6 +45,7 @@ export function createAuthEmailOutbox(database: PrismaClient) {
           ...(eventKey === undefined ? {} : { eventKey }),
         },
       });
+      monolith?.dispatchAuthEmail();
     },
     enqueueWelcome: async ({
       userId,
@@ -66,6 +69,7 @@ export function createAuthEmailOutbox(database: PrismaClient) {
         },
         update: {},
       });
+      monolith?.dispatchAuthEmail();
     },
   };
 }

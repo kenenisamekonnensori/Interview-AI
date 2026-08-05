@@ -15,6 +15,12 @@ import {
 } from "../services/observability.js";
 import { installWorkerShutdown } from "../services/queue-worker.js";
 
+/**
+ * Report Generation Worker (Worker Mode - Future Architecture).
+ * Preserved intact for multi-process report generation deployments.
+ * Delegates processing to ReportService.generate().
+ */
+
 const environment = serverEnvironmentSchema.parse(process.env);
 const database = createAuthDatabase(environment.DATABASE_URL);
 configureObservability(console);
@@ -30,7 +36,7 @@ const worker = new Worker<ReportJob>(
   "report-generation",
   async (job) =>
     withCorrelationId(job.data.correlationId, () => reports.generate(job.data.interviewId)),
-  { connection: createRedisConnectionOptions(environment.REDIS_URL, { worker: true }) },
+  { connection: createRedisConnectionOptions(environment.REDIS_URL!, { worker: true }) },
 );
 worker.on("active", (job) => {
   observability().event("queue.job.started", {

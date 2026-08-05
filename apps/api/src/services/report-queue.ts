@@ -13,7 +13,21 @@ const options: JobsOptions = {
   removeOnFail: 1_000,
 };
 
-export function createReportQueue(redisUrl: string) {
+export function createReportQueue(redisUrl?: string) {
+  if (!redisUrl) {
+    return {
+      enqueue: async (job: ReportJob) => {
+        const correlationId = job.correlationId ?? randomUUID();
+        observability().event("queue.job.bypassed", {
+          queue: "report-generation",
+          correlationId,
+          mode: "monolith",
+        });
+        return { id: `report:${job.interviewId}:${randomUUID()}`, data: { ...job, correlationId } };
+      },
+      close: async () => {},
+    };
+  }
   const queue = new Queue<ReportJob>("report-generation", {
     connection: createRedisConnectionOptions(redisUrl),
   });

@@ -598,3 +598,31 @@ test("account deletion removes only owned object keys before deleting the owned 
   assert.equal(deletedUserId, "user-1");
   assert.deepEqual(result, { deleted: true, objectCount: 2 });
 });
+
+test("monolith mode defaults to true and executes tasks in-process without requiring workers", () => {
+  const originalMode = process.env.WORKER_MODE;
+  try {
+    delete process.env.WORKER_MODE;
+    const {
+      isMonolithMode,
+      MonolithExecutionManager,
+    } = require("../services/monolith-execution.js");
+    assert.equal(isMonolithMode(), true);
+
+    const manager = new MonolithExecutionManager({} as never, {} as never);
+    assert.equal(manager.dispatchResumeAnalysis("res-1", "user-1"), true);
+    assert.equal(manager.dispatchJobAnalysis("job-1", "user-1"), true);
+    assert.equal(manager.dispatchInterviewPlan("int-1", "user-1"), true);
+    assert.equal(manager.dispatchAuthEmail(), true);
+
+    process.env.WORKER_MODE = "true";
+    assert.equal(isMonolithMode(), false);
+    assert.equal(manager.dispatchResumeAnalysis("res-1", "user-1"), false);
+  } finally {
+    if (originalMode === undefined) {
+      delete process.env.WORKER_MODE;
+    } else {
+      process.env.WORKER_MODE = originalMode;
+    }
+  }
+});

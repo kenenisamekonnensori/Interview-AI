@@ -89,17 +89,21 @@ function sendLifecycleError(
   return reply.status(status).send({ code: error.code, message: error.message });
 }
 
+import type { MonolithExecutionManager } from "../../services/monolith-execution.js";
+
 export function registerInterviewRoutes(
   app: FastifyInstance,
   database: PrismaClient,
   queue: ReturnType<typeof createCareerAnalysisQueue>,
   reportQueue: ReturnType<typeof createReportQueue>,
+  monolith?: MonolithExecutionManager,
 ) {
   const service = new InterviewService(
     database,
     queue,
     reportQueue,
     new InterviewEventPublisher(app.log),
+    monolith,
   );
   app.decorate("interviewService", service);
 
@@ -216,4 +220,5 @@ export function registerInterviewRoutes(
       }
     },
   );
+  return service;
 }
