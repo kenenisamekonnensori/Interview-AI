@@ -603,10 +603,8 @@ test("monolith mode defaults to true and executes tasks in-process without requi
   const originalMode = process.env.WORKER_MODE;
   try {
     delete process.env.WORKER_MODE;
-    const {
-      isMonolithMode,
-      MonolithExecutionManager,
-    } = await import("../services/monolith-execution.js");
+    const { isMonolithMode, MonolithExecutionManager } =
+      await import("../services/monolith-execution.js");
     assert.equal(isMonolithMode(), true);
 
     const mockDb = {

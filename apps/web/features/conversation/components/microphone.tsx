@@ -1,7 +1,16 @@
 "use client";
 
 import { DeepgramClient } from "@deepgram/sdk";
-import { LoaderCircle, Mic, MicOff, RotateCw, Volume2 } from "lucide-react";
+import {
+  LoaderCircle,
+  Mic,
+  MicOff,
+  RotateCw,
+  Volume2,
+  MessageSquare,
+  AlertTriangle,
+  ShieldCheck,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   aiResponseRecoverySchema,
@@ -13,23 +22,28 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { ApiError, apiClient } from "@/lib/api-client";
-import { webEnvironment } from "@/lib/env";
 import { canSubmitTypedAnswer } from "@/features/conversation/typed-mode";
+import { VoiceVisualizer } from "./voice-visualizer";
+import { audioQueue } from "./audio-queue";
+import { MicDiagnostic } from "./mic-diagnostic";
 
 export type VoiceSessionState =
   | "IDLE"
   | "CONNECTING"
   | "LISTENING"
+  | "TRANSCRIBING"
   | "THINKING"
   | "SPEAKING"
   | "CLOSING"
   | "RECONNECTING"
   | "ERROR";
 export type InterviewMode = "VOICE" | "TEXT";
+
 type DeepgramResult = {
   channel?: { alternatives?: Array<{ transcript?: string }> };
   is_final?: boolean;
 };
+
 type LiveConnection = {
   close: () => void;
   connect: () => void;
@@ -37,6 +51,7 @@ type LiveConnection = {
   socket: { send: (data: Blob) => void };
   on: (event: string, callback: (value?: unknown) => void) => void;
 };
+
 type GeneratedTurn = { turn: { id: string; text: string } };
 type ConversationStartResponse = {
   conversation: { state: string };
@@ -78,24 +93,25 @@ export function InterviewMicrophone({
   const [mode, setMode] = useState<InterviewMode>("VOICE");
   const [voiceFallback, setVoiceFallback] = useState<string | null>(null);
   const [restoredSpeakingTurnId, setRestoredSpeakingTurnId] = useState<string | null>(null);
+  const [showDiagnostic, setShowDiagnostic] = useState<boolean>(true);
+
   const connectionRef = useRef<LiveConnection | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioUrlRef = useRef<string | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const sessionRef = useRef(0);
   const reconnectAttemptsRef = useRef(0);
   const finalizingRef = useRef(false);
   const speakingNotifiedRef = useRef(false);
-  const playbackVersionRef = useRef(0);
   const recoveryRef = useRef<AiResponseRecovery | null>(null);
   const displayedAiTurnIdsRef = useRef(new Set<string>());
   const latestAiTurnRef = useRef<string | null>(null);
   const restoredVersionRef = useRef("");
 
   const active = state !== "IDLE" && state !== "ERROR";
+
   function updateState(next: VoiceSessionState) {
+    console.log(`[Voice Pipeline] State transition -> ${next}`);
     setState(next);
     onSessionStateChange?.(next);
   }
@@ -130,8 +146,7 @@ export function InterviewMicrophone({
     );
     const latestAiTurn = [...turns].reverse().find((turn) => turn.speaker === "AI");
     latestAiTurnRef.current = latestAiTurn?.id ?? null;
-    // A restored page has no live microphone transport yet. Start safely in text mode until
-    // the user explicitly reconnects voice.
+    setShowDiagnostic(false);
     updateMode("TEXT");
     setTypingMode(restoredConversation.state === "LISTENING");
     setRestoredSpeakingTurnId(
@@ -145,26 +160,11 @@ export function InterviewMicrophone({
     }
   }, [restoredConversation]);
 
-  function clearAudio() {
-    playbackVersionRef.current += 1;
-    const audio = audioRef.current;
-    if (audio) {
-      audio.onplay = null;
-      audio.onended = null;
-      audio.onerror = null;
-      audio.pause();
-      audio.src = "";
-    }
-    audioRef.current = null;
-    if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
-    audioUrlRef.current = null;
-  }
-
   function cleanupSession() {
     sessionRef.current += 1;
     if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
     reconnectTimerRef.current = null;
-    clearAudio();
+    audioQueue.cancelAll();
     recorderRef.current?.stop();
     recorderRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -183,7 +183,7 @@ export function InterviewMicrophone({
     sessionRef.current += 1;
     if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
     reconnectTimerRef.current = null;
-    clearAudio();
+    audioQueue.cancelAll();
     recorderRef.current?.stop();
     recorderRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -213,6 +213,7 @@ export function InterviewMicrophone({
     if ((active && mode === "VOICE") || disabled) return;
     try {
       assertBrowserSupport();
+      void audioQueue.unlockAudio();
       if (state === "ERROR") cleanupSession();
       const session = sessionRef.current + 1;
       sessionRef.current = session;
@@ -223,14 +224,20 @@ export function InterviewMicrophone({
       setTypingMode(false);
       updateRecovery(null);
       updateState("CONNECTING");
+
+      console.log("[Voice Pipeline] Initializing conversation session...");
       const conversation = await apiClient<ConversationStartResponse>(
         `/api/v1/interviews/${interviewId}/conversation/start`,
         { method: "POST" },
       );
       onStarted?.();
+
       const greeting = await resolvePendingAiTurn(conversation);
       if (greeting) appendAiTranscript(greeting.turn);
+
       streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log("[Voice Pipeline] Microphone stream acquired successfully.");
+
       await connectVoice(session);
       if (greeting) {
         await playAiTurn(greeting.turn.id, session);
@@ -316,12 +323,14 @@ export function InterviewMicrophone({
   }
 
   async function connectVoice(session: number) {
+    console.log("[Voice Pipeline] Requesting short-lived voice token...");
     const { accessToken } = await apiClient<{ accessToken: string }>(
       `/api/v1/interviews/${interviewId}/voice-token`,
       { method: "POST" },
     );
     if (session !== sessionRef.current) return;
     connectionRef.current?.close();
+
     const client = new DeepgramClient({ apiKey: accessToken });
     const connection = (await client.listen.v1.connect({
       model: "nova-3",
@@ -331,21 +340,28 @@ export function InterviewMicrophone({
       smart_format: "true",
       protocols: ["token", accessToken],
     })) as unknown as LiveConnection;
+
     connection.on("message", (message) => void handleTranscript(message, session));
     connection.on("error", () => scheduleReconnect(session));
     connection.on("close", () => scheduleReconnect(session));
     connection.connect();
     await connection.waitForOpen();
+
     if (session !== sessionRef.current) {
       connection.close();
       return;
     }
     connectionRef.current = connection;
+    console.log("[Voice Pipeline] Deepgram WebSocket connected successfully.");
+
     if (!recorderRef.current && streamRef.current) {
       const recorder = new MediaRecorder(streamRef.current, recorderOptions());
       recorder.ondataavailable = (event) => {
         if (event.data.size && connectionRef.current) {
-          const conn = connectionRef.current as unknown as { sendMedia?: (blob: Blob) => void; socket?: { send: (blob: Blob) => void } };
+          const conn = connectionRef.current as unknown as {
+            sendMedia?: (blob: Blob) => void;
+            socket?: { send: (blob: Blob) => void };
+          };
           if (typeof conn.sendMedia === "function") {
             conn.sendMedia(event.data);
           } else if (conn.socket?.send) {
@@ -355,6 +371,7 @@ export function InterviewMicrophone({
       };
       recorder.start(250);
       recorderRef.current = recorder;
+      console.log("[Voice Pipeline] MediaRecorder active (250ms chunks).");
     }
     if (state !== "SPEAKING" && state !== "THINKING") updateState("LISTENING");
   }
@@ -382,21 +399,6 @@ export function InterviewMicrophone({
     await apiClient(`/api/v1/interviews/${interviewId}/conversation/speaking`, { method: "POST" });
   }
 
-  async function interruptPlayback(session: number) {
-    const audio = audioRef.current;
-    const turnId = audio?.dataset.turnId;
-    if (!audio || audio.paused || !turnId) return;
-    clearAudio();
-    if (session !== sessionRef.current) return;
-    await apiClient(
-      `/api/v1/interviews/${interviewId}/conversation/turns/${turnId}/playback-completed`,
-      {
-        method: "POST",
-      },
-    );
-    updateState("LISTENING");
-  }
-
   async function handleTranscript(message: unknown, session: number) {
     if (disabled || session !== sessionRef.current || recoveryRef.current) return;
     const result = message as DeepgramResult;
@@ -404,7 +406,6 @@ export function InterviewMicrophone({
     if (!text) return;
     try {
       await notifySpeaking();
-      await interruptPlayback(session);
       if (!result.is_final) {
         setPartialTranscript(text);
         return;
@@ -414,7 +415,9 @@ export function InterviewMicrophone({
       speakingNotifiedRef.current = false;
       setPartialTranscript("");
       setTranscript((turns) => [...turns, `You: ${text}`]);
+      updateState("TRANSCRIBING");
       updateState("THINKING");
+
       await apiClient(`/api/v1/interviews/${interviewId}/conversation/transcripts`, {
         method: "POST",
         body: { text } satisfies FinalizeTranscriptRequest,
@@ -507,52 +510,24 @@ export function InterviewMicrophone({
   }
 
   async function playAiTurn(turnId: string, session: number) {
-    const response = await fetch(
-      `${webEnvironment.NEXT_PUBLIC_API_URL}/api/v1/interviews/${interviewId}/conversation/turns/${turnId}/audio`,
-      { credentials: "include" },
-    );
-    if (!response.ok) {
-      showPlaybackFallback(turnId);
-      return;
-    }
-    if (session !== sessionRef.current) return;
-    clearAudio();
-    const version = playbackVersionRef.current;
-    const url = URL.createObjectURL(await response.blob());
-    audioUrlRef.current = url;
-    const audio = new Audio(url);
-    audioRef.current = audio;
-    audio.dataset.turnId = turnId;
-    audio.onplay = () => {
-      if (session === sessionRef.current && version === playbackVersionRef.current)
-        updateState("SPEAKING");
-    };
-    audio.onended = () => {
-      if (session !== sessionRef.current || version !== playbackVersionRef.current) return;
-      clearAudio();
-      void apiClient(
-        `/api/v1/interviews/${interviewId}/conversation/turns/${turnId}/playback-completed`,
-        { method: "POST" },
-      )
-        .then(() => updateState("LISTENING"))
-        .catch((cause: unknown) => {
-          setError(cause instanceof Error ? cause.message : "Could not update interview playback.");
-          updateState("ERROR");
-        });
-    };
-    audio.onerror = () => {
-      if (session === sessionRef.current) showPlaybackFallback(turnId);
-    };
-    try {
-      await audio.play();
-    } catch {
-      showPlaybackFallback(turnId);
-    }
+    audioQueue.enqueue({
+      interviewId,
+      turnId,
+      onPlay: () => {
+        if (session === sessionRef.current) updateState("SPEAKING");
+      },
+      onEnded: () => {
+        if (session === sessionRef.current) updateState("LISTENING");
+      },
+      onError: () => {
+        if (session === sessionRef.current) showPlaybackFallback(turnId);
+      },
+    });
   }
 
   function showPlaybackFallback(turnId: string) {
     latestAiTurnRef.current = turnId;
-    clearAudio();
+    audioQueue.cancelAll();
     setTypingMode(false);
     updateMode("TEXT");
     setError(
@@ -569,140 +544,180 @@ export function InterviewMicrophone({
     updateState("IDLE");
   }
 
-  const status = {
-    IDLE: "Microphone ready",
-    CONNECTING: "Connecting microphone…",
-    LISTENING: "Listening",
-    THINKING: "Interviewer is thinking…",
-    SPEAKING: "Interviewer is speaking…",
-    CLOSING: "Closing the interview…",
-    RECONNECTING: "Reconnecting voice…",
-    ERROR: "Voice needs attention",
-  }[state];
+  // Render Mic Onboarding Diagnostic Modal / Screen if first time opening
+  if (showDiagnostic && !restoredConversation) {
+    return (
+      <MicDiagnostic
+        onComplete={() => {
+          setShowDiagnostic(false);
+          void startVoice();
+        }}
+        onSkipToText={() => {
+          setShowDiagnostic(false);
+          void startText();
+        }}
+      />
+    );
+  }
 
   return (
-    <div className="rounded-xl border border-border p-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          onClick={mode === "VOICE" && active ? stop : () => void startVoice()}
-          disabled={disabled || state === "CONNECTING"}
-        >
-          {state === "CONNECTING" || state === "RECONNECTING" ? (
-            <Mic className="size-4" />
-          ) : active ? (
-            <MicOff className="size-4" />
-          ) : (
-            <Mic className="size-4" />
-          )}
-          {state === "CONNECTING"
-            ? "Connecting…"
-            : mode === "VOICE" && active
-              ? "Stop microphone"
-              : "Voice"}
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => void switchToText()} disabled={disabled}>
-          Type instead
-        </Button>
-        {state === "RECONNECTING" || state === "CONNECTING" ? (
-          <LoaderCircle className="size-4 animate-spin text-primary" />
-        ) : null}
-        {state === "SPEAKING" ? <Volume2 className="size-4 text-primary" /> : null}
-        {state === "ERROR" ? (
-          <Button size="sm" variant="outline" onClick={() => void startVoice()} disabled={disabled}>
-            <RotateCw className="size-3" />
-            Reconnect
+    <div className="flex flex-col gap-6">
+      {/* High-Impact Voice Visualizer Stage */}
+      <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-6 shadow-2xl backdrop-blur-xl">
+        <VoiceVisualizer
+          stream={streamRef.current}
+          state={state}
+          errorMessage={error}
+          partialTranscript={partialTranscript}
+          onRetry={() => void startVoice()}
+        />
+
+        {/* Toolbar Controls */}
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-3 border-t border-white/10 pt-5">
+          <Button
+            size="lg"
+            className={`font-semibold transition-all ${
+              active && mode === "VOICE"
+                ? "bg-rose-600 hover:bg-rose-500 text-white"
+                : "bg-indigo-600 hover:bg-indigo-500 text-white"
+            }`}
+            onClick={mode === "VOICE" && active ? stop : () => void startVoice()}
+            disabled={disabled || state === "CONNECTING"}
+          >
+            {state === "CONNECTING" || state === "RECONNECTING" ? (
+              <LoaderCircle className="size-4 animate-spin" />
+            ) : active ? (
+              <MicOff className="size-4" />
+            ) : (
+              <Mic className="size-4" />
+            )}
+            {state === "CONNECTING"
+              ? "Connecting…"
+              : mode === "VOICE" && active
+                ? "Turn Off Microphone"
+                : "Start Voice Session"}
           </Button>
-        ) : null}
-      </div>
-      <p className="mt-3 text-sm text-muted-foreground" aria-live="polite">
-        {status}
-      </p>
-      {error ? <p className="mt-2 text-sm text-destructive">{error}</p> : null}
-      {voiceFallback ? (
-        <div className="mt-4 rounded-xl border border-border bg-muted/40 p-4">
-          <p className="text-sm text-muted-foreground">{voiceFallback}</p>
-          <Button className="mt-3" size="sm" onClick={() => void switchToText()}>
-            Continue in text mode
+
+          <Button
+            size="lg"
+            variant="outline"
+            className="border-slate-700 bg-slate-900/60 text-slate-200 hover:bg-slate-800"
+            onClick={() => void switchToText()}
+            disabled={disabled}
+          >
+            <MessageSquare className="size-4" />
+            Type Instead
           </Button>
-        </div>
-      ) : null}
-      {restoredSpeakingTurnId && state === "SPEAKING" ? (
-        <div className="mt-4 rounded-xl border border-border bg-muted/40 p-4">
-          <p className="text-sm text-muted-foreground">
-            Session restored. The interviewer’s last question is shown in the transcript.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
+
+          {state === "ERROR" ? (
             <Button
-              size="sm"
-              onClick={() => {
-                setRestoredSpeakingTurnId(null);
-                void playAiTurn(restoredSpeakingTurnId, sessionRef.current);
-              }}
+              size="lg"
+              variant="outline"
+              onClick={() => void startVoice()}
+              disabled={disabled}
             >
-              Replay audio
+              <RotateCw className="size-4" />
+              Reconnect
             </Button>
-            <Button size="sm" variant="outline" onClick={() => void switchToText()}>
-              Continue
-            </Button>
-          </div>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Fallback Banner */}
+      {voiceFallback ? (
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 backdrop-blur-md">
+          <p className="text-sm text-amber-200">{voiceFallback}</p>
+          <Button
+            className="mt-3 bg-amber-500 text-slate-950 hover:bg-amber-400 font-medium"
+            size="sm"
+            onClick={() => void switchToText()}
+          >
+            Continue in Text Mode
+          </Button>
         </div>
       ) : null}
+
+      {/* Recovery Helper */}
       {recovery ? (
-        <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-300/[.07] p-4">
-          <p className="text-sm font-medium text-foreground">Your answer was saved.</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            We could not generate the next question right now. You can safely try again, switch to
-            typing, or finish this interview and get feedback.
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 backdrop-blur-md">
+          <p className="text-sm font-semibold text-amber-200">Your response was saved safely.</p>
+          <p className="mt-1 text-xs text-amber-300/80">
+            We could not generate the next question immediately. You can retry, switch to typing, or
+            complete the interview.
           </p>
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap gap-2.5">
             <Button size="sm" onClick={() => void requestPendingResponse(sessionRef.current)}>
-              Try again
+              Retry Generating Question
             </Button>
             <Button
               size="sm"
               variant="outline"
               onClick={() => void requestPendingResponse(sessionRef.current, true)}
             >
-              Continue by typing
+              Continue by Typing
             </Button>
             <Button size="sm" variant="ghost" onClick={onEndInterview}>
-              End interview and get feedback
+              Finish & Get Report
             </Button>
           </div>
         </div>
       ) : null}
+
+      {/* Typed Input Form */}
       {typingMode && state === "LISTENING" ? (
         <form
-          className="mt-4 flex gap-2"
+          className="flex gap-2.5"
           onSubmit={(event) => {
             event.preventDefault();
             void submitTypedAnswer();
           }}
         >
           <input
-            className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             value={typedAnswer}
             onChange={(event) => setTypedAnswer(event.target.value)}
-            placeholder="Type your answer"
+            placeholder="Type your thoughtful answer here…"
             aria-label="Type your answer"
           />
-          <Button type="submit" size="sm" disabled={!canSubmitTypedAnswer(state, typedAnswer)}>
-            Send
+          <Button
+            type="submit"
+            size="lg"
+            className="bg-indigo-600 hover:bg-indigo-500"
+            disabled={!canSubmitTypedAnswer(state, typedAnswer)}
+          >
+            Send Answer
           </Button>
         </form>
       ) : null}
-      {captionsEnabled && partialTranscript ? (
-        <p className="mt-3 text-sm italic text-muted-foreground">Listening: {partialTranscript}</p>
-      ) : null}
+
+      {/* Live Conversation Transcript */}
       {captionsEnabled && transcript.length ? (
         <div
-          className="mt-4 max-h-64 space-y-2 overflow-y-auto rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground"
+          className="max-h-72 space-y-3 overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/40 p-4 backdrop-blur-md"
           aria-live="polite"
           aria-label="Interview transcript"
         >
-          {transcript.map((turn, index) => (
-            <p key={`${index}-${turn}`}>{turn}</p>
-          ))}
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 border-b border-white/10 pb-2">
+            Live Interview Transcript
+          </p>
+          {transcript.map((turn, index) => {
+            const isUser = turn.startsWith("You:");
+            return (
+              <div
+                key={`${index}-${turn}`}
+                className={`flex gap-3 text-sm ${
+                  isUser ? "text-emerald-300/90" : "text-indigo-200/90"
+                }`}
+              >
+                <span className="font-semibold select-none">
+                  {isUser ? "You:" : "Interviewer:"}
+                </span>
+                <span className="flex-1 text-slate-200">
+                  {turn.replace(/^(You|Interviewer):\s*/, "")}
+                </span>
+              </div>
+            );
+          })}
         </div>
       ) : null}
     </div>
