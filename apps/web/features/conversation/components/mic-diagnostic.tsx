@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Mic, MicOff, RefreshCw, Sparkles, Volume2 } from "lucide-react";
+import { CheckCircle2, Mic, MicOff, RefreshCw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VoiceVisualizer } from "./voice-visualizer";
 
@@ -29,11 +29,47 @@ export function MicDiagnostic({ onComplete, onSkipToText }: MicDiagnosticProps) 
       const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setStream(audioStream);
 
-      // Simulate diagnostic speech check or listen for user voice
+      // Real Audio Context & Analyser Node to detect actual microphone voice input
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx();
+      const source = ctx.createMediaStreamSource(audioStream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 64;
+      source.connect(analyser);
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      let verified = false;
+
+      const checkVolume = () => {
+        if (verified) return;
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i]!;
+        const avg = sum / dataArray.length;
+
+        if (avg > 15) {
+          verified = true;
+          if (ctx.state !== "closed") void ctx.close();
+          setHeardText("Voice input detected!");
+          setStep("VERIFIED");
+          return;
+        }
+        requestAnimationFrame(checkVolume);
+      };
+
+      checkVolume();
+
+      // Auto-fallback timeout after 5 seconds if audio is silent
       setTimeout(() => {
-        setHeardText("Hello, how are you today?");
-        setStep("VERIFIED");
-      }, 3000);
+        if (!verified) {
+          verified = true;
+          if (ctx.state !== "closed") void ctx.close();
+          setHeardText("Microphone active.");
+          setStep("VERIFIED");
+        }
+      }, 5000);
     } catch (err) {
       setStep("ERROR");
       setErrorMessage(

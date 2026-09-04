@@ -29,7 +29,7 @@ export class InterviewLifecycleError extends Error {
 const activeInterviewStatuses: InterviewStatus[] = ["IN_PROGRESS", "COMPLETING"];
 
 import type { MonolithExecutionManager } from "../../services/monolith-execution.js";
-import type { ReportService } from "../reports/service.js";
+import { EMPTY_INTERVIEW_REPORT_REASON, type ReportService } from "../reports/service.js";
 
 export class InterviewService {
   readonly repository: InterviewRepository;
@@ -199,7 +199,7 @@ export class InterviewService {
     const result = await this.database.$transaction(async (tx) => {
       const interview = await tx.interview.findFirst({
         where: { id, userId },
-        include: { conversation: true, report: true },
+        include: { conversation: { include: { turns: true } }, report: true },
       });
       if (!interview)
         throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
@@ -238,6 +238,30 @@ export class InterviewService {
         where: { id },
         data: { status: "COMPLETED", completedAt },
       });
+      const answered = interview.conversation.turns.some((turn) => turn.speaker === "USER");
+      if (!answered) {
+        // No candidate responses were captured, so an AI evaluation would be
+        // fabricated from nothing. Surface a graceful, non-retryable failure
+        // instead of queueing an expensive generation that cannot produce evidence.
+        await tx.interviewReport.upsert({
+          where: { interviewId: id },
+          create: {
+            interviewId: id,
+            status: "FAILED",
+            failureReason: EMPTY_INTERVIEW_REPORT_REASON,
+          },
+          update: { status: "FAILED", failureReason: EMPTY_INTERVIEW_REPORT_REASON },
+        });
+        const updated = await tx.interview.findUniqueOrThrow({
+          where: { id },
+          include: { conversation: true, report: true },
+        });
+        return {
+          interview: { ...updated, completedAt: completed.completedAt },
+          requested: true,
+          enqueueReport: false,
+        };
+      }
       const report = await tx.interviewReport.upsert({
         where: { interviewId: id },
         create: { interviewId: id, status: "PENDING" },

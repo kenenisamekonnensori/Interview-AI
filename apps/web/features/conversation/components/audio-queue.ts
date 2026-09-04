@@ -7,7 +7,8 @@ export type AudioQueueItem = {
   interviewId: string;
   turnId: string;
   onPlay?: () => void;
-  onEnded?: () => void;
+  /** Called after the playback-completed acknowledgement resolves with the server-reported state. */
+  onEnded?: (ackState?: string) => void;
   onError?: (error: Error) => void;
 };
 
@@ -117,12 +118,12 @@ class AudioPlaybackQueue {
       audio.onended = () => {
         console.log(`[Audio Queue] Completed playback for turn ${item.turnId}`);
         this.stopCurrent();
-        void apiClient(
+        void apiClient<{ state?: string }>(
           `/api/v1/interviews/${item.interviewId}/conversation/turns/${item.turnId}/playback-completed`,
           { method: "POST" },
         )
-          .then(() => {
-            item.onEnded?.();
+          .then((ack) => {
+            item.onEnded?.(ack.state);
             this.isPlaying = false;
             void this.processNext();
           })

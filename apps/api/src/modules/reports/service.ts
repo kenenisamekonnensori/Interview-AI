@@ -21,6 +21,10 @@ export class ReportLifecycleError extends Error {
   }
 }
 
+/** Used when an interview completed without any candidate answers to evaluate. */
+export const EMPTY_INTERVIEW_REPORT_REASON =
+  "This interview ended before any answers were recorded, so an evaluation could not be generated. Try again with a spoken or typed response.";
+
 function publicFailureReason(error: unknown) {
   return error instanceof AiProviderError
     ? "Your report could not be generated yet. Please try again."
@@ -81,10 +85,19 @@ export class ReportService {
   }
 
   async retry(interviewId: string, userId: string) {
+    const context = await this.repository.context(interviewId);
+    const hasAnswers = (context?.conversation?.turns ?? []).some(
+      (turn) => turn.speaker === "USER",
+    );
+    const report = await this.repository.findOwned(interviewId, userId);
+    if (!report) throw new ReportLifecycleError("REPORT_NOT_FOUND", "Report not found.");
+    if (!hasAnswers) {
+      // An interview with no recorded answers cannot produce an evidence-based
+      // evaluation; keep the graceful failure instead of re-running generation.
+      return report;
+    }
     const changed = await this.repository.retry(interviewId, userId);
     if (!changed.count) {
-      const report = await this.repository.findOwned(interviewId, userId);
-      if (!report) throw new ReportLifecycleError("REPORT_NOT_FOUND", "Report not found.");
       throw new ReportLifecycleError("REPORT_NOT_RETRYABLE", "This report is not ready to retry.");
     }
     const dispatched = this.monolith?.dispatchReportGeneration(this, interviewId);

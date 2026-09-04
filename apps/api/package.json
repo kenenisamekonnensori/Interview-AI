@@ -20,7 +20,11 @@
     "cleanup:resume-uploads": "tsx src/scripts/cleanup-resume-uploads.ts",
     "account:delete": "tsx src/scripts/delete-account.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:studio": "prisma studio",
+    "db:setup": "pnpm prisma:generate && pnpm prisma:migrate:deploy",
+    "db:reset": "pnpm prisma:generate && pnpm prisma:migrate:deploy && pnpm prisma:reset",
+    "db:reset:force": "pnpm prisma:generate && pnpm prisma:migrate:deploy && pnpm prisma:reset:force"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",

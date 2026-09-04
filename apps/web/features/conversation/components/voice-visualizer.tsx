@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Volume2, Brain, LoaderCircle, AlertTriangle, WifiOff } from "lucide-react";
+import { Mic, MicOff, Volume2, Brain, LoaderCircle, AlertTriangle } from "lucide-react";
 import type { VoiceSessionState } from "./microphone";
 
 interface VoiceVisualizerProps {

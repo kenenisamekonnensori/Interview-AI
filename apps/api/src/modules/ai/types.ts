@@ -4,6 +4,7 @@ export type AiInterviewContext = {
   interviewType: string;
   difficulty: string;
   targetRole: string | null;
+  language: string;
   objectives: string[];
   topics: string[];
   durationRemainingSeconds: number;

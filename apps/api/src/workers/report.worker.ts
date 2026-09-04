@@ -8,6 +8,7 @@ import { InterviewEventPublisher } from "../modules/interviews/events.js";
 import { ReportService } from "../modules/reports/service.js";
 import { createReportQueue, type ReportJob } from "../services/report-queue.js";
 import { createRedisConnectionOptions } from "../services/redis-connection.js";
+import { RealtimeEventBus } from "../services/realtime-events.js";
 import {
   configureObservability,
   observability,
@@ -25,11 +26,15 @@ const environment = serverEnvironmentSchema.parse(process.env);
 const database = createAuthDatabase(environment.DATABASE_URL);
 configureObservability(console);
 const queue = createReportQueue(environment.REDIS_URL);
+const eventBus = new RealtimeEventBus(environment.REDIS_URL);
 const reports = new ReportService(
   database,
   environment,
   queue,
-  new InterviewEventPublisher({ info: (payload, message) => console.info(message, payload) }),
+  new InterviewEventPublisher(
+    { info: (payload, message) => console.info(message, payload) },
+    eventBus,
+  ),
 );
 
 const worker = new Worker<ReportJob>(
@@ -65,6 +70,7 @@ await new Promise<void>((resolve) => {
   const shutdown = installWorkerShutdown({
     worker,
     closeDependencies: async () => {
+      await eventBus.close();
       await queue.close();
       await database.$disconnect();
     },

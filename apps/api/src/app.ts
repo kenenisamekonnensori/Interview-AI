@@ -28,6 +28,7 @@ import {
 } from "./services/security.js";
 
 import { MonolithExecutionManager, isMonolithMode } from "./services/monolith-execution.js";
+import { RealtimeEventBus } from "./services/realtime-events.js";
 
 export function createApp() {
   const environment = serverEnvironmentSchema.parse(process.env);
@@ -65,6 +66,7 @@ export function createApp() {
   const careerAnalysisQueue = createCareerAnalysisQueue(environment.REDIS_URL);
   const reportQueue = createReportQueue(environment.REDIS_URL);
   const rateLimiter = createRequestRateLimiter(environment.REDIS_URL);
+  const eventBus = new RealtimeEventBus(environment.REDIS_URL);
 
   app.decorate("auth", auth);
   app.decorateRequest("authContext", null);
@@ -72,6 +74,7 @@ export function createApp() {
     await careerAnalysisQueue.close();
     await reportQueue.close();
     await rateLimiter.close();
+    await eventBus.close();
     await dispose();
   });
 
@@ -134,12 +137,20 @@ export function createApp() {
     careerAnalysisQueue,
     reportQueue,
     monolith,
+    eventBus,
   );
-  const reportService = registerReportRoutes(app, database, environment, reportQueue, monolith);
+  const reportService = registerReportRoutes(
+    app,
+    database,
+    environment,
+    reportQueue,
+    monolith,
+    eventBus,
+  );
   interviewService.setReportService(reportService);
   registerAnalyticsRoutes(app, database);
   registerUserProfileRoutes(app, database);
-  registerConversationRoutes(app, database, environment, app.interviewService);
+  registerConversationRoutes(app, database, environment, interviewService, eventBus);
 
   app.get("/health", async () => ({ status: "ok" }));
   app.get("/ready", async (request, reply) => {
