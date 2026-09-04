@@ -1,14 +1,7 @@
 "use client";
 
 import { DeepgramClient } from "@deepgram/sdk";
-import {
-  LoaderCircle,
-  Mic,
-  MicOff,
-  RotateCw,
-  Volume2,
-  MessageSquare,
-} from "lucide-react";
+import { LoaderCircle, Mic, MicOff, RotateCw, Volume2, MessageSquare } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   aiResponseRecoverySchema,
@@ -539,9 +532,7 @@ export function InterviewMicrophone({
   }
 
   function bufferPendingAnswer(text: string) {
-    const merged = pendingAnswerRef.current
-      ? `${pendingAnswerRef.current} ${text}`.trim()
-      : text;
+    const merged = pendingAnswerRef.current ? `${pendingAnswerRef.current} ${text}`.trim() : text;
     pendingAnswerRef.current = merged;
     setPendingAnswer(merged);
     setPendingFlushError(null);

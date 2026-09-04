@@ -84,7 +84,11 @@ export async function grantDeepgramAccessTokenWithClient(client: DeepgramClient)
   }
 }
 
-export async function synthesizeSpeech(environment: ServerEnvironment, text: string, model: string) {
+export async function synthesizeSpeech(
+  environment: ServerEnvironment,
+  text: string,
+  model: string,
+) {
   if (!environment.DEEPGRAM_API_KEY) throw new DeepgramConfigurationError();
   const client = new DeepgramClient({ apiKey: environment.DEEPGRAM_API_KEY });
   const response = await observability().time(

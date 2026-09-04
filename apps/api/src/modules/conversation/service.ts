@@ -143,7 +143,8 @@ export class ConversationService {
     const turnType =
       conversation.state === "GREETING"
         ? "GREETING"
-        : (response.responseType === "CLOSING" || response.recommendedAction === "CLOSE_INTERVIEW") &&
+        : (response.responseType === "CLOSING" ||
+              response.recommendedAction === "CLOSE_INTERVIEW") &&
             allowClosing
           ? "CLOSING"
           : response.responseType === "CLOSING"

@@ -86,9 +86,7 @@ export class ReportService {
 
   async retry(interviewId: string, userId: string) {
     const context = await this.repository.context(interviewId);
-    const hasAnswers = (context?.conversation?.turns ?? []).some(
-      (turn) => turn.speaker === "USER",
-    );
+    const hasAnswers = (context?.conversation?.turns ?? []).some((turn) => turn.speaker === "USER");
     const report = await this.repository.findOwned(interviewId, userId);
     if (!report) throw new ReportLifecycleError("REPORT_NOT_FOUND", "Report not found.");
     if (!hasAnswers) {

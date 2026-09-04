@@ -148,7 +148,15 @@ test("an unavailable voice token is explicit so a client can switch to text", as
 
 test("a failed token grant fails closed instead of exposing the server API key", async () => {
   const failingClient = {
-    auth: { v1: { tokens: { grant: async () => { throw new Error("provider unavailable"); } } } },
+    auth: {
+      v1: {
+        tokens: {
+          grant: async () => {
+            throw new Error("provider unavailable");
+          },
+        },
+      },
+    },
   } as never;
   await assert.rejects(grantDeepgramAccessTokenWithClient(failingClient), DeepgramTokenGrantError);
 });
@@ -652,9 +660,7 @@ test("realtime event bus routes events only to matching interview subscribers", 
   const unsubscribeA = bus.subscribe("interview-a", (event) =>
     received.push([event.name, event.payload.interviewId]),
   );
-  bus.subscribe("interview-b", (event) =>
-    received.push([event.name, event.payload.interviewId]),
-  );
+  bus.subscribe("interview-b", (event) => received.push([event.name, event.payload.interviewId]));
   const speech = (interviewId: string, conversationId: string) => ({
     name: "UserSpeechStarted" as const,
     payload: { interviewId, conversationId, occurredAt: "2026-08-08T00:00:00.000Z" },

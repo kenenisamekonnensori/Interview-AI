@@ -49,14 +49,12 @@ const steps = [
   {
     icon: AudioLines,
     title: "Have the conversation",
-    description:
-      "Speak with an AI interviewer that follows your thinking, not a script.",
+    description: "Speak with an AI interviewer that follows your thinking, not a script.",
   },
   {
     icon: Gauge,
     title: "Leave with clarity",
-    description:
-      "Get a candid read on your communication, reasoning, and next move.",
+    description: "Get a candid read on your communication, reasoning, and next move.",
   },
 ];
 
@@ -83,15 +81,9 @@ export default function HomePage() {
 
         {/* Nav */}
         <nav className="absolute inset-x-0 top-0 z-20 mx-auto flex h-16 max-w-5xl items-center justify-between">
-          <Link
-            className="flex items-center gap-2.5"
-            href="/"
-            aria-label="Interviewer AI home"
-          >
+          <Link className="flex items-center gap-2.5" href="/" aria-label="Interviewer AI home">
             <BrandMark />
-            <span className="text-sm font-semibold tracking-tight text-white">
-              Interviewer AI
-            </span>
+            <span className="text-sm font-semibold tracking-tight text-white">Interviewer AI</span>
           </Link>
           <div className="flex items-center gap-1">
             <Link
@@ -123,15 +115,14 @@ export default function HomePage() {
 
           <FadeUp delay={0.2}>
             <h1 className="mt-7 text-balance text-5xl font-extrabold leading-[1.02] tracking-[-0.04em] text-white sm:text-6xl lg:text-[4.25rem]">
-              Practice the moment.{" "}
-              <span className="text-gradient-primary">Own the room.</span>
+              Practice the moment. <span className="text-gradient-primary">Own the room.</span>
             </h1>
           </FadeUp>
 
           <FadeUp delay={0.35}>
             <p className="mx-auto mt-5 max-w-lg text-balance text-lg leading-relaxed text-white/55">
-              A realistic voice interview with intelligent follow-ups and clear
-              feedback—so your next answer feels like yours.
+              A realistic voice interview with intelligent follow-ups and clear feedback—so your
+              next answer feels like yours.
             </p>
           </FadeUp>
 
@@ -141,8 +132,7 @@ export default function HomePage() {
                 className="btn-premium inline-flex h-12 items-center justify-center gap-2 rounded-xl px-7 text-sm font-semibold text-white"
                 href="/sign-up"
               >
-                Start a free practice{" "}
-                <ArrowRight className="size-4" aria-hidden="true" />
+                Start a free practice <ArrowRight className="size-4" aria-hidden="true" />
               </Link>
               <a
                 className="btn-ghost-glass inline-flex h-12 items-center justify-center gap-2 rounded-xl px-7 text-sm font-medium text-white"
@@ -156,27 +146,19 @@ export default function HomePage() {
 
           <FadeUp delay={0.6}>
             <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-white/45">
-              {["No credit card", "Voice-first", "Feedback every session"].map(
-                (item) => (
-                  <span className="flex items-center gap-1.5" key={item}>
-                    <Check
-                      className="size-3 text-[#6366f1]"
-                      aria-hidden="true"
-                    />
-                    {item}
-                  </span>
-                ),
-              )}
+              {["No credit card", "Voice-first", "Feedback every session"].map((item) => (
+                <span className="flex items-center gap-1.5" key={item}>
+                  <Check className="size-3 text-[#6366f1]" aria-hidden="true" />
+                  {item}
+                </span>
+              ))}
             </div>
           </FadeUp>
         </div>
       </section>
 
       {/* ── Features ── */}
-      <section
-        className="relative mx-auto max-w-3xl px-6 py-24 sm:py-32"
-        id="how-it-works"
-      >
+      <section className="relative mx-auto max-w-3xl px-6 py-24 sm:py-32" id="how-it-works">
         {/* Ambient glow */}
         <div className="pointer-events-none absolute left-1/2 top-0 h-96 w-[40rem] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse,rgba(99,102,241,0.1)_0%,transparent_70%)]" />
 
@@ -191,10 +173,7 @@ export default function HomePage() {
           </div>
         </FadeUp>
 
-        <StaggerContainer
-          className="mt-14 grid gap-4 sm:grid-cols-3"
-          staggerDelay={0.12}
-        >
+        <StaggerContainer className="mt-14 grid gap-4 sm:grid-cols-3" staggerDelay={0.12}>
           {capabilities.map(({ icon: Icon, title, description }) => (
             <StaggerItem key={title}>
               <article className="glass-surface group relative overflow-hidden rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:border-[#6366f1]/30 hover:shadow-[0_0_30px_rgba(99,102,241,0.12)]">
@@ -202,12 +181,8 @@ export default function HomePage() {
                 <span className="grid size-10 place-items-center rounded-xl bg-[#6366f1]/12 text-[#c0c1ff] transition-colors duration-300 group-hover:bg-[#6366f1]/20">
                   <Icon className="size-5" />
                 </span>
-                <h3 className="mt-5 text-base font-semibold text-white">
-                  {title}
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-white/55">
-                  {description}
-                </p>
+                <h3 className="mt-5 text-base font-semibold text-white">{title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-white/55">{description}</p>
               </article>
             </StaggerItem>
           ))}
@@ -240,15 +215,9 @@ export default function HomePage() {
                   <div className="mx-auto grid size-12 place-items-center rounded-2xl border border-white/[.07] bg-white/[.04] text-[#c0c1ff] transition-all duration-300 hover:border-[#6366f1]/25 hover:bg-[#6366f1]/10">
                     <Icon className="size-5" />
                   </div>
-                  <p className="mt-5 text-xs font-mono font-medium text-white/30">
-                    0{index + 1}
-                  </p>
-                  <h3 className="mt-1 text-base font-semibold text-white">
-                    {title}
-                  </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-white/55">
-                    {description}
-                  </p>
+                  <p className="mt-5 text-xs font-mono font-medium text-white/30">0{index + 1}</p>
+                  <h3 className="mt-1 text-base font-semibold text-white">{title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-white/55">{description}</p>
                 </div>
               </StaggerItem>
             ))}
@@ -271,15 +240,13 @@ export default function HomePage() {
                 Your next interview deserves more than a guess.
               </h2>
               <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-white/50">
-                Practice with intention, hear how you come across, and walk in
-                with a plan.
+                Practice with intention, hear how you come across, and walk in with a plan.
               </p>
               <Link
                 className="btn-premium mx-auto mt-8 inline-flex h-12 items-center justify-center gap-2 rounded-xl px-8 text-sm font-semibold text-white"
                 href="/sign-up"
               >
-                Get started for free{" "}
-                <ArrowRight className="size-4" aria-hidden="true" />
+                Get started for free <ArrowRight className="size-4" aria-hidden="true" />
               </Link>
             </div>
           </div>

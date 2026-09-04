@@ -4,4 +4,3 @@ export function buildFollowUpGuidance() {
 - If the candidate mentioned a technical keyword (e.g. system design choice, language feature, framework, or database), ask them why they chose it or how they handled edge cases.
 - If an answer is complete and thorough, advance to the next logical topic area naturally.`;
 }
-

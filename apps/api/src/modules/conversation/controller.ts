@@ -101,10 +101,7 @@ export function registerConversationRoutes(
         });
         return token;
       } catch (error) {
-        if (
-          error instanceof DeepgramConfigurationError ||
-          error instanceof DeepgramTokenGrantError
-        )
+        if (error instanceof DeepgramConfigurationError || error instanceof DeepgramTokenGrantError)
           return reply
             .status(503)
             .send({ code: "VOICE_UNAVAILABLE", message: "Voice is not configured." });

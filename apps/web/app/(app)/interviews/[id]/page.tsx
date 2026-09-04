@@ -64,8 +64,7 @@ export default function LiveInterviewPage() {
   // state immediately (no polling wait), and resync after any reconnect so no
   // state change is missed while the stream was down.
   const streamEnabled = Boolean(
-    data &&
-      (data.interview.status === "IN_PROGRESS" || data.interview.status === "COMPLETING"),
+    data && (data.interview.status === "IN_PROGRESS" || data.interview.status === "COMPLETING"),
   );
   useConversationStream(
     id,

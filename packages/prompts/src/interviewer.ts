@@ -46,4 +46,3 @@ function languageName(language: string) {
   };
   return names[language] ?? language;
 }
-

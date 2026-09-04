@@ -218,8 +218,7 @@ function Particles() {
   useFrame((state) => {
     if (particlesRef.current) {
       particlesRef.current.rotation.y = state.clock.getElapsedTime() * 0.01;
-      particlesRef.current.rotation.x =
-        Math.sin(state.clock.getElapsedTime() * 0.005) * 0.05;
+      particlesRef.current.rotation.x = Math.sin(state.clock.getElapsedTime() * 0.005) * 0.05;
     }
   });
 
@@ -232,12 +231,7 @@ function Particles() {
           count={count}
           itemSize={3}
         />
-        <bufferAttribute
-          attach="attributes-size"
-          args={[sizes, 1]}
-          count={count}
-          itemSize={1}
-        />
+        <bufferAttribute attach="attributes-size" args={[sizes, 1]} count={count} itemSize={1} />
       </bufferGeometry>
       <pointsMaterial
         size={0.04}
@@ -309,15 +303,7 @@ function Scene() {
       <AtmosphericGlow />
       <Particles />
 
-      <Stars
-        radius={50}
-        depth={50}
-        count={2000}
-        factor={3}
-        saturation={0.1}
-        fade
-        speed={0.5}
-      />
+      <Stars radius={50} depth={50} count={2000} factor={3} saturation={0.1} fade speed={0.5} />
     </>
   );
 }

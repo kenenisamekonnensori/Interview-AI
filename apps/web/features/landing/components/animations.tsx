@@ -105,9 +105,7 @@ export function ScaleIn({ children, delay = 0, className }: ScaleInProps) {
     <motion.div
       ref={ref}
       initial={{ opacity: 0, scale: 0.95 }}
-      animate={
-        isInView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.95 }
-      }
+      animate={isInView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.95 }}
       transition={{
         duration: 0.7,
         delay,
