@@ -29,7 +29,10 @@ const principles = [
 
 const benefits = [
   { icon: Heart, text: "Meaningful work with a clear mission — helping people land opportunities" },
-  { icon: MessageSquare, text: "Small, senior team with direct access to users and product decisions" },
+  {
+    icon: MessageSquare,
+    text: "Small, senior team with direct access to users and product decisions",
+  },
   { icon: Layers, text: "Modern stack: Next.js, Fastify, PostgreSQL, Redis, and voice AI" },
   { icon: Zap, text: "Remote-friendly, async-first culture that respects your focus time" },
 ];

@@ -53,9 +53,7 @@ export default function CookiesPage() {
         {
           id: "contact",
           heading: "Contact",
-          paragraphs: [
-            `Questions about cookies or this policy? Email ${SUPPORT_EMAIL}.`,
-          ],
+          paragraphs: [`Questions about cookies or this policy? Email ${SUPPORT_EMAIL}.`],
         },
       ]}
     />

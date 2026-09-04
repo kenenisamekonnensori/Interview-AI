@@ -60,9 +60,15 @@ const categories = [
 ];
 
 const popularLinks = [
-  { label: "How to structure “Tell me about yourself”", href: "/blog/structure-your-answer-tell-me-about-yourself" },
+  {
+    label: "How to structure “Tell me about yourself”",
+    href: "/blog/structure-your-answer-tell-me-about-yourself",
+  },
   { label: "The STAR method, beyond the acronym", href: "/blog/star-method-beyond-the-acronym" },
-  { label: "What interviewers actually listen for", href: "/blog/what-interviewers-actually-listen-for" },
+  {
+    label: "What interviewers actually listen for",
+    href: "/blog/what-interviewers-actually-listen-for",
+  },
   { label: "Billing, plans, and refunds", href: "/faq#billing" },
   { label: "What happens to my data?", href: "/faq#data" },
 ];

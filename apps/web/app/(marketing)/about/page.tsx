@@ -44,8 +44,8 @@ export default function AboutPage() {
         <h2 className="text-2xl font-bold tracking-[-0.02em] text-white">Why we started this</h2>
         <div className="mt-4 space-y-4 text-[15px] leading-[1.8] text-white/60">
           <p>
-            Most interview preparation is passive. Candidates read question lists, watch videos,
-            and memorize answers — then sit down across from a real interviewer and discover that
+            Most interview preparation is passive. Candidates read question lists, watch videos, and
+            memorize answers — then sit down across from a real interviewer and discover that
             speaking under pressure is a completely different skill.
           </p>
           <p>

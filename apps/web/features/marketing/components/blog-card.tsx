@@ -24,7 +24,9 @@ export function BlogCard({ post, large = false }: { post: BlogPost; large?: bool
       >
         {post.title}
       </h2>
-      {large ? <p className="mt-3 text-[15px] leading-relaxed text-white/55">{post.excerpt}</p> : null}
+      {large ? (
+        <p className="mt-3 text-[15px] leading-relaxed text-white/55">{post.excerpt}</p>
+      ) : null}
       <p className={`mt-auto text-xs text-white/35 ${large ? "pt-6" : "pt-4"}`}>
         {formatPostDate(post.date)} · {post.readTime}
       </p>

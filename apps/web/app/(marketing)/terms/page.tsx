@@ -136,9 +136,7 @@ export default function TermsPage() {
         {
           id: "contact",
           heading: "Contact",
-          paragraphs: [
-            `Questions about these Terms? Email ${SUPPORT_EMAIL} and we'll help.`,
-          ],
+          paragraphs: [`Questions about these Terms? Email ${SUPPORT_EMAIL} and we'll help.`],
         },
       ]}
     />

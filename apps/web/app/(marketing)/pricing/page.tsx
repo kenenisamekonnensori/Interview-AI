@@ -108,10 +108,7 @@ export default function PricingPage() {
                   Feature
                 </th>
                 {["Free", "Pro", "Teams"].map((name) => (
-                  <th
-                    key={name}
-                    className="px-6 py-4 text-center text-sm font-semibold text-white"
-                  >
+                  <th key={name} className="px-6 py-4 text-center text-sm font-semibold text-white">
                     {name}
                   </th>
                 ))}
@@ -119,10 +116,7 @@ export default function PricingPage() {
             </thead>
             <tbody>
               {comparisonRows.map((row) => (
-                <tr
-                  key={row.feature}
-                  className="border-b border-white/[.04] last:border-0"
-                >
+                <tr key={row.feature} className="border-b border-white/[.04] last:border-0">
                   <td className="px-6 py-3.5 text-sm text-white/65">{row.feature}</td>
                   <td className="px-6 py-3.5 text-center">
                     <ComparisonCell cell={row.free} />

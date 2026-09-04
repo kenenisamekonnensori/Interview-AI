@@ -16,10 +16,7 @@ export function RichText({ blocks }: { blocks: RichBlock[] }) {
         switch (block.type) {
           case "h2":
             return (
-              <h2
-                key={index}
-                className="pt-4 text-xl font-semibold tracking-[-0.02em] text-white"
-              >
+              <h2 key={index} className="pt-4 text-xl font-semibold tracking-[-0.02em] text-white">
                 {block.text}
               </h2>
             );
@@ -37,7 +34,10 @@ export function RichText({ blocks }: { blocks: RichBlock[] }) {
             );
           case "ul":
             return (
-              <ul key={index} className="list-disc space-y-2 pl-5 text-[15px] leading-[1.8] text-white/60 marker:text-[#6366f1]">
+              <ul
+                key={index}
+                className="list-disc space-y-2 pl-5 text-[15px] leading-[1.8] text-white/60 marker:text-[#6366f1]"
+              >
                 {block.items.map((item, itemIndex) => (
                   <li key={itemIndex}>{item}</li>
                 ))}

@@ -106,7 +106,9 @@ export function SiteFooter() {
           <div>
             <Link className="flex items-center gap-2.5" href="/" aria-label="Interviewer AI home">
               <BrandMark />
-              <span className="text-sm font-semibold tracking-tight text-white">Interviewer AI</span>
+              <span className="text-sm font-semibold tracking-tight text-white">
+                Interviewer AI
+              </span>
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/50">
               Voice-first mock interviews that feel real — with intelligent follow-ups and clear,
@@ -132,7 +134,12 @@ export function SiteFooter() {
                   aria-label={social.label}
                   className="grid size-9 place-items-center rounded-lg text-white/40 transition-colors hover:bg-white/[.06] hover:text-white"
                 >
-                  <svg viewBox="0 0 24 24" fill="currentColor" className="size-4" aria-hidden="true">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    className="size-4"
+                    aria-hidden="true"
+                  >
                     <path d={social.path} />
                   </svg>
                 </a>

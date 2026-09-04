@@ -156,9 +156,7 @@ export function PricingTiers() {
               <Link
                 href={tier.href}
                 className={`mt-8 inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold transition-all ${
-                  tier.featured
-                    ? "btn-premium text-white"
-                    : "btn-ghost-glass text-white"
+                  tier.featured ? "btn-premium text-white" : "btn-ghost-glass text-white"
                 }`}
               >
                 {tier.ctaLabel}

@@ -73,7 +73,9 @@ export default function ChangelogPage() {
               <Sparkles className="size-4 text-[#c0c1ff]" aria-hidden="true" />
             </span>
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h2 className="text-base font-semibold tracking-tight text-white">{release.version}</h2>
+              <h2 className="text-base font-semibold tracking-tight text-white">
+                {release.version}
+              </h2>
               <span className="text-xs text-white/40">{release.date}</span>
               <span className="rounded-full border border-white/[.08] bg-white/[.04] px-2 py-0.5 text-[11px] text-white/50">
                 {release.label}
@@ -81,8 +83,14 @@ export default function ChangelogPage() {
             </div>
             <ul className="mt-3 space-y-2.5">
               {release.items.map((item) => (
-                <li key={item} className="flex items-start gap-2.5 text-sm leading-relaxed text-white/60">
-                  <span className="mt-[0.6rem] size-1 shrink-0 rounded-full bg-[#6366f1]/60" aria-hidden="true" />
+                <li
+                  key={item}
+                  className="flex items-start gap-2.5 text-sm leading-relaxed text-white/60"
+                >
+                  <span
+                    className="mt-[0.6rem] size-1 shrink-0 rounded-full bg-[#6366f1]/60"
+                    aria-hidden="true"
+                  />
                   {item}
                 </li>
               ))}
@@ -99,8 +107,14 @@ export default function ChangelogPage() {
         </div>
         <ul className="mt-4 space-y-2.5">
           {roadmap.map((item) => (
-            <li key={item} className="flex items-start gap-2.5 text-sm leading-relaxed text-white/60">
-              <span className="mt-[0.6rem] size-1 shrink-0 rounded-full bg-[#06b6d4]/70" aria-hidden="true" />
+            <li
+              key={item}
+              className="flex items-start gap-2.5 text-sm leading-relaxed text-white/60"
+            >
+              <span
+                className="mt-[0.6rem] size-1 shrink-0 rounded-full bg-[#06b6d4]/70"
+                aria-hidden="true"
+              />
               {item}
             </li>
           ))}
