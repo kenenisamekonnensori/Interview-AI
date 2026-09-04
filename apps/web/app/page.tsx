@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { MoonSceneLoader } from "../features/landing/components/moon-scene-loader";
+import { BrandMark } from "../features/landing/components/brand-mark";
+import { SiteFooter } from "../features/landing/components/site-footer";
 import {
   FadeUp,
   StaggerContainer,
@@ -58,17 +60,10 @@ const steps = [
   },
 ];
 
-function BrandMark() {
-  return (
-    <span className="grid size-9 place-items-center rounded-lg bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] shadow-lg shadow-[#6366f1]/25">
-      <Mic className="size-4" aria-hidden="true" />
-    </span>
-  );
-}
-
 export default function HomePage() {
   return (
-    <main className="overflow-hidden">
+    <>
+      <main className="overflow-hidden">
       {/* ── Hero ── */}
       <section className="landing-hero relative isolate flex min-h-dvh flex-col items-center justify-center px-6">
         <MoonSceneLoader />
@@ -252,17 +247,10 @@ export default function HomePage() {
           </div>
         </ScaleIn>
       </section>
+      </main>
 
       {/* ── Footer ── */}
-      <footer className="border-t border-white/[.05] py-6">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-6 text-xs text-white/35">
-          <div className="flex items-center gap-2">
-            <BrandMark />
-            <span className="font-medium text-white/60">Interviewer AI</span>
-          </div>
-          <p>Practice interviews that feel real.</p>
-        </div>
-      </footer>
-    </main>
+      <SiteFooter />
+    </>
   );
 }
