@@ -11,15 +11,31 @@ import { createAiProvider, type AiProvider } from "../ai/index.js";
 import type { InterviewService } from "../interviews/service.js";
 import { InterviewTools } from "../interviews/tools.js";
 import { ConversationEventPublisher } from "./events.js";
-import { grantDeepgramAccessToken, synthesizeSpeech } from "./deepgram.js";
+import {
+  bufferAudioStream,
+  grantDeepgramAccessToken,
+  isSupportedVoiceLanguage,
+  synthesizeSpeech,
+  ttsModelFor,
+} from "./deepgram.js";
 import { ConversationRepository } from "./repository.js";
 import { recoveryForAiResponseFailure, replayGeneratedResponse } from "./recovery.js";
 import { assertConversationTransition } from "./state-machine.js";
+import {
+  awaitPreWarm,
+  getCachedAudio,
+  isPreWarmInFlight,
+  isVoiceActive,
+  markVoiceActive,
+  registerPreWarm,
+  setCachedAudio,
+} from "./tts-cache.js";
 import type {
   ConversationResult,
   ConversationSessionContext,
   ConversationTurnRecord,
 } from "./types.js";
+import { observability } from "../../services/observability.js";
 
 export class ConversationError extends Error {
   constructor(
@@ -91,11 +107,14 @@ export class ConversationService {
       this.interviewTools.retrievePriorWeakAreas(actor, { interviewId }),
     ]);
     const shouldClose = hasReachedPlanObjectives(plan, context);
+    const latestUserAnswer =
+      [...conversation.turns].reverse().find((turn) => turn.speaker === "USER")?.text ?? null;
     const response = await this.aiProvider.generateInterviewerResponse({
       interviewContext: {
         interviewType: conversation.interview.interviewType,
         difficulty: conversation.interview.difficulty,
         targetRole: conversation.interview.targetRole,
+        language: conversation.interview.language,
         objectives: plan.objectives,
         topics: plan.topics.map((topic) => topic.topic),
         durationRemainingSeconds: context.durationRemainingSeconds,
@@ -115,24 +134,22 @@ export class ConversationService {
         askedQuestions: memory?.askedQuestions ?? [],
         questionDifficulty: memory?.questionDifficulty ?? conversation.interview.difficulty,
       },
-      latestCandidateAnswer:
-        conversation.turns.find((turn) => turn.speaker === "USER")?.text ?? null,
+      latestCandidateAnswer: latestUserAnswer,
     });
-    if (
-      !shouldClose &&
-      (response.responseType === "CLOSING" || response.recommendedAction === "CLOSE_INTERVIEW")
-    ) {
-      throw new ConversationError(
-        "AI_RESPONSE_NOT_ALLOWED",
-        "The interviewer requested an end condition that has not been reached.",
-      );
-    }
+    const allowClosing =
+      shouldClose ||
+      context.durationRemainingSeconds <= 120 ||
+      context.questionCount >= plan.topics.length * 2;
     const turnType =
       conversation.state === "GREETING"
         ? "GREETING"
-        : shouldClose
+        : (response.responseType === "CLOSING" ||
+              response.recommendedAction === "CLOSE_INTERVIEW") &&
+            allowClosing
           ? "CLOSING"
-          : response.responseType;
+          : response.responseType === "CLOSING"
+            ? "QUESTION"
+            : response.responseType;
     const nextState: ConversationState = turnType === "CLOSING" ? "CLOSING" : "SPEAKING";
     assertConversationTransition(conversation.state, nextState);
     if (
@@ -161,8 +178,7 @@ export class ConversationService {
       selectedTopic,
       response: validatedResponse,
       turnType,
-      latestCandidateAnswer:
-        conversation.turns.find((turn) => turn.speaker === "USER")?.text ?? null,
+      latestCandidateAnswer: latestUserAnswer,
     });
 
     const turn = await this.database.$transaction(async (tx) => {
@@ -195,6 +211,11 @@ export class ConversationService {
       name: "AIResponseGenerated",
       payload: { interviewId, conversationId: conversation.id, turn: asTurnDto(turn) },
     });
+    // When the candidate is using voice, start synthesizing the reply now so the
+    // subsequent audio fetch is served from cache instead of waiting for TTS.
+    if (isVoiceActive(interviewId) && !isPreWarmInFlight(turn.id)) {
+      this.preWarmTurnAudio(turn, conversation.interview.language);
+    }
     return result;
   }
 
@@ -246,6 +267,17 @@ export class ConversationService {
 
   async notifyUserSpeechStarted(interviewId: string, userId: string) {
     const conversation = await this.requireActiveConversation(interviewId, userId);
+    markVoiceActive(interviewId);
+    if (conversation.state === "SPEAKING") {
+      assertConversationTransition("SPEAKING", "LISTENING");
+      await this.database.$transaction((tx) =>
+        this.repository.moveState(tx, {
+          conversationId: conversation.id,
+          expectedState: "SPEAKING",
+          nextState: "LISTENING",
+        }),
+      );
+    }
     this.events.publish({
       name: "UserSpeechStarted",
       payload: {
@@ -303,6 +335,40 @@ export class ConversationService {
     return turn;
   }
 
+  /**
+   * Returns the owned AI turn together with its synthesized audio, serving from
+   * the cache when a pre-warm (or earlier fetch) already produced it.
+   */
+  async getTurnAudio(interviewId: string, turnId: string, userId: string) {
+    const turn = await this.getAudioTurn(interviewId, turnId, userId);
+    const cached = getCachedAudio(turnId);
+    if (cached) return { turn, audio: cached, cached: true };
+    // If a pre-warm is still running for this turn, await it instead of
+    // synthesizing a duplicate copy of the same audio.
+    const inFlight = awaitPreWarm(turnId);
+    if (inFlight) {
+      const audio = await inFlight;
+      if (audio) return { turn, audio, cached: true };
+    }
+    const stream = await this.synthesizeTurn({
+      text: turn.text,
+      language: turn.conversation.interview.language,
+    });
+    const audio = await bufferAudioStream(stream);
+    setCachedAudio(turnId, audio);
+    return { turn, audio, cached: false };
+  }
+
+  synthesizeTurn(turn: { text: string; language: string }) {
+    const model = ttsModelFor(turn.language);
+    if (!model)
+      throw new ConversationError(
+        "VOICE_LANGUAGE_UNSUPPORTED",
+        `Voice is not available in ${turn.language}. You can continue by typing.`,
+      );
+    return synthesizeSpeech(this.environment, turn.text, model);
+  }
+
   publishPlaybackStarted(interviewId: string, conversationId: string, turnId: string) {
     this.events.publish({
       name: "AIStartedSpeaking",
@@ -317,11 +383,13 @@ export class ConversationService {
         "INTERVIEW_NOT_VOICE_READY",
         "Only ready or active interviews can use voice.",
       );
+    if (!isSupportedVoiceLanguage(interview.language))
+      throw new ConversationError(
+        "VOICE_LANGUAGE_UNSUPPORTED",
+        `Voice interviews are not available in ${interview.language}. You can continue by typing.`,
+      );
+    markVoiceActive(interviewId);
     return { accessToken: await grantDeepgramAccessToken(this.environment), expiresInSeconds: 30 };
-  }
-
-  synthesizeTurn(turn: { text: string }) {
-    return synthesizeSpeech(this.environment, turn.text);
   }
 
   private async requireActiveConversation(interviewId: string, userId: string) {
@@ -334,6 +402,33 @@ export class ConversationService {
     if (conversation.state === "COMPLETED" || conversation.state === "CLOSING")
       throw new ConversationError("CONVERSATION_TERMINAL", "This conversation has already ended.");
     return conversation;
+  }
+
+  /**
+   * Starts TTS for a persisted AI turn in the background and caches the audio.
+   * Best-effort: failures are observed and the audio route synthesizes on demand.
+   */
+  private preWarmTurnAudio(turn: { id: string; text: string }, language: string) {
+    const promise = (async (): Promise<Buffer | null> => {
+      try {
+        if (getCachedAudio(turn.id)) return null;
+        const model = ttsModelFor(language);
+        if (!model) return null;
+        const stream = await synthesizeSpeech(this.environment, turn.text, model);
+        const audio = await bufferAudioStream(stream);
+        setCachedAudio(turn.id, audio);
+        observability().event("voice.audio.prewarmed", { turnId: turn.id, language });
+        return audio;
+      } catch (cause) {
+        observability().event("voice.audio.prewarm_failed", {
+          turnId: turn.id,
+          language,
+          reason: cause instanceof Error ? cause.message : String(cause),
+        });
+        return null;
+      }
+    })();
+    registerPreWarm(turn.id, promise);
   }
 
   private async completeIfExpired(
@@ -387,7 +482,7 @@ function buildSessionContext(
           1_000,
       ),
     ),
-    recentTurns: turns
+    recentTurns: conversation.turns
       .slice(-12)
       .map((turn) => ({ speaker: turn.speaker, type: turn.type, text: turn.text })),
     unresolvedFollowUps: unansweredFollowUps,

@@ -36,6 +36,7 @@ export class ConversationRepository {
         speaker: "AI",
         conversation: { interviewId, interview: { userId } },
       },
+      include: { conversation: { include: { interview: true } } },
     });
   }
 

@@ -15,16 +15,20 @@ const resumeContentTypes: string[] = [
 ];
 const maximumResumeFileSize = 10 * 1024 * 1024;
 
+import type { MonolithExecutionManager } from "../../services/monolith-execution.js";
+
 export function registerResumeRoutes(
   app: FastifyInstance,
   {
     database,
     environment,
     queue,
+    monolith,
   }: {
     database: PrismaClient;
     environment: ServerEnvironment;
     queue: ReturnType<typeof createCareerAnalysisQueue>;
+    monolith?: MonolithExecutionManager | undefined;
   },
 ) {
   app.addContentTypeParser(resumeContentTypes, { parseAs: "buffer" }, (_request, body, done) =>
@@ -91,12 +95,15 @@ export function registerResumeRoutes(
         });
       if (resume.status !== "ANALYZING") {
         await database.resume.update({ where: { id: resume.id }, data: { status: "ANALYZING" } });
-        await queue.enqueue({
-          kind: "resume",
-          resumeId: resume.id,
-          userId: resume.userId,
-          correlationId: request.id,
-        });
+        const dispatched = monolith?.dispatchResumeAnalysis(resume.id, resume.userId, request.id);
+        if (!dispatched) {
+          await queue.enqueue({
+            kind: "resume",
+            resumeId: resume.id,
+            userId: resume.userId,
+            correlationId: request.id,
+          });
+        }
       }
       return reply.status(202).send({ status: "ANALYZING" });
     },

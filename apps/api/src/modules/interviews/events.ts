@@ -1,4 +1,5 @@
 import type { RealtimeEvent } from "@interviewer-ai/types";
+import type { RealtimeEventBus } from "../../services/realtime-events.js";
 
 type LifecycleLogger = { info: (payload: unknown, message: string) => void };
 
@@ -7,9 +8,13 @@ type LifecycleLogger = { info: (payload: unknown, message: string) => void };
  * after their database transaction has committed.
  */
 export class InterviewEventPublisher {
-  constructor(private readonly logger: LifecycleLogger) {}
+  constructor(
+    private readonly logger: LifecycleLogger,
+    private readonly bus?: RealtimeEventBus,
+  ) {}
 
   publish(event: RealtimeEvent) {
+    this.bus?.publish(event);
     this.logger.info(
       {
         eventName: event.name,

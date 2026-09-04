@@ -21,6 +21,10 @@ export class ReportLifecycleError extends Error {
   }
 }
 
+/** Used when an interview completed without any candidate answers to evaluate. */
+export const EMPTY_INTERVIEW_REPORT_REASON =
+  "This interview ended before any answers were recorded, so an evaluation could not be generated. Try again with a spoken or typed response.";
+
 function publicFailureReason(error: unknown) {
   return error instanceof AiProviderError
     ? "Your report could not be generated yet. Please try again."
@@ -57,6 +61,8 @@ function validateScoreConsistency(evaluation: {
     );
 }
 
+import type { MonolithExecutionManager } from "../../services/monolith-execution.js";
+
 export class ReportService {
   readonly repository: ReportRepository;
   private readonly aiProvider;
@@ -66,6 +72,7 @@ export class ReportService {
     private readonly environment: ServerEnvironment,
     private readonly queue: ReturnType<typeof createReportQueue>,
     private readonly events: InterviewEventPublisher,
+    private readonly monolith?: MonolithExecutionManager,
   ) {
     this.repository = new ReportRepository(database);
     this.aiProvider = createAiProvider(environment);
@@ -78,23 +85,33 @@ export class ReportService {
   }
 
   async retry(interviewId: string, userId: string) {
+    const context = await this.repository.context(interviewId);
+    const hasAnswers = (context?.conversation?.turns ?? []).some((turn) => turn.speaker === "USER");
+    const report = await this.repository.findOwned(interviewId, userId);
+    if (!report) throw new ReportLifecycleError("REPORT_NOT_FOUND", "Report not found.");
+    if (!hasAnswers) {
+      // An interview with no recorded answers cannot produce an evidence-based
+      // evaluation; keep the graceful failure instead of re-running generation.
+      return report;
+    }
     const changed = await this.repository.retry(interviewId, userId);
     if (!changed.count) {
-      const report = await this.repository.findOwned(interviewId, userId);
-      if (!report) throw new ReportLifecycleError("REPORT_NOT_FOUND", "Report not found.");
       throw new ReportLifecycleError("REPORT_NOT_RETRYABLE", "This report is not ready to retry.");
     }
-    try {
-      await this.queue.enqueue({ interviewId, userId });
-    } catch {
-      await this.repository.markPendingFailed(
-        interviewId,
-        "Your report could not be queued. Please try again.",
-      );
-      throw new ReportLifecycleError(
-        "REPORT_QUEUE_UNAVAILABLE",
-        "Report generation could not be queued.",
-      );
+    const dispatched = this.monolith?.dispatchReportGeneration(this, interviewId);
+    if (!dispatched) {
+      try {
+        await this.queue.enqueue({ interviewId, userId });
+      } catch {
+        await this.repository.markPendingFailed(
+          interviewId,
+          "Your report could not be queued. Please try again.",
+        );
+        throw new ReportLifecycleError(
+          "REPORT_QUEUE_UNAVAILABLE",
+          "Report generation could not be queued.",
+        );
+      }
     }
     return this.details(interviewId, userId);
   }

@@ -8,6 +8,7 @@ import { InterviewEventPublisher } from "../modules/interviews/events.js";
 import { ReportService } from "../modules/reports/service.js";
 import { createReportQueue, type ReportJob } from "../services/report-queue.js";
 import { createRedisConnectionOptions } from "../services/redis-connection.js";
+import { RealtimeEventBus } from "../services/realtime-events.js";
 import {
   configureObservability,
   observability,
@@ -15,22 +16,32 @@ import {
 } from "../services/observability.js";
 import { installWorkerShutdown } from "../services/queue-worker.js";
 
+/**
+ * Report Generation Worker (Worker Mode - Future Architecture).
+ * Preserved intact for multi-process report generation deployments.
+ * Delegates processing to ReportService.generate().
+ */
+
 const environment = serverEnvironmentSchema.parse(process.env);
 const database = createAuthDatabase(environment.DATABASE_URL);
 configureObservability(console);
 const queue = createReportQueue(environment.REDIS_URL);
+const eventBus = new RealtimeEventBus(environment.REDIS_URL);
 const reports = new ReportService(
   database,
   environment,
   queue,
-  new InterviewEventPublisher({ info: (payload, message) => console.info(message, payload) }),
+  new InterviewEventPublisher(
+    { info: (payload, message) => console.info(message, payload) },
+    eventBus,
+  ),
 );
 
 const worker = new Worker<ReportJob>(
   "report-generation",
   async (job) =>
     withCorrelationId(job.data.correlationId, () => reports.generate(job.data.interviewId)),
-  { connection: createRedisConnectionOptions(environment.REDIS_URL, { worker: true }) },
+  { connection: createRedisConnectionOptions(environment.REDIS_URL!, { worker: true }) },
 );
 worker.on("active", (job) => {
   observability().event("queue.job.started", {
@@ -59,6 +70,7 @@ await new Promise<void>((resolve) => {
   const shutdown = installWorkerShutdown({
     worker,
     closeDependencies: async () => {
+      await eventBus.close();
       await queue.close();
       await database.$disconnect();
     },

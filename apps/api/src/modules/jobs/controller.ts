@@ -3,6 +3,8 @@ import type { PrismaClient } from "../../../prisma/generated/client.js";
 import { createJobDescriptionSchema, jobDescriptionIdSchema } from "./schema.js";
 import type { createCareerAnalysisQueue } from "../../services/career-analysis-queue.js";
 
+import type { MonolithExecutionManager } from "../../services/monolith-execution.js";
+
 const toDto = (job: {
   id: string;
   title: string | null;
@@ -17,7 +19,12 @@ export function registerJobDescriptionRoutes(
   {
     database,
     queue,
-  }: { database: PrismaClient; queue: ReturnType<typeof createCareerAnalysisQueue> },
+    monolith,
+  }: {
+    database: PrismaClient;
+    queue: ReturnType<typeof createCareerAnalysisQueue>;
+    monolith?: MonolithExecutionManager | undefined;
+  },
 ) {
   app.post(
     "/api/v1/job-descriptions",
@@ -89,12 +96,15 @@ export function registerJobDescriptionRoutes(
           where: { id: job.id },
           data: { status: "ANALYZING" },
         });
-        await queue.enqueue({
-          kind: "job-description",
-          jobDescriptionId: job.id,
-          userId: job.userId,
-          correlationId: request.id,
-        });
+        const dispatched = monolith?.dispatchJobAnalysis(job.id, job.userId, request.id);
+        if (!dispatched) {
+          await queue.enqueue({
+            kind: "job-description",
+            jobDescriptionId: job.id,
+            userId: job.userId,
+            correlationId: request.id,
+          });
+        }
       }
       return reply.status(202).send({ status: "ANALYZING" });
     },

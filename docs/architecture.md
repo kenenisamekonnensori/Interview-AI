@@ -65,3 +65,20 @@ DEEPGRAM_API_KEY=
 - Do not log full resumes, raw audio, complete prompts, transcripts, credentials, or provider authorization tokens.
 - Store recordings only when the product explicitly enables recording and the user has consented; otherwise retain only the validated transcript and derived results required by the product.
 - Use HTTPS, short-lived Deepgram tokens, server-side provider keys, and existing authorization checks for all provider access.
+
+## Execution Architecture: Monolith Mode vs Worker Mode
+
+The backend supports two operational modes sharing the exact same business logic services:
+
+### 1. Monolith Mode (Current / MVP Stage)
+- **Deployment**: Single Fastify API process. Zero dedicated worker processes required.
+- **Redis Requirement**: Optional. If `REDIS_URL` is omitted, in-memory rate limiting is used.
+- **Flow**: API endpoints return non-blocking responses (`202 Accepted` / `201 Created`) and execute asynchronous tasks (resume analysis, job description analysis, interview planning, report generation, email outbox) in-process via `MonolithExecutionManager`.
+- **Logs**: Emits `[Monolith Mode] Running <operation> directly for <id>`.
+
+### 2. Worker Mode (Future Production Architecture)
+- **Deployment**: Fastify API service + dedicated BullMQ workers (`career-analysis.worker.ts`, `report.worker.ts`, `auth-email.worker.ts`).
+- **Activation**: Set `WORKER_MODE=true` in environment and start worker processes.
+- **Flow**: API endpoints enqueue jobs into Redis BullMQ queues (`career-analysis`, `report-generation`) and background workers process jobs by calling the exact same application services.
+- **Workers**: Preserved intact in `apps/api/src/workers/` as thin wrappers around application services (`resume-analysis.service.ts`, `job-analysis.service.ts`, `interview-plan.service.ts`, `ReportService`, `auth-email.service.ts`).
+

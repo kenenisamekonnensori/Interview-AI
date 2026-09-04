@@ -35,8 +35,26 @@ import {
 } from "../modules/conversation/recovery.js";
 import {
   DeepgramConfigurationError,
+  DeepgramTokenGrantError,
   grantDeepgramAccessToken,
+  grantDeepgramAccessTokenWithClient,
+  isSupportedVoiceLanguage,
+  ttsModelFor,
 } from "../modules/conversation/deepgram.js";
+import {
+  awaitPreWarm,
+  clearTtsAudioCache,
+  getCachedAudio,
+  isPreWarmInFlight,
+  isVoiceActive,
+  markVoiceActive,
+  registerPreWarm,
+  setCachedAudio,
+  ttsAudioCacheMaxEntries,
+  ttsAudioCacheTtlMs,
+  voiceActivityWindowMs,
+} from "../modules/conversation/tts-cache.js";
+import { RealtimeEventBus } from "../services/realtime-events.js";
 
 const firstTurn = "11111111-1111-4111-8111-111111111111";
 const secondTurn = "22222222-2222-4222-8222-222222222222";
@@ -126,6 +144,43 @@ test("an unavailable voice token is explicit so a client can switch to text", as
     grantDeepgramAccessToken({ DEEPGRAM_API_KEY: undefined } as never),
     DeepgramConfigurationError,
   );
+});
+
+test("a failed token grant fails closed instead of exposing the server API key", async () => {
+  const failingClient = {
+    auth: {
+      v1: {
+        tokens: {
+          grant: async () => {
+            throw new Error("provider unavailable");
+          },
+        },
+      },
+    },
+  } as never;
+  await assert.rejects(grantDeepgramAccessTokenWithClient(failingClient), DeepgramTokenGrantError);
+});
+
+test("a successful token grant returns only the short-lived access token", async () => {
+  const client = {
+    auth: {
+      v1: { tokens: { grant: async () => ({ access_token: "short-lived-token" }) } },
+    },
+  } as never;
+  assert.equal(await grantDeepgramAccessTokenWithClient(client), "short-lived-token");
+});
+
+test("voice language support maps only to verified Aura-2 models", () => {
+  assert.equal(ttsModelFor("en"), "aura-2-thalia-en");
+  assert.equal(ttsModelFor("es"), "aura-2-estrella-es");
+  assert.equal(ttsModelFor("de"), "aura-2-viktoria-de");
+  assert.equal(ttsModelFor("fr"), "aura-2-agathe-fr");
+  assert.equal(ttsModelFor("nl"), "aura-2-daphne-nl");
+  assert.equal(ttsModelFor("hi"), null);
+  assert.equal(ttsModelFor("zh"), null);
+  assert.equal(isSupportedVoiceLanguage("en"), true);
+  assert.equal(isSupportedVoiceLanguage("fr"), true);
+  assert.equal(isSupportedVoiceLanguage("ja"), false);
 });
 
 test("a typed answer follows the same full conversation turn transitions", () => {
@@ -597,4 +652,115 @@ test("account deletion removes only owned object keys before deleting the owned 
   assert.deepEqual(removedKeys, ["resumes/user-1/a.pdf", "resumes/user-1/b.pdf"]);
   assert.equal(deletedUserId, "user-1");
   assert.deepEqual(result, { deleted: true, objectCount: 2 });
+});
+
+test("realtime event bus routes events only to matching interview subscribers", async () => {
+  const bus = new RealtimeEventBus();
+  const received: Array<[string, string]> = [];
+  const unsubscribeA = bus.subscribe("interview-a", (event) =>
+    received.push([event.name, event.payload.interviewId]),
+  );
+  bus.subscribe("interview-b", (event) => received.push([event.name, event.payload.interviewId]));
+  const speech = (interviewId: string, conversationId: string) => ({
+    name: "UserSpeechStarted" as const,
+    payload: { interviewId, conversationId, occurredAt: "2026-08-08T00:00:00.000Z" },
+  });
+  bus.publish(speech("interview-a", "conv-1"));
+  bus.publish({
+    name: "InterviewStarted",
+    payload: {
+      interviewId: "interview-b",
+      conversation: {
+        id: "conv-2",
+        interviewId: "interview-b",
+        state: "GREETING",
+        sequence: 0,
+        startedAt: "2026-08-08T00:00:00.000Z",
+        completedAt: null,
+      },
+    },
+  });
+  unsubscribeA();
+  bus.publish(speech("interview-a", "conv-3"));
+  assert.deepEqual(received, [
+    ["UserSpeechStarted", "interview-a"],
+    ["InterviewStarted", "interview-b"],
+  ]);
+  await bus.close();
+});
+
+test("tts audio cache stores, serves, and expires entries", () => {
+  clearTtsAudioCache();
+  const audio = Buffer.from("fake-audio");
+  const now = 1_000_000;
+  setCachedAudio("turn-1", audio, now);
+  assert.equal(getCachedAudio("turn-1", now)?.toString(), "fake-audio");
+  assert.equal(getCachedAudio("turn-1", now + ttsAudioCacheTtlMs), null);
+  clearTtsAudioCache();
+  assert.equal(getCachedAudio("turn-1", now), null);
+});
+
+test("tts audio cache evicts oldest entries beyond its capacity", () => {
+  clearTtsAudioCache();
+  const now = Date.now();
+  for (let index = 0; index < ttsAudioCacheMaxEntries + 5; index += 1) {
+    setCachedAudio(`turn-${index}`, Buffer.from("x"), now + index);
+  }
+  assert.equal(getCachedAudio("turn-0"), null);
+  assert.ok(getCachedAudio(`turn-${ttsAudioCacheMaxEntries + 4}`));
+  clearTtsAudioCache();
+});
+
+test("voice activity window gates pre-warm eligibility", () => {
+  clearTtsAudioCache();
+  const now = Date.now();
+  assert.equal(isVoiceActive("interview-1"), false);
+  markVoiceActive("interview-1", now);
+  assert.equal(isVoiceActive("interview-1", now + voiceActivityWindowMs - 1), true);
+  assert.equal(isVoiceActive("interview-1", now + voiceActivityWindowMs + 1), false);
+  clearTtsAudioCache();
+});
+
+test("in-flight pre-warms are awaited once and cleaned up after settling", async () => {
+  clearTtsAudioCache();
+  const promise = Promise.resolve(Buffer.from("warm-audio"));
+  registerPreWarm("turn-1", promise);
+  assert.equal(isPreWarmInFlight("turn-1"), true);
+  assert.equal((await awaitPreWarm("turn-1"))?.toString(), "warm-audio");
+  await promise;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(isPreWarmInFlight("turn-1"), false);
+  assert.equal(awaitPreWarm("turn-1"), null);
+  clearTtsAudioCache();
+});
+
+test("monolith mode defaults to true and executes tasks in-process without requiring workers", async () => {
+  const originalMode = process.env.WORKER_MODE;
+  try {
+    delete process.env.WORKER_MODE;
+    const { isMonolithMode, MonolithExecutionManager } =
+      await import("../services/monolith-execution.js");
+    assert.equal(isMonolithMode(), true);
+
+    const mockDb = {
+      resume: { updateMany: async () => ({ count: 0 }) },
+      jobDescription: { updateMany: async () => ({ count: 0 }) },
+      interview: { updateMany: async () => ({ count: 0 }) },
+    };
+    const manager = new MonolithExecutionManager(mockDb as never, {} as never);
+    assert.equal(manager.dispatchResumeAnalysis("res-1", "user-1"), true);
+    assert.equal(manager.dispatchJobAnalysis("job-1", "user-1"), true);
+    assert.equal(manager.dispatchInterviewPlan("int-1", "user-1"), true);
+    assert.equal(manager.dispatchAuthEmail(), true);
+
+    process.env.WORKER_MODE = "true";
+    assert.equal(isMonolithMode(), false);
+    assert.equal(manager.dispatchResumeAnalysis("res-1", "user-1"), false);
+  } finally {
+    if (originalMode === undefined) {
+      delete process.env.WORKER_MODE;
+    } else {
+      process.env.WORKER_MODE = originalMode;
+    }
+  }
 });

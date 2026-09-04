@@ -28,16 +28,25 @@ export class InterviewLifecycleError extends Error {
 
 const activeInterviewStatuses: InterviewStatus[] = ["IN_PROGRESS", "COMPLETING"];
 
+import type { MonolithExecutionManager } from "../../services/monolith-execution.js";
+import { EMPTY_INTERVIEW_REPORT_REASON, type ReportService } from "../reports/service.js";
+
 export class InterviewService {
   readonly repository: InterviewRepository;
+  private reportService?: ReportService;
 
   constructor(
     private readonly database: PrismaClient,
     private readonly queue: ReturnType<typeof createCareerAnalysisQueue>,
     private readonly reportQueue: ReturnType<typeof createReportQueue>,
     private readonly events: InterviewEventPublisher,
+    private readonly monolith?: MonolithExecutionManager,
   ) {
     this.repository = new InterviewRepository(database);
+  }
+
+  setReportService(reportService: ReportService) {
+    this.reportService = reportService;
   }
 
   async create(userId: string, input: CreateInterviewInput) {
@@ -119,12 +128,15 @@ export class InterviewService {
         "This interview cannot be prepared.",
       );
     }
-    await this.queue.enqueue({
-      kind: "interview-plan",
-      interviewId: id,
-      userId,
-      ...(correlationId ? { correlationId } : {}),
-    });
+    const dispatched = this.monolith?.dispatchInterviewPlan(id, userId, correlationId);
+    if (!dispatched) {
+      await this.queue.enqueue({
+        kind: "interview-plan",
+        interviewId: id,
+        userId,
+        ...(correlationId ? { correlationId } : {}),
+      });
+    }
     return { status: "PREPARING" as const };
   }
 
@@ -187,7 +199,7 @@ export class InterviewService {
     const result = await this.database.$transaction(async (tx) => {
       const interview = await tx.interview.findFirst({
         where: { id, userId },
-        include: { conversation: true, report: true },
+        include: { conversation: { include: { turns: true } }, report: true },
       });
       if (!interview)
         throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
@@ -226,6 +238,30 @@ export class InterviewService {
         where: { id },
         data: { status: "COMPLETED", completedAt },
       });
+      const answered = interview.conversation.turns.some((turn) => turn.speaker === "USER");
+      if (!answered) {
+        // No candidate responses were captured, so an AI evaluation would be
+        // fabricated from nothing. Surface a graceful, non-retryable failure
+        // instead of queueing an expensive generation that cannot produce evidence.
+        await tx.interviewReport.upsert({
+          where: { interviewId: id },
+          create: {
+            interviewId: id,
+            status: "FAILED",
+            failureReason: EMPTY_INTERVIEW_REPORT_REASON,
+          },
+          update: { status: "FAILED", failureReason: EMPTY_INTERVIEW_REPORT_REASON },
+        });
+        const updated = await tx.interview.findUniqueOrThrow({
+          where: { id },
+          include: { conversation: true, report: true },
+        });
+        return {
+          interview: { ...updated, completedAt: completed.completedAt },
+          requested: true,
+          enqueueReport: false,
+        };
+      }
       const report = await tx.interviewReport.upsert({
         where: { interviewId: id },
         create: { interviewId: id, status: "PENDING" },
@@ -260,17 +296,23 @@ export class InterviewService {
       });
     }
     if (result.enqueueReport) {
-      try {
-        await this.reportQueue.enqueue({ interviewId: id, userId });
-      } catch {
-        // Completion is durable even when queue infrastructure is temporarily unavailable.
-        await this.database.interviewReport.updateMany({
-          where: { interviewId: id, status: "PENDING" },
-          data: {
-            status: "FAILED",
-            failureReason: "Your report could not be queued. Please try again.",
-          },
-        });
+      const dispatched =
+        this.monolith && this.reportService
+          ? this.monolith.dispatchReportGeneration(this.reportService, id)
+          : false;
+      if (!dispatched) {
+        try {
+          await this.reportQueue.enqueue({ interviewId: id, userId });
+        } catch {
+          // Completion is durable even when queue infrastructure is temporarily unavailable.
+          await this.database.interviewReport.updateMany({
+            where: { interviewId: id, status: "PENDING" },
+            data: {
+              status: "FAILED",
+              failureReason: "Your report could not be queued. Please try again.",
+            },
+          });
+        }
       }
     }
     return result.interview;

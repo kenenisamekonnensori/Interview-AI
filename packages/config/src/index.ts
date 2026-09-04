@@ -31,7 +31,10 @@ export const serverEnvironmentSchema = z
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     GEMINI_API_KEY: optionalEnvironmentString,
     GEMINI_MODEL: z.string().min(1).default("gemini-3.5-flash-lite"),
-    REDIS_URL: z.url(),
+    REDIS_URL: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.string().url().optional(),
+    ),
     RESEND_API_KEY: z.string().min(1),
     R2_ACCESS_KEY_ID: optionalEnvironmentString,
     R2_BUCKET: optionalEnvironmentString,

@@ -15,17 +15,23 @@ function toDto(report: Awaited<ReturnType<ReportService["details"]>>) {
   };
 }
 
+import type { MonolithExecutionManager } from "../../services/monolith-execution.js";
+import type { RealtimeEventBus } from "../../services/realtime-events.js";
+
 export function registerReportRoutes(
   app: FastifyInstance,
   database: PrismaClient,
   environment: ServerEnvironment,
   queue: ReturnType<typeof createReportQueue>,
+  monolith?: MonolithExecutionManager,
+  eventBus?: RealtimeEventBus,
 ) {
   const service = new ReportService(
     database,
     environment,
     queue,
-    new InterviewEventPublisher(app.log),
+    new InterviewEventPublisher(app.log, eventBus),
+    monolith,
   );
   app.get(
     "/api/v1/interviews/:id/report",
@@ -71,4 +77,5 @@ export function registerReportRoutes(
       }
     },
   );
+  return service;
 }

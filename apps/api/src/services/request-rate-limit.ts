@@ -70,7 +70,39 @@ export class RequestRateLimiter {
   }
 }
 
-export function createRequestRateLimiter(redisUrl: string) {
+export class InMemoryRateLimiterStore implements RateLimitStore {
+  private readonly hits = new Map<string, { count: number; expiresAt: number }>();
+
+  async eval(_script: string, _numberOfKeys: number, ...args: string[]): Promise<[number, number]> {
+    const key = args[0] ?? "";
+    const windowSeconds = Number(args[1] ?? 60);
+    const now = Date.now();
+    const entry = this.hits.get(key);
+
+    if (!entry || entry.expiresAt <= now) {
+      const expiresAt = now + windowSeconds * 1000;
+      this.hits.set(key, { count: 1, expiresAt });
+      return [1, windowSeconds];
+    }
+
+    entry.count += 1;
+    const ttlSeconds = Math.max(1, Math.ceil((entry.expiresAt - now) / 1000));
+    return [entry.count, ttlSeconds];
+  }
+
+  async quit() {
+    this.hits.clear();
+  }
+
+  async ping() {
+    return "PONG";
+  }
+}
+
+export function createRequestRateLimiter(redisUrl?: string) {
+  if (!redisUrl) {
+    return new RequestRateLimiter(new InMemoryRateLimiterStore());
+  }
   const client = new Redis(createRedisConnectionOptions(redisUrl));
   return new RequestRateLimiter(client);
 }

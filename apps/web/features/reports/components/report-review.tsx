@@ -49,7 +49,10 @@ export function ReportReview({ interviewId }: { interviewId: string }) {
     return <Message text={errorMessage(report.error ?? interview.error)} />;
   const reportData = report.data.report;
   const interviewData = interview.data.interview;
-  if (reportData.status === "FAILED")
+  if (reportData.status === "FAILED") {
+    const hasAnswers = (interviewData.conversation?.turns ?? []).some(
+      (turn) => turn.speaker === "USER",
+    );
     return (
       <Shell interview={interviewData}>
         <section className="mx-auto max-w-xl rounded-3xl border border-destructive/30 bg-destructive/10 p-7 text-center">
@@ -57,16 +60,28 @@ export function ReportReview({ interviewId }: { interviewId: string }) {
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             {reportData.failureReason ?? "Your report needs another try before it can be shown."}
           </p>
-          <Button className="mt-5" disabled={retry.isPending} onClick={() => retry.mutate()}>
-            <RefreshCw className="size-4" />
-            {retry.isPending ? "Retrying…" : "Retry report generation"}
-          </Button>
-          {retry.error ? (
-            <p className="mt-3 text-sm text-destructive">{errorMessage(retry.error)}</p>
-          ) : null}
+          {hasAnswers ? (
+            <>
+              <Button className="mt-5" disabled={retry.isPending} onClick={() => retry.mutate()}>
+                <RefreshCw className="size-4" />
+                {retry.isPending ? "Retrying…" : "Retry report generation"}
+              </Button>
+              {retry.error ? (
+                <p className="mt-3 text-sm text-destructive">{errorMessage(retry.error)}</p>
+              ) : null}
+            </>
+          ) : (
+            <Link
+              className="mt-6 inline-flex items-center gap-1 text-sm font-medium text-primary"
+              href="/interviews/new"
+            >
+              Start a new interview <ArrowUpRight className="size-4" />
+            </Link>
+          )}
         </section>
       </Shell>
     );
+  }
   if (reportData.status !== "READY" || !reportData.evaluation || !reportData.summary)
     return (
       <Shell interview={interviewData}>

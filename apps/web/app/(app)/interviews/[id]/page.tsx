@@ -17,6 +17,7 @@ import {
   type InterviewMode,
   type VoiceSessionState,
 } from "@/features/conversation/components/microphone";
+import { useConversationStream } from "@/features/conversation/conversation-stream";
 import { apiClient } from "@/lib/api-client";
 
 type InterviewDetails = {
@@ -58,6 +59,26 @@ export default function LiveInterviewPage() {
       apiClient(`/api/v1/interviews/${id}/conversation/complete`, { method: "POST" }),
     onSuccess: () => client.invalidateQueries({ queryKey }),
   });
+  const invalidateInterview = () => client.invalidateQueries({ queryKey });
+  // Realtime sync: server-pushed lifecycle and turn events refetch authoritative
+  // state immediately (no polling wait), and resync after any reconnect so no
+  // state change is missed while the stream was down.
+  const streamEnabled = Boolean(
+    data && (data.interview.status === "IN_PROGRESS" || data.interview.status === "COMPLETING"),
+  );
+  useConversationStream(
+    id,
+    {
+      InterviewStarted: invalidateInterview,
+      TranscriptFinalized: invalidateInterview,
+      AIResponseGenerated: invalidateInterview,
+      InterviewCompletionRequested: invalidateInterview,
+      InterviewCompleted: invalidateInterview,
+      ReportGenerated: invalidateInterview,
+    },
+    invalidateInterview,
+    streamEnabled,
+  );
 
   useEffect(() => {
     if (!data?.interview.startedAt || data.interview.status === "COMPLETED") return;
@@ -185,6 +206,7 @@ export default function LiveInterviewPage() {
                   onModeChange={setInteractionMode}
                   onEndInterview={() => end.mutate()}
                   onResponseRecovered={() => client.invalidateQueries({ queryKey })}
+                  onInterviewCompleted={() => client.invalidateQueries({ queryKey })}
                 />
               </div>
             )}

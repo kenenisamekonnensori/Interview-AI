@@ -1,11 +1,16 @@
 import type { RealtimeEvent } from "@interviewer-ai/types";
+import type { RealtimeEventBus } from "../../services/realtime-events.js";
 
 type ConversationLogger = { info: (payload: unknown, message: string) => void };
 
 export class ConversationEventPublisher {
-  constructor(private readonly logger: ConversationLogger) {}
+  constructor(
+    private readonly logger: ConversationLogger,
+    private readonly bus?: RealtimeEventBus,
+  ) {}
 
   publish(event: RealtimeEvent) {
+    this.bus?.publish(event);
     this.logger.info(
       {
         eventName: event.name,

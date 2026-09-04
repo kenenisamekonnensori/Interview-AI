@@ -6,19 +6,28 @@ The supported template is a **Docker-compatible container platform** using [dock
 
 ## Service topology
 
+### Monolith Mode (Default / MVP Deployment)
+```text
+Browser -> Next.js web -> Fastify API (Monolith) -> PostgreSQL
+                            |                     -> R2 (optional)
+                            |                     -> Redis (optional)
+                            |                     -> Gemini / Deepgram / Resend
+```
+In Monolith Mode, the backend deploys as a **single Fastify API service** (e.g. on Render, Heroku, or Fly.io). No dedicated worker processes or Redis queues are required for full application functionality.
+
+### Worker Mode (Future Production Architecture)
 ```text
 Browser -> Next.js web -> Fastify API -> PostgreSQL
                             |          -> Redis / BullMQ
                             |          -> R2
                             |          -> Gemini / Deepgram / Resend
-                            +--> structured logs / monitoring adapter
-
 BullMQ career-analysis worker -> Redis, PostgreSQL, R2, Gemini
 BullMQ report worker          -> Redis, PostgreSQL, Gemini
 Auth-email worker             -> PostgreSQL, Resend
 ```
+When `WORKER_MODE=true` is set, API enqueues tasks to Redis queues and dedicated worker processes execute jobs.
 
-The API and each worker are independently scalable. Run exactly one migration job per release; do not let every API replica execute migrations concurrently.
+The API and each worker are independently scalable in Worker Mode. Run exactly one migration job per release; do not let every API replica execute migrations concurrently.
 
 ## Environment variables
 

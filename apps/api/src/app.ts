@@ -27,6 +27,9 @@ import {
   sendSafeUnexpectedError,
 } from "./services/security.js";
 
+import { MonolithExecutionManager, isMonolithMode } from "./services/monolith-execution.js";
+import { RealtimeEventBus } from "./services/realtime-events.js";
+
 export function createApp() {
   const environment = serverEnvironmentSchema.parse(process.env);
   const app = Fastify({
@@ -48,10 +51,22 @@ export function createApp() {
     genReqId: (request) => createRequestId(request.headers["x-request-id"]),
   });
   const telemetry = configureObservability(app.log);
-  const { auth, database, dispose } = createAuth(environment, app.log);
+
+  if (isMonolithMode()) {
+    app.log.info("Running in monolith mode: background tasks will execute directly in process");
+  } else {
+    app.log.info("Running in worker mode: background tasks will be enqueued to Redis queues");
+  }
+
+  const { auth, database, monolith, dispose } = createAuth(
+    environment,
+    app.log,
+    (db) => new MonolithExecutionManager(db, environment),
+  );
   const careerAnalysisQueue = createCareerAnalysisQueue(environment.REDIS_URL);
   const reportQueue = createReportQueue(environment.REDIS_URL);
   const rateLimiter = createRequestRateLimiter(environment.REDIS_URL);
+  const eventBus = new RealtimeEventBus(environment.REDIS_URL);
 
   app.decorate("auth", auth);
   app.decorateRequest("authContext", null);
@@ -59,6 +74,7 @@ export function createApp() {
     await careerAnalysisQueue.close();
     await reportQueue.close();
     await rateLimiter.close();
+    await eventBus.close();
     await dispose();
   });
 
@@ -113,13 +129,28 @@ export function createApp() {
   app.decorate("requireSession", authIntegration.requireSession);
   app.decorate("requireVerifiedUser", authIntegration.requireVerifiedUser);
 
-  registerResumeRoutes(app, { database, environment, queue: careerAnalysisQueue });
-  registerJobDescriptionRoutes(app, { database, queue: careerAnalysisQueue });
-  registerInterviewRoutes(app, database, careerAnalysisQueue, reportQueue);
-  registerReportRoutes(app, database, environment, reportQueue);
+  registerResumeRoutes(app, { database, environment, queue: careerAnalysisQueue, monolith });
+  registerJobDescriptionRoutes(app, { database, queue: careerAnalysisQueue, monolith });
+  const interviewService = registerInterviewRoutes(
+    app,
+    database,
+    careerAnalysisQueue,
+    reportQueue,
+    monolith,
+    eventBus,
+  );
+  const reportService = registerReportRoutes(
+    app,
+    database,
+    environment,
+    reportQueue,
+    monolith,
+    eventBus,
+  );
+  interviewService.setReportService(reportService);
   registerAnalyticsRoutes(app, database);
   registerUserProfileRoutes(app, database);
-  registerConversationRoutes(app, database, environment, app.interviewService);
+  registerConversationRoutes(app, database, environment, interviewService, eventBus);
 
   app.get("/health", async () => ({ status: "ok" }));
   app.get("/ready", async (request, reply) => {
