@@ -3,7 +3,6 @@ import { fromNodeHeaders } from "better-auth/node";
 import type { FastifyReply, FastifyRequest, RouteOptions } from "fastify";
 
 import type { createAuth } from "./auth.js";
-import { credentialLoginSchema, credentialSignupSchema } from "./signup.js";
 import { logSafeError } from "../../services/security.js";
 import { observability } from "../../services/observability.js";
 
@@ -65,36 +64,6 @@ function sendUnauthorized(reply: FastifyReply) {
   });
 }
 
-function validateCredentialRequest(request: FastifyRequest, reply: FastifyReply) {
-  const path = request.url.split("?")[0];
-  const schema =
-    path === "/api/auth/sign-up/email"
-      ? credentialSignupSchema
-      : path === "/api/auth/sign-in/email"
-        ? credentialLoginSchema
-        : null;
-
-  if (!schema) {
-    return true;
-  }
-
-  const credentials = schema.safeParse(request.body);
-
-  if (credentials.success) {
-    request.body = credentials.data;
-    return true;
-  }
-
-  reply.status(400).send({
-    code: "VALIDATION_ERROR",
-    message:
-      path === "/api/auth/sign-in/email"
-        ? "Enter a valid email address and password."
-        : "Enter a valid name, email address, and password.",
-  });
-  return false;
-}
-
 export function createAuthFastifyIntegration(auth: Auth, environment: ServerEnvironment) {
   return {
     route: {
@@ -102,10 +71,6 @@ export function createAuthFastifyIntegration(auth: Auth, environment: ServerEnvi
       url: "/api/auth/*",
       handler: async (request, reply) => {
         try {
-          if (request.method === "POST" && !validateCredentialRequest(request, reply)) {
-            return;
-          }
-
           const authPath = request.url.split("?")[0];
           const url = new URL(request.url, environment.BETTER_AUTH_URL);
           const headers = fromNodeHeaders(request.headers);

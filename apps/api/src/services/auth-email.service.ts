@@ -20,13 +20,6 @@ function escapeHtml(value: string) {
 
 function createEmailContent(message: AuthEmailMessage) {
   const name = escapeHtml(message.name);
-  if (message.kind === "verify-email") {
-    return {
-      subject: "Confirm your Interviewer AI email address",
-      html: `<p>Hi ${name},</p><p>Confirm your email address to activate your Interviewer AI account.</p><p><a href="${message.verificationUrl}">Confirm email address</a></p><p>If you did not create this account, you can ignore this email.</p>`,
-      text: `Hi ${message.name},\n\nConfirm your email address to activate your Interviewer AI account: ${message.verificationUrl}\n\nIf you did not create this account, you can ignore this email.`,
-    };
-  }
   return {
     subject: "Welcome to Interviewer AI",
     html: `<p>Hi ${name},</p><p>Welcome to Interviewer AI. Your account is ready for interview practice.</p>`,

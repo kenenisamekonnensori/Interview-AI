@@ -68,16 +68,16 @@ const comparisonRows: { feature: string; free: Cell; pro: Cell; teams: Cell }[] 
 
 function ComparisonCell({ cell }: { cell: Cell }) {
   if (cell.kind === "text") {
-    return <span className="text-sm text-white/70">{cell.value}</span>;
+    return <span className="text-sm text-[var(--ink-text-secondary)]">{cell.value}</span>;
   }
   if (cell.kind === "check") {
     return (
-      <span className="inline-grid size-6 place-items-center rounded-full bg-[#6366f1]/15">
-        <Check className="size-3.5 text-[#c0c1ff]" aria-hidden="true" />
+      <span className="inline-grid size-6 place-items-center rounded-full bg-bronze-500/15">
+        <Check className="size-3.5 text-bronze-300" aria-hidden="true" />
       </span>
     );
   }
-  return <Minus className="mx-auto size-4 text-white/20" aria-hidden="true" />;
+  return <Minus className="mx-auto size-4 text-[var(--ink-text-faint)]" aria-hidden="true" />;
 }
 
 export default function PricingPage() {
@@ -97,18 +97,18 @@ export default function PricingPage() {
 
       {/* Comparison */}
       <section className="mt-20">
-        <h2 className="text-center text-xs font-semibold uppercase tracking-[0.16em] text-white/40">
+        <h2 className="text-center font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--ink-text-muted)]">
           Compare plans
         </h2>
-        <div className="glass-surface mt-6 overflow-x-auto rounded-2xl">
+        <div className="glass-panel mt-6 overflow-x-auto rounded-2xl">
           <table className="w-full min-w-[36rem] border-collapse text-left">
             <thead>
-              <tr className="border-b border-white/[.07]">
-                <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-white/40">
+              <tr className="border-b border-[var(--hairline)]">
+                <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-[var(--ink-text-muted)]">
                   Feature
                 </th>
                 {["Free", "Pro", "Teams"].map((name) => (
-                  <th key={name} className="px-6 py-4 text-center text-sm font-semibold text-white">
+                  <th key={name} className="px-6 py-4 text-center text-sm font-semibold text-[var(--ink-text)]">
                     {name}
                   </th>
                 ))}
@@ -116,8 +116,8 @@ export default function PricingPage() {
             </thead>
             <tbody>
               {comparisonRows.map((row) => (
-                <tr key={row.feature} className="border-b border-white/[.04] last:border-0">
-                  <td className="px-6 py-3.5 text-sm text-white/65">{row.feature}</td>
+                <tr key={row.feature} className="border-b border-[var(--hairline)] last:border-0">
+                  <td className="px-6 py-3.5 text-sm text-[var(--ink-text-secondary)]">{row.feature}</td>
                   <td className="px-6 py-3.5 text-center">
                     <ComparisonCell cell={row.free} />
                   </td>
@@ -136,7 +136,7 @@ export default function PricingPage() {
 
       {/* Pricing FAQ */}
       <section className="mx-auto mt-20 max-w-3xl">
-        <h2 className="text-center text-2xl font-bold tracking-[-0.02em] text-white">
+        <h2 className="text-center text-2xl font-semibold tracking-[-0.02em] text-[var(--ink-text)]">
           Pricing questions
         </h2>
         <div className="mt-8">

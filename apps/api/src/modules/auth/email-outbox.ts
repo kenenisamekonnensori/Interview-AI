@@ -3,21 +3,12 @@ import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 import { z } from "zod";
 
-const verificationEmailSchema = z.object({
-  kind: z.literal("verify-email"),
-  name: z.string(),
-  verificationUrl: z.url(),
-});
-
 const welcomeEmailSchema = z.object({
   kind: z.literal("welcome"),
   name: z.string(),
 });
 
-export const authEmailMessageSchema = z.discriminatedUnion("kind", [
-  verificationEmailSchema,
-  welcomeEmailSchema,
-]);
+export const authEmailMessageSchema = z.discriminatedUnion("kind", [welcomeEmailSchema]);
 
 export type AuthEmailMessage = z.infer<typeof authEmailMessageSchema>;
 

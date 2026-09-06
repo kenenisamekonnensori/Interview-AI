@@ -66,29 +66,29 @@ export default function FeaturesPage() {
         {features.map(({ icon: Icon, title, description }) => (
           <article
             key={title}
-            className="glass-surface group rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:border-[#6366f1]/30 hover:shadow-[0_0_30px_rgba(99,102,241,0.12)]"
+            className="glass-panel group rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:border-[rgba(203,162,95,0.35)]"
           >
-            <span className="grid size-10 place-items-center rounded-xl bg-[#6366f1]/12 text-[#c0c1ff] transition-colors duration-300 group-hover:bg-[#6366f1]/20">
+            <span className="grid size-10 place-items-center rounded-xl bg-bronze-500/15 text-bronze-300 transition-colors duration-300 group-hover:bg-bronze-500/25">
               <Icon className="size-5" aria-hidden="true" />
             </span>
-            <h2 className="mt-5 text-base font-semibold text-white">{title}</h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/55">{description}</p>
+            <h2 className="mt-5 text-base font-semibold text-[var(--ink-text)]">{title}</h2>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--ink-text-secondary)]">{description}</p>
           </article>
         ))}
       </div>
 
       {/* How a practice session works */}
       <section className="mt-24">
-        <h2 className="text-center text-xs font-semibold uppercase tracking-[0.16em] text-[#c0c1ff]">
+        <h2 className="text-center font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--bronze)]">
           Inside a session
         </h2>
         <div className="mx-auto mt-4 max-w-md text-center">
-          <p className="text-2xl font-bold tracking-[-0.02em] text-white sm:text-3xl">
+          <p className="text-2xl font-semibold tracking-[-0.02em] text-[var(--ink-text)] sm:text-3xl">
             What actually happens when you practice
           </p>
         </div>
 
-        <div className="glass-surface mx-auto mt-10 max-w-3xl overflow-hidden rounded-3xl">
+        <div className="glass-panel mx-auto mt-10 max-w-3xl overflow-hidden rounded-3xl">
           <div className="grid divide-y divide-white/[.05] md:grid-cols-3 md:divide-x md:divide-y-0">
             {[
               {
@@ -108,9 +108,9 @@ export default function FeaturesPage() {
               },
             ].map((item) => (
               <div key={item.step} className="p-7">
-                <p className="text-xs font-mono font-medium text-[#6366f1]">{item.step}</p>
-                <h3 className="mt-3 text-sm font-semibold text-white">{item.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-white/55">{item.body}</p>
+                <p className="font-mono text-xs font-medium text-bronze-300">{item.step}</p>
+                <h3 className="mt-3 text-sm font-semibold text-[var(--ink-text)]">{item.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--ink-text-secondary)]">{item.body}</p>
               </div>
             ))}
           </div>

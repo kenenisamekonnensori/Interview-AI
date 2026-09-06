@@ -1,249 +1,356 @@
 import {
   ArrowRight,
-  AudioLines,
   BrainCircuit,
-  Check,
-  FileSearch,
+  Briefcase,
+  ChevronDown,
+  Code2,
+  FileUp,
   Gauge,
+  MessagesSquare,
   Mic,
   Play,
-  Sparkles,
-  TrendingUp,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
-import { MoonSceneLoader } from "../features/landing/components/moon-scene-loader";
-import { BrandMark } from "../features/landing/components/brand-mark";
-import { SiteFooter } from "../features/landing/components/site-footer";
+
 import {
   FadeUp,
+  ScaleIn,
   StaggerContainer,
   StaggerItem,
-  ScaleIn,
 } from "../features/landing/components/animations";
+import { BrandMark } from "../features/landing/components/brand-mark";
+import { FeedbackPreview } from "../features/landing/components/feedback-preview";
+import { MockInterviewDemo } from "../features/landing/components/mock-interview-demo";
+import { MoonSceneLoader } from "../features/landing/components/moon-scene-loader";
+import { SectionHeading } from "../features/landing/components/section-heading";
+import { SiteFooter } from "../features/landing/components/site-footer";
+import { SiteNav } from "../features/landing/components/site-nav";
 
-const capabilities = [
+/* Content is colocated with its section and kept as plain data — easy to edit,
+   easy to lift into the CMS later without touching JSX. */
+
+const differentiators = [
   {
     icon: Mic,
-    title: "Voice-first practice",
+    title: "Spoken, not typed",
     description:
-      "Speak naturally with an AI interviewer that listens, adapts, and asks the follow-ups that matter.",
+      "Talk through your answers the way you would in the room. Thinking out loud is the skill — this is where you practice it.",
   },
   {
     icon: BrainCircuit,
-    title: "Personalized to your role",
+    title: "Follow-ups from your answers",
     description:
-      "Your resume and target job shape every question. Practice with context that actually reflects your opportunity.",
+      "The interviewer digs into what you actually said — the same way a sharp hiring manager pulls the thread.",
   },
   {
-    icon: TrendingUp,
-    title: "Actionable feedback",
+    icon: Gauge,
+    title: "A score you can train against",
     description:
-      "Walk away knowing exactly what to improve—communication, structure, and confidence included.",
+      "Communication, technical depth, and pacing — measured per session so progress is a number, not a feeling.",
   },
 ];
 
 const steps = [
   {
-    icon: FileSearch,
+    icon: FileUp,
     title: "Bring your context",
-    description: "Upload your resume and the role you're aiming for.",
+    description:
+      "Upload your resume and paste the job description. The session is built around the role you're actually chasing.",
   },
   {
-    icon: AudioLines,
+    icon: MessagesSquare,
     title: "Have the conversation",
-    description: "Speak with an AI interviewer that follows your thinking, not a script.",
+    description:
+      "A live voice interview that listens, interrupts, and follows up — never a fixed question list.",
   },
   {
     icon: Gauge,
-    title: "Leave with clarity",
-    description: "Get a candid read on your communication, reasoning, and next move.",
+    title: "Leave with a plan",
+    description:
+      "A structured report: what landed, what didn't, and exactly what to drill before the real thing.",
+  },
+];
+
+const interviewTypes = [
+  { icon: MessagesSquare, label: "Behavioral" },
+  { icon: Code2, label: "Technical" },
+  { icon: BrainCircuit, label: "System design" },
+  { icon: Briefcase, label: "HR screening" },
+  { icon: Users, label: "Panel-style" },
+];
+
+const faqs = [
+  {
+    q: "How is this different from asking a chatbot to quiz me?",
+    a: "A chatbot sends text and waits. Interviewer AI speaks with you in real time — it picks up on pacing, incomplete thoughts, and the details you skip past, then follows up on them just like a real interviewer would.",
+  },
+  {
+    q: "Does it adapt to my actual resume and target job?",
+    a: "Yes. Your resume and the job description shape the question plan before you speak a word, and your answers shape every follow-up after that. No two sessions run the same script.",
+  },
+  {
+    q: "What does the feedback actually look like?",
+    a: "A structured report after every session: overall score, communication, technical depth, and pacing, plus specific strengths and weaknesses pulled from your transcript — with recommendations for what to practice next.",
+  },
+  {
+    q: "Do I need a microphone or special setup?",
+    a: "Any laptop or phone mic works — the interview runs entirely in your browser. If voice isn't available, you can continue by typing so a session is never wasted.",
+  },
+  {
+    q: "Is there a free plan?",
+    a: "Yes — your first practice interview is free, every month, with the full feedback report. No credit card required.",
   },
 ];
 
 export default function HomePage() {
   return (
     <>
+      <SiteNav />
+
       <main className="overflow-hidden">
-        {/* ── Hero ── */}
-        <section className="landing-hero relative isolate flex min-h-dvh flex-col items-center justify-center px-6">
+        {/* ── Hero ────────────────────────────────────────────────────────
+            Product-led layout: copy left, working demo right. The moon sits
+            upper-right behind the demo instead of competing with the copy. */}
+        <section className="landing-hero relative isolate flex min-h-dvh items-center overflow-hidden px-6 pb-20 pt-32">
           <MoonSceneLoader />
 
-          {/* Ambient glow behind hero text */}
-          <div className="pointer-events-none absolute inset-0 -z-5">
-            <div className="absolute left-1/2 top-1/2 h-[50rem] w-[50rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(99,102,241,0.18)_0%,transparent_65%)]" />
-            <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-background to-transparent" />
+          {/* Warm ambient glow keyed to the bronze palette */}
+          <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+            <div className="absolute right-[-10%] top-[-20%] h-[46rem] w-[46rem] rounded-full bg-[radial-gradient(circle,rgba(203,162,95,0.10)_0%,transparent_65%)]" />
+            <div className="absolute bottom-[-30%] left-[-15%] h-[36rem] w-[36rem] rounded-full bg-[radial-gradient(circle,rgba(45,212,191,0.045)_0%,transparent_65%)]" />
+            <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-[var(--ink-canvas)] to-transparent" />
           </div>
 
-          {/* Nav */}
-          <nav className="absolute inset-x-0 top-0 z-20 mx-auto flex h-16 max-w-5xl items-center justify-between">
-            <Link className="flex items-center gap-2.5" href="/" aria-label="Interviewer AI home">
-              <BrandMark />
-              <span className="text-sm font-semibold tracking-tight text-white">
-                Interviewer AI
-              </span>
-            </Link>
-            <div className="flex items-center gap-1">
-              <Link
-                className="rounded-lg px-3 py-1.5 text-sm text-white/60 transition-colors hover:text-white"
-                href="/sign-in"
-              >
-                Sign in
-              </Link>
-              <Link
-                className="btn-premium ml-1 inline-flex h-9 items-center rounded-lg px-4 text-sm font-medium text-white"
-                href="/sign-up"
-              >
-                Get started
-              </Link>
+          <div className="landing-rails relative z-10 mx-auto grid w-full max-w-6xl gap-16 px-2 lg:grid-cols-[1.05fr_1fr] lg:items-center">
+            {/* Copy column */}
+            <div>
+              <FadeUp delay={0.05}>
+                <span className="badge-live">Voice interviews, live with AI</span>
+              </FadeUp>
+
+              <FadeUp delay={0.15}>
+                <h1 className="mt-7 text-balance text-[2.6rem] font-semibold leading-[1.05] tracking-[-0.035em] text-[var(--ink-text)] sm:text-6xl lg:text-[4.1rem]">
+                  Practice like it&rsquo;s the real interview. <span className="text-gradient-bronze">Because it nearly is.</span>
+                </h1>
+              </FadeUp>
+
+              <FadeUp delay={0.28}>
+                <p className="mt-6 max-w-md text-pretty text-lg leading-relaxed text-[var(--ink-text-secondary)]">
+                  Speak with an AI interviewer that listens, follows up, and scores you — built
+                  from your resume and the role you&rsquo;re applying for.
+                </p>
+              </FadeUp>
+
+              <FadeUp delay={0.4}>
+                <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+                  <Link
+                    className="btn-primary inline-flex h-12 items-center justify-center gap-2 rounded-xl px-7 text-sm"
+                    href="/sign-up"
+                  >
+                    Start your first interview
+                    <ArrowRight className="size-4" aria-hidden="true" />
+                  </Link>
+                  <a
+                    className="btn-ghost inline-flex h-12 items-center justify-center gap-2 rounded-xl px-7 text-sm"
+                    href="#how-it-works"
+                  >
+                    <Play className="size-3.5 fill-current" aria-hidden="true" />
+                    See how it works
+                  </a>
+                </div>
+              </FadeUp>
+
+              <FadeUp delay={0.52}>
+                <p className="mt-7 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--ink-text-faint)]">
+                  Free monthly practice · No credit card · ~15 min per session
+                </p>
+              </FadeUp>
             </div>
-          </nav>
 
-          {/* Hero content — centered */}
-          <div className="relative z-10 mx-auto max-w-3xl text-center">
-            <FadeUp delay={0.1}>
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#6366f1]/25 bg-[#6366f1]/10 px-3.5 py-1.5 text-xs font-medium text-[#c0c1ff] backdrop-blur-sm">
-                <span className="relative flex size-1.5">
-                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-[#6366f1] opacity-60" />
-                  <span className="relative inline-flex size-1.5 rounded-full bg-[#6366f1]" />
-                </span>
-                AI interview preparation
-              </div>
-            </FadeUp>
-
-            <FadeUp delay={0.2}>
-              <h1 className="mt-7 text-balance text-5xl font-extrabold leading-[1.02] tracking-[-0.04em] text-white sm:text-6xl lg:text-[4.25rem]">
-                Practice the moment. <span className="text-gradient-primary">Own the room.</span>
-              </h1>
-            </FadeUp>
-
-            <FadeUp delay={0.35}>
-              <p className="mx-auto mt-5 max-w-lg text-balance text-lg leading-relaxed text-white/55">
-                A realistic voice interview with intelligent follow-ups and clear feedback—so your
-                next answer feels like yours.
-              </p>
-            </FadeUp>
-
-            <FadeUp delay={0.5}>
-              <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                <Link
-                  className="btn-premium inline-flex h-12 items-center justify-center gap-2 rounded-xl px-7 text-sm font-semibold text-white"
-                  href="/sign-up"
-                >
-                  Start a free practice <ArrowRight className="size-4" aria-hidden="true" />
-                </Link>
-                <a
-                  className="btn-ghost-glass inline-flex h-12 items-center justify-center gap-2 rounded-xl px-7 text-sm font-medium text-white"
-                  href="#how-it-works"
-                >
-                  <Play className="size-3.5 fill-current" aria-hidden="true" />
-                  See how it works
-                </a>
-              </div>
-            </FadeUp>
-
-            <FadeUp delay={0.6}>
-              <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-white/45">
-                {["No credit card", "Voice-first", "Feedback every session"].map((item) => (
-                  <span className="flex items-center gap-1.5" key={item}>
-                    <Check className="size-3 text-[#6366f1]" aria-hidden="true" />
-                    {item}
-                  </span>
-                ))}
-              </div>
+            {/* Interactive product demo */}
+            <FadeUp delay={0.35} className="relative">
+              <MockInterviewDemo />
             </FadeUp>
           </div>
         </section>
 
-        {/* ── Features ── */}
-        <section className="relative mx-auto max-w-3xl px-6 py-24 sm:py-32" id="how-it-works">
-          {/* Ambient glow */}
-          <div className="pointer-events-none absolute left-1/2 top-0 h-96 w-[40rem] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse,rgba(99,102,241,0.1)_0%,transparent_70%)]" />
-
+        {/* ── Differentiators ─────────────────────────────────────────── */}
+        <section className="relative mx-auto max-w-6xl px-6 py-24 sm:py-32">
           <FadeUp>
-            <div className="text-center">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#c0c1ff]">
-                Why it works
-              </p>
-              <h2 className="mx-auto mt-4 max-w-xl text-balance text-3xl font-bold tracking-[-0.03em] text-white sm:text-4xl">
-                Built around how people actually prepare.
-              </h2>
-            </div>
+            <SectionHeading
+              eyebrow="Why it works"
+              title="Built around how interviews actually happen."
+              description="Chatbots quiz you with scripted questions. Real interviewers listen and pull the thread — that's the muscle this trains."
+            />
           </FadeUp>
 
-          <StaggerContainer className="mt-14 grid gap-4 sm:grid-cols-3" staggerDelay={0.12}>
-            {capabilities.map(({ icon: Icon, title, description }) => (
+          <StaggerContainer className="mt-14 grid gap-4 md:grid-cols-3" staggerDelay={0.12}>
+            {differentiators.map(({ icon: Icon, title, description }) => (
               <StaggerItem key={title}>
-                <article className="glass-surface group relative overflow-hidden rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:border-[#6366f1]/30 hover:shadow-[0_0_30px_rgba(99,102,241,0.12)]">
-                  <div className="glass-highlight" />
-                  <span className="grid size-10 place-items-center rounded-xl bg-[#6366f1]/12 text-[#c0c1ff] transition-colors duration-300 group-hover:bg-[#6366f1]/20">
-                    <Icon className="size-5" />
+                <article className="glass-panel group relative h-full overflow-hidden rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:border-[rgba(203,162,95,0.35)]">
+                  <div className="glass-highlight absolute inset-0" />
+                  <span className="grid size-10 place-items-center rounded-xl bg-bronze-500/15 text-bronze-300">
+                    <Icon className="size-5" aria-hidden="true" />
                   </span>
-                  <h3 className="mt-5 text-base font-semibold text-white">{title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-white/55">{description}</p>
+                  <h3 className="mt-5 text-base font-semibold text-[var(--ink-text)]">{title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-[var(--ink-text-secondary)]">
+                    {description}
+                  </p>
                 </article>
               </StaggerItem>
             ))}
           </StaggerContainer>
         </section>
 
-        {/* ── How it works ── */}
-        <section className="relative border-y border-white/[.05] bg-white/[.02]">
-          <div className="pointer-events-none absolute left-1/2 top-1/2 h-80 w-[36rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(ellipse,rgba(76,215,246,0.07)_0%,transparent_70%)]" />
-
-          <div className="mx-auto max-w-3xl px-6 py-24 sm:py-32">
+        {/* ── How it works ────────────────────────────────────────────── */}
+        <section className="relative" id="how-it-works">
+          <div className="divider-glow mx-auto max-w-6xl" />
+          <div className="mx-auto max-w-6xl px-6 py-24 sm:py-32">
             <FadeUp>
-              <div className="text-center">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#c0c1ff]">
-                  How it works
-                </p>
-                <h2 className="mx-auto mt-4 max-w-md text-balance text-3xl font-bold tracking-[-0.03em] text-white sm:text-4xl">
-                  Three steps to a better interview.
-                </h2>
-              </div>
+              <SectionHeading
+                eyebrow="How it works"
+                title="Three steps between you and a better interview."
+              />
             </FadeUp>
 
             <StaggerContainer
-              className="mt-14 grid gap-8 sm:grid-cols-3 sm:gap-10"
+              className="mt-14 grid gap-10 md:grid-cols-3 md:gap-8"
               staggerDelay={0.15}
             >
               {steps.map(({ icon: Icon, title, description }, index) => (
                 <StaggerItem key={title}>
-                  <div className="text-center">
-                    <div className="mx-auto grid size-12 place-items-center rounded-2xl border border-white/[.07] bg-white/[.04] text-[#c0c1ff] transition-all duration-300 hover:border-[#6366f1]/25 hover:bg-[#6366f1]/10">
-                      <Icon className="size-5" />
+                  <div className="relative">
+                    <span
+                      className="font-mono text-xs text-bronze-500/70"
+                      aria-hidden="true"
+                    >
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <div className="mt-4 grid size-11 place-items-center rounded-xl border border-[var(--hairline)] bg-[var(--ink-raised)] text-bronze-300">
+                      <Icon className="size-5" aria-hidden="true" />
                     </div>
-                    <p className="mt-5 text-xs font-mono font-medium text-white/30">0{index + 1}</p>
-                    <h3 className="mt-1 text-base font-semibold text-white">{title}</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-white/55">{description}</p>
+                    <h3 className="mt-5 text-base font-semibold text-[var(--ink-text)]">{title}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-[var(--ink-text-secondary)]">
+                      {description}
+                    </p>
                   </div>
+                </StaggerItem>
+              ))}
+            </StaggerContainer>
+
+            {/* Social-proof-free trust line — no fake customer logos */}
+            <FadeUp delay={0.2}>
+              <p className="mx-auto mt-16 max-w-xl text-center text-sm leading-relaxed text-[var(--ink-text-muted)]">
+                Every session is scored on the same rubric, so after a few runs you can see
+                communication and pacing trends — not just vibes.
+              </p>
+            </FadeUp>
+          </div>
+        </section>
+
+        {/* ── Feedback report preview ─────────────────────────────────── */}
+        <section className="relative">
+          <div className="divider-glow mx-auto max-w-6xl" />
+          <div className="mx-auto max-w-5xl px-6 py-24 sm:py-32">
+            <FadeUp>
+              <SectionHeading
+                eyebrow="After the interview"
+                title="Feedback you can act on, not a pat on the back."
+                description="Every session ends with a structured report — the same dimensions a hiring panel debates, scored and explained."
+              />
+            </FadeUp>
+
+            <FadeUp delay={0.2} className="mt-14">
+              <FeedbackPreview />
+            </FadeUp>
+          </div>
+        </section>
+
+        {/* ── Interview types ─────────────────────────────────────────── */}
+        <section className="relative">
+          <div className="divider-glow mx-auto max-w-6xl" />
+          <div className="mx-auto max-w-6xl px-6 py-24 sm:py-32">
+            <FadeUp>
+              <SectionHeading
+                eyebrow="Interview types"
+                title="Train for the interview on your calendar."
+                description="Pick a type, or mix them — the interviewer adjusts structure, difficulty, and tone to match."
+              />
+            </FadeUp>
+
+            <StaggerContainer className="mt-12 flex flex-wrap justify-center gap-3" staggerDelay={0.08}>
+              {interviewTypes.map(({ icon: Icon, label }) => (
+                <StaggerItem key={label}>
+                  <span className="inline-flex items-center gap-2.5 rounded-full border border-[var(--hairline)] bg-[var(--ink-raised)] px-5 py-2.5 text-sm font-medium text-[var(--ink-text-secondary)] transition-colors hover:border-[rgba(203,162,95,0.35)] hover:text-[var(--ink-text)]">
+                    <Icon className="size-4 text-bronze-300" aria-hidden="true" />
+                    {label}
+                  </span>
+                </StaggerItem>
+              ))}
+            </StaggerContainer>
+
+            {/* Brand strip — quiet statement, not a claim */}
+            <FadeUp delay={0.15}>
+              <div className="mt-16 flex items-center justify-center gap-3 text-[var(--ink-text-faint)]">
+                <BrandMark />
+                <span className="font-mono text-[11px] uppercase tracking-[0.16em]">
+                  Built for the conversation, not the questionnaire
+                </span>
+              </div>
+            </FadeUp>
+          </div>
+        </section>
+
+        {/* ── FAQ ─────────────────────────────────────────────────────── */}
+        <section className="relative" id="faq">
+          <div className="divider-glow mx-auto max-w-6xl" />
+          <div className="mx-auto max-w-3xl px-6 py-24 sm:py-32">
+            <FadeUp>
+              <SectionHeading eyebrow="FAQ" title="Fair questions, straight answers." />
+            </FadeUp>
+
+            <StaggerContainer className="mt-12 space-y-3" staggerDelay={0.06}>
+              {faqs.map((faq) => (
+                <StaggerItem key={faq.q}>
+                  <details className="group rounded-xl border border-[var(--hairline)] bg-[var(--ink-raised)]/60 px-5 py-4 transition-colors open:border-[rgba(203,162,95,0.35)]">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-medium text-[var(--ink-text)] [&::-webkit-details-marker]:hidden">
+                      {faq.q}
+                      <ChevronDown
+                        className="size-4 shrink-0 text-[var(--ink-text-muted)] transition-transform duration-200 group-open:rotate-180"
+                        aria-hidden="true"
+                      />
+                    </summary>
+                    <p className="mt-3 text-sm leading-relaxed text-[var(--ink-text-secondary)]">
+                      {faq.a}
+                    </p>
+                  </details>
                 </StaggerItem>
               ))}
             </StaggerContainer>
           </div>
         </section>
 
-        {/* ── Final CTA ── */}
-        <section className="relative mx-auto max-w-3xl px-6 py-24 sm:py-32">
+        {/* ── Final CTA ───────────────────────────────────────────────── */}
+        <section className="relative mx-auto max-w-5xl px-6 pb-28 pt-8">
           <ScaleIn>
-            <div className="glass-surface-deep relative overflow-hidden rounded-3xl px-6 py-16 text-center sm:px-12">
-              <div className="absolute -right-16 -top-24 size-72 rounded-full bg-[#6366f1]/25 blur-3xl" />
-              <div className="absolute -bottom-16 -left-16 size-56 rounded-full bg-[#06b6d4]/12 blur-3xl" />
+            <div className="glass-panel relative overflow-hidden rounded-3xl px-6 py-16 text-center sm:px-12">
+              <div className="pointer-events-none absolute -right-20 -top-28 size-80 rounded-full bg-bronze-500/18 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-20 -left-16 size-56 rounded-full bg-bronze-400/10 blur-3xl" />
 
               <div className="relative">
-                <div className="mx-auto grid size-10 place-items-center rounded-xl bg-[#6366f1]/15 text-[#c0c1ff]">
-                  <Sparkles className="size-5" />
-                </div>
-                <h2 className="mx-auto mt-6 max-w-lg text-balance text-3xl font-bold tracking-[-0.03em] text-white sm:text-4xl">
-                  Your next interview deserves more than a guess.
+                <h2 className="mx-auto max-w-xl text-balance text-3xl font-semibold tracking-[-0.025em] text-[var(--ink-text)] sm:text-4xl">
+                  The next interview on your calendar is real. This one is practice.
                 </h2>
-                <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-white/50">
-                  Practice with intention, hear how you come across, and walk in with a plan.
+                <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-[var(--ink-text-secondary)]">
+                  Walk in having already answered the hard questions out loud.
                 </p>
                 <Link
-                  className="btn-premium mx-auto mt-8 inline-flex h-12 items-center justify-center gap-2 rounded-xl px-8 text-sm font-semibold text-white"
+                  className="btn-primary mx-auto mt-8 inline-flex h-12 items-center justify-center gap-2 rounded-xl px-8 text-sm"
                   href="/sign-up"
                 >
-                  Get started for free <ArrowRight className="size-4" aria-hidden="true" />
+                  Start your first interview
+                  <ArrowRight className="size-4" aria-hidden="true" />
                 </Link>
               </div>
             </div>
@@ -251,7 +358,6 @@ export default function HomePage() {
         </section>
       </main>
 
-      {/* ── Footer ── */}
       <SiteFooter />
     </>
   );

@@ -41,8 +41,8 @@ export default function AboutPage() {
 
       {/* Mission */}
       <section className="mx-auto mt-12 max-w-3xl">
-        <h2 className="text-2xl font-bold tracking-[-0.02em] text-white">Why we started this</h2>
-        <div className="mt-4 space-y-4 text-[15px] leading-[1.8] text-white/60">
+        <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--ink-text)]">Why we started this</h2>
+        <div className="mt-4 space-y-4 text-[15px] leading-[1.8] text-[var(--ink-text-secondary)]">
           <p>
             Most interview preparation is passive. Candidates read question lists, watch videos, and
             memorize answers — then sit down across from a real interviewer and discover that
@@ -64,29 +64,29 @@ export default function AboutPage() {
 
       {/* Values */}
       <section className="mt-20">
-        <h2 className="text-center text-2xl font-bold tracking-[-0.02em] text-white">
+        <h2 className="text-center text-2xl font-semibold tracking-[-0.02em] text-[var(--ink-text)]">
           What we believe
         </h2>
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
           {values.map(({ icon: Icon, title, body }) => (
             <article
               key={title}
-              className="glass-surface rounded-2xl p-6 transition-all duration-300 hover:border-[#6366f1]/25"
+              className="glass-panel rounded-2xl p-6 transition-all duration-300 hover:border-[rgba(203,162,95,0.3)]"
             >
-              <span className="grid size-10 place-items-center rounded-xl bg-[#6366f1]/12 text-[#c0c1ff]">
+              <span className="grid size-10 place-items-center rounded-xl bg-bronze-500/15 text-bronze-300">
                 <Icon className="size-5" aria-hidden="true" />
               </span>
-              <h3 className="mt-5 text-base font-semibold text-white">{title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-white/55">{body}</p>
+              <h3 className="mt-5 text-base font-semibold text-[var(--ink-text)]">{title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--ink-text-secondary)]">{body}</p>
             </article>
           ))}
         </div>
       </section>
 
       {/* Today */}
-      <section className="mx-auto mt-20 max-w-3xl rounded-3xl border border-white/[.07] bg-white/[.03] p-8">
-        <h2 className="text-xl font-bold tracking-[-0.02em] text-white">Where we are today</h2>
-        <p className="mt-3 text-[15px] leading-[1.8] text-white/60">
+      <section className="mx-auto mt-20 max-w-3xl rounded-3xl border border-[var(--hairline)] bg-[var(--ink-raised)]/60 p-8">
+        <h2 className="text-xl font-semibold tracking-[-0.02em] text-[var(--ink-text)]">Where we are today</h2>
+        <p className="mt-3 text-[15px] leading-[1.8] text-[var(--ink-text-secondary)]">
           Interviewer AI is in public beta. Voice practice interviews, personalized planning, and
           structured feedback are live — and we're adding progress tracking, more interview types,
           and team features next. If you'd like to shape what we build, your feedback goes straight

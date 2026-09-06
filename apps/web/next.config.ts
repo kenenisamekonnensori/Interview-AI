@@ -7,7 +7,6 @@ const nextConfig: NextConfig = {
     "@interviewer-ai/shared",
     "@interviewer-ai/types",
     "@interviewer-ai/ui",
-  ],
-};
+  ],};
 
 export default nextConfig;

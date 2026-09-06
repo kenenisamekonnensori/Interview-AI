@@ -90,14 +90,14 @@ export default function HelpPage() {
           <Link
             key={title}
             href={href}
-            className="group glass-surface flex flex-col rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:border-[#6366f1]/30"
+            className="group glass-panel flex flex-col rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:border-[rgba(203,162,95,0.35)]"
           >
-            <span className="grid size-10 place-items-center rounded-xl bg-[#6366f1]/12 text-[#c0c1ff]">
+            <span className="grid size-10 place-items-center rounded-xl bg-bronze-500/15 text-bronze-300">
               <Icon className="size-5" aria-hidden="true" />
             </span>
-            <h2 className="mt-5 text-base font-semibold text-white">{title}</h2>
-            <p className="mt-1.5 text-sm leading-relaxed text-white/50">{body}</p>
-            <p className="mt-auto flex items-center gap-1 pt-4 text-sm font-medium text-[#c0c1ff]">
+            <h2 className="mt-5 text-base font-semibold text-[var(--ink-text)]">{title}</h2>
+            <p className="mt-1.5 text-sm leading-relaxed text-[var(--ink-text-secondary)]">{body}</p>
+            <p className="mt-auto flex items-center gap-1 pt-4 text-sm font-medium text-bronze-300">
               {cta}
               <ArrowUpRight
                 className="size-3.5 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
@@ -110,20 +110,20 @@ export default function HelpPage() {
 
       {/* Popular articles */}
       <section className="mx-auto mt-16 max-w-3xl">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">
+        <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--ink-text-muted)]">
           Popular articles
         </h2>
-        <div className="glass-surface mt-4 divide-y divide-white/[.05] overflow-hidden rounded-2xl">
+        <div className="glass-panel mt-4 divide-y divide-white/[.05] overflow-hidden rounded-2xl">
           {popularLinks.map((article) => (
             <Link
               key={article.href}
               href={article.href}
               className="flex items-center justify-between gap-4 px-6 py-4 transition-colors hover:bg-white/[.03]"
             >
-              <span className="text-sm text-white/70 transition-colors hover:text-white">
+              <span className="text-sm text-[var(--ink-text-secondary)] transition-colors hover:text-[var(--ink-text)]">
                 {article.label}
               </span>
-              <ArrowUpRight className="size-4 shrink-0 text-white/25" aria-hidden="true" />
+              <ArrowUpRight className="size-4 shrink-0 text-[var(--ink-text-faint)]" aria-hidden="true" />
             </Link>
           ))}
         </div>

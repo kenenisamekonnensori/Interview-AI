@@ -66,18 +66,18 @@ export default function ChangelogPage() {
         description="We ship continuously. Here's everything that's landed recently — and what we're building next."
       />
 
-      <div className="relative mt-14 space-y-10 before:absolute before:inset-y-2 before:left-[1.06rem] before:w-px before:bg-gradient-to-b before:from-[#6366f1]/40 before:via-white/[.08] before:to-transparent sm:before:left-[1.31rem]">
+      <div className="relative mt-14 space-y-10 before:absolute before:inset-y-2 before:left-[1.06rem] before:w-px before:bg-gradient-to-b before:from-bronze-500/40 before:via-white/[.08] before:to-transparent sm:before:left-[1.31rem]">
         {releases.map((release) => (
           <article key={release.version} className="relative pl-12 sm:pl-14">
-            <span className="absolute left-0 top-1 grid size-9 place-items-center rounded-full border border-[#6366f1]/25 bg-[#0f131d] sm:size-10">
-              <Sparkles className="size-4 text-[#c0c1ff]" aria-hidden="true" />
+            <span className="absolute left-0 top-1 grid size-9 place-items-center rounded-full border border-[rgba(203,162,95,0.3)] bg-[var(--ink-raised)] sm:size-10">
+              <Sparkles className="size-4 text-bronze-300" aria-hidden="true" />
             </span>
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h2 className="text-base font-semibold tracking-tight text-white">
+              <h2 className="text-base font-semibold tracking-tight text-[var(--ink-text)]">
                 {release.version}
               </h2>
-              <span className="text-xs text-white/40">{release.date}</span>
-              <span className="rounded-full border border-white/[.08] bg-white/[.04] px-2 py-0.5 text-[11px] text-white/50">
+              <span className="text-xs text-[var(--ink-text-faint)]">{release.date}</span>
+              <span className="rounded-full border border-[var(--hairline)] bg-[var(--ink-raised)]/60 px-2 py-0.5 text-[11px] text-[var(--ink-text-muted)]">
                 {release.label}
               </span>
             </div>
@@ -85,10 +85,10 @@ export default function ChangelogPage() {
               {release.items.map((item) => (
                 <li
                   key={item}
-                  className="flex items-start gap-2.5 text-sm leading-relaxed text-white/60"
+                  className="flex items-start gap-2.5 text-sm leading-relaxed text-[var(--ink-text-secondary)]"
                 >
                   <span
-                    className="mt-[0.6rem] size-1 shrink-0 rounded-full bg-[#6366f1]/60"
+                    className="mt-[0.6rem] size-1 shrink-0 rounded-full bg-bronze-400/70"
                     aria-hidden="true"
                   />
                   {item}
@@ -100,19 +100,19 @@ export default function ChangelogPage() {
       </div>
 
       {/* Roadmap */}
-      <section className="glass-surface mt-16 rounded-3xl p-8">
+      <section className="glass-panel mt-16 rounded-3xl p-8">
         <div className="flex items-center gap-2">
-          <Rocket className="size-4 text-[#c0c1ff]" aria-hidden="true" />
-          <h2 className="text-base font-semibold text-white">On the roadmap</h2>
+          <Rocket className="size-4 text-bronze-300" aria-hidden="true" />
+          <h2 className="text-base font-semibold text-[var(--ink-text)]">On the roadmap</h2>
         </div>
         <ul className="mt-4 space-y-2.5">
           {roadmap.map((item) => (
             <li
               key={item}
-              className="flex items-start gap-2.5 text-sm leading-relaxed text-white/60"
+              className="flex items-start gap-2.5 text-sm leading-relaxed text-[var(--ink-text-secondary)]"
             >
               <span
-                className="mt-[0.6rem] size-1 shrink-0 rounded-full bg-[#06b6d4]/70"
+                className="mt-[0.6rem] size-1 shrink-0 rounded-full bg-[var(--teal)]/70"
                 aria-hidden="true"
               />
               {item}

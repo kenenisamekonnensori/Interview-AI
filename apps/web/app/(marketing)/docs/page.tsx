@@ -25,12 +25,12 @@ function DocSection({
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} className="scroll-mt-24 border-t border-white/[.06] pt-10 first:border-0 first:pt-0">
-      <h2 className="flex items-baseline gap-3 text-xl font-semibold tracking-[-0.02em] text-white">
-        <span className="text-sm font-mono text-[#6366f1]">{number}</span>
+    <section id={id} className="scroll-mt-24 border-t border-[var(--hairline)] pt-10 first:border-0 first:pt-0">
+      <h2 className="flex items-baseline gap-3 text-xl font-semibold tracking-[-0.02em] text-[var(--ink-text)]">
+        <span className="font-mono text-sm text-bronze-300">{number}</span>
         {title}
       </h2>
-      <div className="mt-4 space-y-4 text-[15px] leading-[1.8] text-white/60">{children}</div>
+      <div className="mt-4 space-y-4 text-[15px] leading-[1.8] text-[var(--ink-text-secondary)]">{children}</div>
     </section>
   );
 }
@@ -40,10 +40,10 @@ function Steps({ items }: { items: string[] }) {
     <ol className="space-y-2.5">
       {items.map((item, index) => (
         <li key={item} className="flex items-start gap-3">
-          <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-[#6366f1]/12 text-xs font-semibold text-[#c0c1ff]">
+          <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-bronze-500/15 text-xs font-semibold text-bronze-300">
             {index + 1}
           </span>
-          <span className="text-[15px] leading-[1.8] text-white/60">{item}</span>
+          <span className="text-[15px] leading-[1.8] text-[var(--ink-text-secondary)]">{item}</span>
         </li>
       ))}
     </ol>
@@ -52,7 +52,7 @@ function Steps({ items }: { items: string[] }) {
 
 function Note({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-[#6366f1]/20 bg-[#6366f1]/8 px-5 py-4 text-sm leading-relaxed text-white/70">
+    <div className="rounded-xl border border-[rgba(203,162,95,0.25)] bg-bronze-500/[.08] px-5 py-4 text-sm leading-relaxed text-[var(--ink-text-secondary)]">
       {children}
     </div>
   );
@@ -75,7 +75,7 @@ export default function DocsPage() {
           <a
             key={item.id}
             href={`#${item.id}`}
-            className="rounded-full border border-white/[.08] bg-white/[.03] px-3 py-1 text-xs text-white/50 transition-colors hover:border-[#6366f1]/30 hover:text-white"
+            className="rounded-full border border-[var(--hairline)] bg-[var(--ink-raised)]/60 px-3 py-1 text-xs text-[var(--ink-text-muted)] transition-colors hover:border-[rgba(203,162,95,0.35)] hover:text-[var(--ink-text)]"
           >
             {index + 1}. {item.label}
           </a>
@@ -85,14 +85,14 @@ export default function DocsPage() {
       <div className="mt-10 grid gap-12 lg:grid-cols-[16rem_1fr]">
         {/* Sidebar nav (desktop) */}
         <nav aria-label="On this page" className="hidden lg:block">
-          <div className="sticky top-8 space-y-1 border-l border-white/[.07] pl-4">
+          <div className="sticky top-8 space-y-1 border-l border-[var(--hairline)] pl-4">
             {navItems.map((item, index) => (
               <a
                 key={item.id}
                 href={`#${item.id}`}
-                className="block py-1 text-[13px] leading-snug text-white/45 transition-colors hover:text-white"
+                className="block py-1 text-[13px] leading-snug text-[var(--ink-text-muted)] transition-colors hover:text-[var(--ink-text)]"
               >
-                <span className="text-white/25">{index + 1}.</span> {item.label}
+                <span className="text-[var(--ink-text-faint)]">{index + 1}.</span> {item.label}
               </a>
             ))}
           </div>
@@ -131,7 +131,7 @@ export default function DocsPage() {
               resume and the more specific your target job description, the more realistic the
               interview.
             </p>
-            <h3 className="pt-2 text-base font-semibold text-white">Uploading your resume</h3>
+            <h3 className="pt-2 text-base font-semibold text-[var(--ink-text)]">Uploading your resume</h3>
             <Steps
               items={[
                 "Supported formats: PDF, DOCX, and plain text.",
@@ -139,7 +139,7 @@ export default function DocsPage() {
                 "Check that your name, current role, and key skills are present and up to date.",
               ]}
             />
-            <h3 className="pt-2 text-base font-semibold text-white">Adding a job description</h3>
+            <h3 className="pt-2 text-base font-semibold text-[var(--ink-text)]">Adding a job description</h3>
             <p>
               Paste the full job description from the posting you're preparing for. We extract the
               required skills, responsibilities, and seniority level, then shape questions to match.
@@ -153,7 +153,7 @@ export default function DocsPage() {
               Voice practice is the core of Interviewer AI: you speak, and the interviewer hears
               you, thinks, and responds — the way a real conversation works.
             </p>
-            <h3 className="pt-2 text-base font-semibold text-white">Before you start</h3>
+            <h3 className="pt-2 text-base font-semibold text-[var(--ink-text)]">Before you start</h3>
             <Steps
               items={[
                 "Use Chrome, Edge, or Safari on desktop, or the current mobile version of Chrome or Safari.",
@@ -162,7 +162,7 @@ export default function DocsPage() {
                 "Test your microphone in the session setup screen before you begin.",
               ]}
             />
-            <h3 className="pt-2 text-base font-semibold text-white">During the interview</h3>
+            <h3 className="pt-2 text-base font-semibold text-[var(--ink-text)]">During the interview</h3>
             <p>
               You don't need to do anything — just talk. The interviewer will ask a question, listen
               to your answer, and follow up based on what you said. If you need a moment, it's fine
@@ -219,11 +219,11 @@ export default function DocsPage() {
             </p>
             <p>
               You can upgrade, downgrade, or cancel from your account settings at any time. See the{" "}
-              <a href="/pricing" className="text-[#c0c1ff] underline decoration-[#6366f1]/40 underline-offset-2 hover:text-white">
+              <a href="/pricing" className="text-bronze-200 underline decoration-bronze-500/40 underline-offset-2 hover:text-[var(--ink-text)]">
                 pricing page
               </a>{" "}
               for full plan details, and the{" "}
-              <a href="/faq" className="text-[#c0c1ff] underline decoration-[#6366f1]/40 underline-offset-2 hover:text-white">
+              <a href="/faq" className="text-bronze-200 underline decoration-bronze-500/40 underline-offset-2 hover:text-[var(--ink-text)]">
                 FAQ
               </a>{" "}
               for billing questions.

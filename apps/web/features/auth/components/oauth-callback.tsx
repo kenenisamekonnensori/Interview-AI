@@ -15,7 +15,7 @@ export function OAuthCallback() {
 
   useEffect(() => {
     if (!session) return;
-    router.replace(session.user.emailVerified ? "/dashboard" : "/verify-email");
+    router.replace("/dashboard");
     router.refresh();
   }, [router, session]);
 
@@ -23,7 +23,7 @@ export function OAuthCallback() {
     return (
       <div className="text-center">
         <AlertCircle className="mx-auto size-10 text-destructive" aria-hidden="true" />
-        <h1 className="mt-5 text-2xl font-semibold">Google sign-in didn’t finish.</h1>
+        <h1 className="mt-5 text-2xl font-semibold">Sign-in didn’t finish.</h1>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           No account changes were made. You can safely try again.
         </p>

@@ -53,7 +53,7 @@ export default function StatusPage() {
         <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">
           Services
         </h2>
-        <div className="glass-surface mt-4 divide-y divide-white/[.05] overflow-hidden rounded-2xl">
+        <div className="glass-panel mt-4 divide-y divide-white/[.05] overflow-hidden rounded-2xl">
           {components.map((component) => (
             <div key={component.name} className="flex items-center justify-between gap-4 px-6 py-4">
               <div>
@@ -75,7 +75,7 @@ export default function StatusPage() {
           <History className="size-3.5" aria-hidden="true" />
           Incident history
         </h2>
-        <div className="glass-surface mt-4 rounded-2xl px-6 py-8 text-center">
+        <div className="glass-panel mt-4 rounded-2xl px-6 py-8 text-center">
           <p className="text-sm text-white/60">No incidents reported in the last 90 days.</p>
           <p className="mt-1 text-xs text-white/35">
             When something does happen, we log the timeline here — transparently and in plain
