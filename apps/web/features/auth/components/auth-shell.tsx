@@ -1,64 +1,26 @@
-import { BarChart3, Mic, Sparkles } from "lucide-react";
+import { Mic } from "lucide-react";
 import type { PropsWithChildren } from "react";
 
+/**
+ * Centered, minimal auth layout: brand, one card, nothing else.
+ * Kept intentionally light so the page renders instantly.
+ */
 export function AuthShell({ children }: PropsWithChildren) {
   return (
-    <main className="relative grid min-h-screen overflow-hidden lg:grid-cols-[1.1fr_0.9fr]">
-      <section className="relative hidden overflow-hidden border-r border-border bg-[radial-gradient(circle_at_15%_20%,oklch(0.36_0.1_250_/_32%),transparent_32%),radial-gradient(circle_at_80%_65%,oklch(0.42_0.12_180_/_18%),transparent_34%)] p-10 lg:flex lg:flex-col">
-        <div className="flex items-center gap-3 text-sm font-semibold tracking-tight">
-          <span className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
-            <Mic className="size-5" aria-hidden="true" />
+    <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background px-4 py-12">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-[-24rem] mx-auto h-[32rem] max-w-3xl rounded-full bg-primary/10 blur-3xl"
+      />
+      <div className="relative w-full max-w-[26rem]">
+        <div className="mb-8 flex items-center justify-center gap-2.5">
+          <span className="grid size-9 place-items-center rounded-xl bg-gradient-to-b from-[#dcbd7e] to-[#b78a44] shadow-[0_6px_20px_-6px_rgba(203,162,95,0.55)] ring-1 ring-white/25">
+            <Mic className="size-4 text-[#221a0d]" aria-hidden="true" />
           </span>
-          Interviewer AI
+          <span className="text-[15px] font-semibold tracking-[-0.02em]">Interviewer AI</span>
         </div>
-
-        <div className="my-auto max-w-xl">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-            <Sparkles className="size-3.5" aria-hidden="true" />
-            Practice with real momentum
-          </div>
-          <h1 className="text-balance text-5xl font-semibold leading-[1.05] tracking-[-0.04em] text-foreground">
-            Build confidence before the conversation counts.
-          </h1>
-          <p className="mt-6 max-w-md text-base leading-7 text-muted-foreground">
-            Rehearse high-stakes interviews with an AI interviewer that listens, adapts, and gives
-            you useful feedback.
-          </p>
-        </div>
-
-        <div className="relative rounded-2xl border border-border bg-card/60 p-5 shadow-2xl shadow-black/20 backdrop-blur">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Interview readiness</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Your practice improves over time.
-              </p>
-            </div>
-            <BarChart3 className="size-5 text-primary" aria-hidden="true" />
-          </div>
-          <div className="flex h-16 items-end gap-2" aria-hidden="true">
-            {[35, 47, 42, 64, 58, 82, 76, 94].map((height, index) => (
-              <span
-                key={index}
-                className="flex-1 rounded-t bg-primary/80"
-                style={{ height: `${height}%` }}
-              />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="flex min-h-screen items-center justify-center p-5 sm:p-8">
-        <div className="w-full max-w-md">
-          <div className="mb-10 flex items-center gap-3 lg:hidden">
-            <span className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground">
-              <Mic className="size-5" aria-hidden="true" />
-            </span>
-            <span className="text-sm font-semibold tracking-tight">Interviewer AI</span>
-          </div>
-          {children}
-        </div>
-      </section>
+        {children}
+      </div>
     </main>
   );
 }

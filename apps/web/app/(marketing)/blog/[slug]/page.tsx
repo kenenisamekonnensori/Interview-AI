@@ -41,7 +41,7 @@ export default async function BlogPostPage({ params }: PostPageProps) {
     <div className="mx-auto max-w-3xl px-6 py-16 sm:py-20">
       <Link
         href="/blog"
-        className="inline-flex items-center gap-1.5 text-sm text-white/45 transition-colors hover:text-white"
+        className="inline-flex items-center gap-1.5 text-sm text-[var(--ink-text-muted)] transition-colors hover:text-[var(--ink-text)]"
       >
         <ArrowLeft className="size-4" aria-hidden="true" />
         All articles
@@ -49,25 +49,27 @@ export default async function BlogPostPage({ params }: PostPageProps) {
 
       <article className="mt-8">
         <div className="flex items-center gap-3">
-          <span className="rounded-full border border-[#6366f1]/20 bg-[#6366f1]/10 px-2.5 py-0.5 text-[11px] font-medium text-[#c0c1ff]">
+          <span className="rounded-full border border-[var(--hairline)] bg-bronze-500/10 px-2.5 py-0.5 text-[11px] font-medium text-bronze-300">
             {post.category}
           </span>
-          <span className="text-xs text-white/35">
+          <span className="text-xs text-[var(--ink-text-faint)]">
             {formatPostDate(post.date)} · {post.readTime}
           </span>
         </div>
-        <h1 className="mt-5 text-balance text-3xl font-bold leading-[1.1] tracking-[-0.03em] text-white sm:text-4xl">
+        <h1 className="mt-5 text-balance text-3xl font-semibold leading-[1.1] tracking-[-0.025em] text-[var(--ink-text)] sm:text-4xl">
           {post.title}
         </h1>
-        <p className="mt-4 text-lg leading-relaxed text-white/55">{post.excerpt}</p>
+        <p className="mt-4 text-lg leading-relaxed text-[var(--ink-text-secondary)]">
+          {post.excerpt}
+        </p>
 
-        <div className="mt-6 flex items-center gap-3 border-b border-white/[.06] pb-6">
-          <span className="grid size-9 place-items-center rounded-full bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] text-xs font-bold text-white">
+        <div className="mt-6 flex items-center gap-3 border-b border-[var(--hairline)] pb-6">
+          <span className="grid size-9 place-items-center rounded-full bg-gradient-to-b from-bronze-300 to-bronze-500 text-xs font-semibold text-[#221a0d]">
             IA
           </span>
           <div>
-            <p className="text-sm font-medium text-white">{post.author}</p>
-            <p className="text-xs text-white/40">{post.authorRole}</p>
+            <p className="text-sm font-medium text-[var(--ink-text)]">{post.author}</p>
+            <p className="text-xs text-[var(--ink-text-faint)]">{post.authorRole}</p>
           </div>
         </div>
 
@@ -77,8 +79,8 @@ export default async function BlogPostPage({ params }: PostPageProps) {
       </article>
 
       {related.length > 0 ? (
-        <section className="mt-16 border-t border-white/[.06] pt-10">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">
+        <section className="mt-16 border-t border-[var(--hairline)] pt-10">
+          <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--ink-text-muted)]">
             Keep reading
           </h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

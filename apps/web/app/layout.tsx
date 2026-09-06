@@ -5,8 +5,9 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Interviewer AI",
-  description: "Practice interviews that feel real.",
+  title: "Interviewer AI — Realistic voice mock interviews",
+  description:
+    "Live voice interviews with an AI interviewer that adapts, follows up, and scores you — built from your resume and target role.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

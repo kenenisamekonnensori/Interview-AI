@@ -23,6 +23,23 @@ export function createAuthConfig(
 ): BetterAuthOptions {
   const emailOutbox = createAuthEmailOutbox(database, monolith);
 
+  const socialProviders: NonNullable<BetterAuthOptions["socialProviders"]> = {
+    google: {
+      clientId: environment.GOOGLE_CLIENT_ID,
+      clientSecret: environment.GOOGLE_CLIENT_SECRET,
+      prompt: "select_account",
+      scope: ["openid", "email", "profile"],
+    },
+  };
+
+  if (environment.GITHUB_CLIENT_ID && environment.GITHUB_CLIENT_SECRET) {
+    socialProviders.github = {
+      clientId: environment.GITHUB_CLIENT_ID,
+      clientSecret: environment.GITHUB_CLIENT_SECRET,
+      redirectURI: `${environment.BETTER_AUTH_URL.replace(/\/$/, "")}/api/auth/callback/github`,
+    };
+  }
+
   return {
     baseURL: environment.BETTER_AUTH_URL,
     database: prismaAdapter(database, {
@@ -30,20 +47,7 @@ export function createAuthConfig(
     }),
     secret: environment.BETTER_AUTH_SECRET,
     trustedOrigins: [environment.WEB_URL],
-    emailAndPassword: {
-      enabled: true,
-      minPasswordLength: 12,
-      maxPasswordLength: 128,
-      requireEmailVerification: true,
-    },
-    socialProviders: {
-      google: {
-        clientId: environment.GOOGLE_CLIENT_ID,
-        clientSecret: environment.GOOGLE_CLIENT_SECRET,
-        prompt: "select_account",
-        scope: ["openid", "email", "profile"],
-      },
-    },
+    socialProviders,
     account: {
       accountLinking: {
         enabled: true,
@@ -74,38 +78,10 @@ export function createAuthConfig(
                 name: user.name,
               })
               .catch((error: unknown) => {
-                logOutboxError(logger, error, "Unable to enqueue Google welcome email");
+                logOutboxError(logger, error, "Unable to enqueue welcome email");
               });
           },
         },
-      },
-    },
-    emailVerification: {
-      sendVerificationEmail: async ({ user, url }) => {
-        void emailOutbox
-          .enqueue({
-            userId: user.id,
-            recipient: user.email,
-            message: {
-              kind: "verify-email",
-              name: user.name,
-              verificationUrl: url,
-            },
-          })
-          .catch((error: unknown) => {
-            logOutboxError(logger, error, "Unable to enqueue email verification message");
-          });
-      },
-      afterEmailVerification: async (user) => {
-        void emailOutbox
-          .enqueueWelcome({
-            userId: user.id,
-            recipient: user.email,
-            name: user.name,
-          })
-          .catch((error: unknown) => {
-            logOutboxError(logger, error, "Unable to enqueue welcome email");
-          });
       },
     },
   };

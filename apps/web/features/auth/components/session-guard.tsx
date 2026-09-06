@@ -19,14 +19,10 @@ export function SessionGuard({ children }: PropsWithChildren) {
     if (isPending) return;
     if (!session) {
       router.replace("/sign-in");
-      return;
-    }
-    if (!session.user.emailVerified) {
-      router.replace("/verify-email");
     }
   }, [isPending, router, session]);
 
-  if (isPending || !session || !session.user.emailVerified) {
+  if (isPending || !session) {
     return (
       <div className="grid min-h-screen place-items-center">
         <LoaderCircle

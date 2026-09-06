@@ -26,6 +26,8 @@ export const serverEnvironmentSchema = z
     DATABASE_URL: z.url(),
     DEEPGRAM_API_KEY: optionalEnvironmentString,
     EMAIL_FROM: z.string().min(1),
+    GITHUB_CLIENT_ID: optionalEnvironmentString,
+    GITHUB_CLIENT_SECRET: optionalEnvironmentString,
     GOOGLE_CLIENT_ID: z.string().min(1),
     GOOGLE_CLIENT_SECRET: z.string().min(1),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),

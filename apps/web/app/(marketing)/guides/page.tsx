@@ -196,9 +196,9 @@ export default function GuidesPage() {
           <a
             key={guide.id}
             href={`#${guide.id}`}
-            className="rounded-full border border-white/[.08] bg-white/[.03] px-4 py-1.5 text-sm text-white/60 transition-all hover:border-[#6366f1]/30 hover:text-white"
+            className="rounded-full border border-[var(--hairline)] bg-[var(--ink-raised)]/60 px-4 py-1.5 text-sm text-[var(--ink-text-secondary)] transition-all hover:border-[rgba(203,162,95,0.35)] hover:text-[var(--ink-text)]"
           >
-            <span className="text-[#6366f1]">{guide.number}</span> {guide.title}
+            <span className="text-bronze-300">{guide.number}</span> {guide.title}
           </a>
         ))}
       </nav>
@@ -209,15 +209,17 @@ export default function GuidesPage() {
           <section
             key={guide.id}
             id={guide.id}
-            className="glass-surface scroll-mt-24 rounded-3xl p-8 sm:p-10"
+            className="glass-panel scroll-mt-24 rounded-3xl p-8 sm:p-10"
           >
             <div className="flex items-start gap-4">
-              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#6366f1]/12 font-mono text-sm font-semibold text-[#c0c1ff]">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-bronze-500/15 font-mono text-sm font-semibold text-bronze-300">
                 {guide.number}
               </span>
               <div>
-                <h2 className="text-2xl font-bold tracking-[-0.02em] text-white">{guide.title}</h2>
-                <p className="mt-1 text-sm text-white/50">{guide.tagline}</p>
+                <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--ink-text)]">
+                  {guide.title}
+                </h2>
+                <p className="mt-1 text-sm text-[var(--ink-text-muted)]">{guide.tagline}</p>
               </div>
             </div>
             <div className="mt-7">
