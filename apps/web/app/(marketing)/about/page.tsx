@@ -41,7 +41,9 @@ export default function AboutPage() {
 
       {/* Mission */}
       <section className="mx-auto mt-12 max-w-3xl">
-        <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--ink-text)]">Why we started this</h2>
+        <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--ink-text)]">
+          Why we started this
+        </h2>
         <div className="mt-4 space-y-4 text-[15px] leading-[1.8] text-[var(--ink-text-secondary)]">
           <p>
             Most interview preparation is passive. Candidates read question lists, watch videos, and
@@ -77,7 +79,9 @@ export default function AboutPage() {
                 <Icon className="size-5" aria-hidden="true" />
               </span>
               <h3 className="mt-5 text-base font-semibold text-[var(--ink-text)]">{title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-[var(--ink-text-secondary)]">{body}</p>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--ink-text-secondary)]">
+                {body}
+              </p>
             </article>
           ))}
         </div>
@@ -85,7 +89,9 @@ export default function AboutPage() {
 
       {/* Today */}
       <section className="mx-auto mt-20 max-w-3xl rounded-3xl border border-[var(--hairline)] bg-[var(--ink-raised)]/60 p-8">
-        <h2 className="text-xl font-semibold tracking-[-0.02em] text-[var(--ink-text)]">Where we are today</h2>
+        <h2 className="text-xl font-semibold tracking-[-0.02em] text-[var(--ink-text)]">
+          Where we are today
+        </h2>
         <p className="mt-3 text-[15px] leading-[1.8] text-[var(--ink-text-secondary)]">
           Interviewer AI is in public beta. Voice practice interviews, personalized planning, and
           structured feedback are live — and we're adding progress tracking, more interview types,

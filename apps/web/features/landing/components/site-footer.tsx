@@ -126,7 +126,12 @@ export function SiteFooter() {
                   aria-label={social.label}
                   className="grid size-9 place-items-center rounded-lg text-[var(--ink-text-muted)] transition-colors hover:bg-white/[.06] hover:text-[var(--ink-text)]"
                 >
-                  <svg viewBox="0 0 24 24" fill="currentColor" className="size-4" aria-hidden="true">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    className="size-4"
+                    aria-hidden="true"
+                  >
                     <path d={social.path} />
                   </svg>
                 </a>

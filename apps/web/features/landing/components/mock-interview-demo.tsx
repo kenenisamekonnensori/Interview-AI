@@ -101,12 +101,12 @@ export function MockInterviewDemo() {
   const [notes, setNotes] = useState<string[] | null>(null);
   const [turn, setTurn] = useState(0);
 
-  const question =
-    QUESTION_STREAM[questionIndex % QUESTION_STREAM.length] ?? QUESTION_STREAM[0]!;
+  const question = QUESTION_STREAM[questionIndex % QUESTION_STREAM.length] ?? QUESTION_STREAM[0]!;
   const listening = useSimulatedLevel(phase === "listening");
 
   // Restart the typewriter for each new interviewer turn.
-  const fullText = phase === "answering" ? (showFollowUp ? question.followUp : question.question) : "";
+  const fullText =
+    phase === "answering" ? (showFollowUp ? question.followUp : question.question) : "";
   const [typed, setTyped] = useState("");
   const typeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -163,9 +163,7 @@ export function MockInterviewDemo() {
         <div className="flex items-center justify-between gap-3 border-b border-[var(--hairline)] px-5 py-3">
           <div className="flex min-w-0 items-center gap-3 text-sm">
             {phase === "idle" || phase === "ended" ? (
-              <span
-                className="shrink-0 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--ink-text-muted)]"
-              >
+              <span className="shrink-0 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--ink-text-muted)]">
                 Demo
               </span>
             ) : (

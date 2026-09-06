@@ -41,7 +41,9 @@ export default function CareersPage() {
   return (
     <div className="mx-auto max-w-3xl px-6 py-16 sm:py-20">
       <div className="max-w-2xl">
-        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--bronze)]">Careers</p>
+        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--bronze)]">
+          Careers
+        </p>
         <h1 className="mt-4 text-balance text-3xl font-semibold tracking-[-0.025em] text-[var(--ink-text)] sm:text-4xl">
           Help us make interviews feel less like a test
         </h1>
@@ -63,7 +65,9 @@ export default function CareersPage() {
                 <Icon className="size-4.5" aria-hidden="true" />
               </span>
               <h3 className="mt-4 text-sm font-semibold text-[var(--ink-text)]">{title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-[var(--ink-text-secondary)]">{body}</p>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--ink-text-secondary)]">
+                {body}
+              </p>
             </article>
           ))}
         </div>
@@ -93,7 +97,9 @@ export default function CareersPage() {
           Open roles
         </h2>
         <div className="glass-panel mt-4 rounded-3xl px-8 py-12 text-center">
-          <p className="text-lg font-semibold text-[var(--ink-text)]">We&apos;re not hiring right now</p>
+          <p className="text-lg font-semibold text-[var(--ink-text)]">
+            We&apos;re not hiring right now
+          </p>
           <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-[var(--ink-text-secondary)]">
             We&apos;re a deliberately small team, and we only grow when the work demands it. But
             we&apos;re always glad to meet exceptional people — introduce yourself and we&apos;ll

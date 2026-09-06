@@ -216,7 +216,9 @@ export default function GuidesPage() {
                 {guide.number}
               </span>
               <div>
-                <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--ink-text)]">{guide.title}</h2>
+                <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--ink-text)]">
+                  {guide.title}
+                </h2>
                 <p className="mt-1 text-sm text-[var(--ink-text-muted)]">{guide.tagline}</p>
               </div>
             </div>

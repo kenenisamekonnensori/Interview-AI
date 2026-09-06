@@ -95,7 +95,8 @@ function Moon() {
   return (
     <Sphere ref={meshRef} args={[2, 64, 64]}>
       <shaderMaterial
-        vertexShader={/* glsl */ `
+        vertexShader={
+          /* glsl */ `
           varying vec2 vUv;
           varying vec3 vNormal;
           varying vec3 vPosition;
@@ -110,8 +111,10 @@ function Moon() {
             vec3 displaced = position + normal * (noise + craters);
             gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
           }
-        `}
-        fragmentShader={/* glsl */ `
+        `
+        }
+        fragmentShader={
+          /* glsl */ `
           uniform float uTime;
           uniform vec3 uColor1;
           uniform vec3 uColor2;
@@ -140,7 +143,8 @@ function Moon() {
             float pulse = sin(uTime * 0.5) * 0.1 + 0.9;
             gl_FragColor = vec4(color + rimColor * pulse, 1.0);
           }
-        `}
+        `
+        }
         uniforms={uniforms}
       />
     </Sphere>
@@ -167,14 +171,17 @@ function AtmosphericGlow() {
         depthWrite={false}
         side={THREE.BackSide}
         uniforms={uniforms}
-        vertexShader={/* glsl */ `
+        vertexShader={
+          /* glsl */ `
           varying vec3 vNormal;
           void main() {
             vNormal = normalize(normalMatrix * normal);
             gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
           }
-        `}
-        fragmentShader={/* glsl */ `
+        `
+        }
+        fragmentShader={
+          /* glsl */ `
           uniform vec3 uGlowColor;
           uniform float uTime;
           varying vec3 vNormal;
@@ -185,7 +192,8 @@ function AtmosphericGlow() {
             float alpha = intensity * pulse * 0.55;
             gl_FragColor = vec4(glow, alpha);
           }
-        `}
+        `
+        }
       />
     </Sphere>
   );

@@ -131,14 +131,15 @@ export default function HomePage() {
 
               <FadeUp delay={0.15}>
                 <h1 className="mt-7 text-balance text-[2.6rem] font-semibold leading-[1.05] tracking-[-0.035em] text-[var(--ink-text)] sm:text-6xl lg:text-[4.1rem]">
-                  Practice like it&rsquo;s the real interview. <span className="text-gradient-bronze">Because it nearly is.</span>
+                  Practice like it&rsquo;s the real interview.{" "}
+                  <span className="text-gradient-bronze">Because it nearly is.</span>
                 </h1>
               </FadeUp>
 
               <FadeUp delay={0.28}>
                 <p className="mt-6 max-w-md text-pretty text-lg leading-relaxed text-[var(--ink-text-secondary)]">
-                  Speak with an AI interviewer that listens, follows up, and scores you — built
-                  from your resume and the role you&rsquo;re applying for.
+                  Speak with an AI interviewer that listens, follows up, and scores you — built from
+                  your resume and the role you&rsquo;re applying for.
                 </p>
               </FadeUp>
 
@@ -221,10 +222,7 @@ export default function HomePage() {
               {steps.map(({ icon: Icon, title, description }, index) => (
                 <StaggerItem key={title}>
                   <div className="relative">
-                    <span
-                      className="font-mono text-xs text-bronze-500/70"
-                      aria-hidden="true"
-                    >
+                    <span className="font-mono text-xs text-bronze-500/70" aria-hidden="true">
                       {String(index + 1).padStart(2, "0")}
                     </span>
                     <div className="mt-4 grid size-11 place-items-center rounded-xl border border-[var(--hairline)] bg-[var(--ink-raised)] text-bronze-300">
@@ -279,7 +277,10 @@ export default function HomePage() {
               />
             </FadeUp>
 
-            <StaggerContainer className="mt-12 flex flex-wrap justify-center gap-3" staggerDelay={0.08}>
+            <StaggerContainer
+              className="mt-12 flex flex-wrap justify-center gap-3"
+              staggerDelay={0.08}
+            >
               {interviewTypes.map(({ icon: Icon, label }) => (
                 <StaggerItem key={label}>
                   <span className="inline-flex items-center gap-2.5 rounded-full border border-[var(--hairline)] bg-[var(--ink-raised)] px-5 py-2.5 text-sm font-medium text-[var(--ink-text-secondary)] transition-colors hover:border-[rgba(203,162,95,0.35)] hover:text-[var(--ink-text)]">

@@ -72,7 +72,9 @@ export default function FeaturesPage() {
               <Icon className="size-5" aria-hidden="true" />
             </span>
             <h2 className="mt-5 text-base font-semibold text-[var(--ink-text)]">{title}</h2>
-            <p className="mt-2 text-sm leading-relaxed text-[var(--ink-text-secondary)]">{description}</p>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--ink-text-secondary)]">
+              {description}
+            </p>
           </article>
         ))}
       </div>
@@ -110,7 +112,9 @@ export default function FeaturesPage() {
               <div key={item.step} className="p-7">
                 <p className="font-mono text-xs font-medium text-bronze-300">{item.step}</p>
                 <h3 className="mt-3 text-sm font-semibold text-[var(--ink-text)]">{item.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-[var(--ink-text-secondary)]">{item.body}</p>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--ink-text-secondary)]">
+                  {item.body}
+                </p>
               </div>
             ))}
           </div>

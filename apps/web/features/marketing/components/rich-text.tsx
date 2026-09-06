@@ -31,10 +31,7 @@ export function RichText({ blocks }: { blocks: RichBlock[] }) {
             );
           case "p":
             return (
-              <p
-                key={index}
-                className="text-[15px] leading-[1.8] text-[var(--ink-text-secondary)]"
-              >
+              <p key={index} className="text-[15px] leading-[1.8] text-[var(--ink-text-secondary)]">
                 {block.text}
               </p>
             );
@@ -75,10 +72,7 @@ export function RichText({ blocks }: { blocks: RichBlock[] }) {
                 key={index}
                 className="flex items-start gap-3 rounded-xl border border-[rgba(203,162,95,0.25)] bg-bronze-500/[.08] p-4"
               >
-                <Lightbulb
-                  className="mt-0.5 size-4 shrink-0 text-bronze-300"
-                  aria-hidden="true"
-                />
+                <Lightbulb className="mt-0.5 size-4 shrink-0 text-bronze-300" aria-hidden="true" />
                 <p className="text-sm leading-relaxed text-[var(--ink-text-secondary)]">
                   {block.text}
                 </p>

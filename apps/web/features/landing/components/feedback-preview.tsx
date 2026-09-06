@@ -128,7 +128,10 @@ function ScoreRing({ value }: { value: number }) {
         }}
         aria-hidden="true"
       />
-      <div className="absolute inset-[10px] rounded-full bg-[var(--ink-raised)]" aria-hidden="true" />
+      <div
+        className="absolute inset-[10px] rounded-full bg-[var(--ink-raised)]"
+        aria-hidden="true"
+      />
       <div className="relative text-center">
         <p className="font-mono text-3xl font-semibold text-[var(--ink-text)]">{display}</p>
         <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--ink-text-muted)]">

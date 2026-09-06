@@ -29,8 +29,7 @@ export function LegalDoc({ title, description, updated, sections }: LegalDocProp
                 href={`#${section.id}`}
                 className="block py-1 text-[13px] leading-snug text-[var(--ink-text-muted)] transition-colors hover:text-[var(--ink-text)]"
               >
-                <span className="text-[var(--ink-text-faint)]">{index + 1}.</span>{" "}
-                {section.heading}
+                <span className="text-[var(--ink-text-faint)]">{index + 1}.</span> {section.heading}
               </a>
             ))}
           </div>

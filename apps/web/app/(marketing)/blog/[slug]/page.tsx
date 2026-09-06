@@ -59,7 +59,9 @@ export default async function BlogPostPage({ params }: PostPageProps) {
         <h1 className="mt-5 text-balance text-3xl font-semibold leading-[1.1] tracking-[-0.025em] text-[var(--ink-text)] sm:text-4xl">
           {post.title}
         </h1>
-        <p className="mt-4 text-lg leading-relaxed text-[var(--ink-text-secondary)]">{post.excerpt}</p>
+        <p className="mt-4 text-lg leading-relaxed text-[var(--ink-text-secondary)]">
+          {post.excerpt}
+        </p>
 
         <div className="mt-6 flex items-center gap-3 border-b border-[var(--hairline)] pb-6">
           <span className="grid size-9 place-items-center rounded-full bg-gradient-to-b from-bronze-300 to-bronze-500 text-xs font-semibold text-[#221a0d]">

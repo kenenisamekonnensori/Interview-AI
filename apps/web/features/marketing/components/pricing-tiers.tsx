@@ -149,10 +149,7 @@ export function PricingTiers() {
                     key={feature}
                     className="flex items-start gap-2.5 text-sm text-[var(--ink-text-secondary)]"
                   >
-                    <Check
-                      className="mt-0.5 size-4 shrink-0 text-bronze-300"
-                      aria-hidden="true"
-                    />
+                    <Check className="mt-0.5 size-4 shrink-0 text-bronze-300" aria-hidden="true" />
                     {feature}
                   </li>
                 ))}

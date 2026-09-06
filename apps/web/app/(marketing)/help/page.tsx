@@ -96,7 +96,9 @@ export default function HelpPage() {
               <Icon className="size-5" aria-hidden="true" />
             </span>
             <h2 className="mt-5 text-base font-semibold text-[var(--ink-text)]">{title}</h2>
-            <p className="mt-1.5 text-sm leading-relaxed text-[var(--ink-text-secondary)]">{body}</p>
+            <p className="mt-1.5 text-sm leading-relaxed text-[var(--ink-text-secondary)]">
+              {body}
+            </p>
             <p className="mt-auto flex items-center gap-1 pt-4 text-sm font-medium text-bronze-300">
               {cta}
               <ArrowUpRight
@@ -123,7 +125,10 @@ export default function HelpPage() {
               <span className="text-sm text-[var(--ink-text-secondary)] transition-colors hover:text-[var(--ink-text)]">
                 {article.label}
               </span>
-              <ArrowUpRight className="size-4 shrink-0 text-[var(--ink-text-faint)]" aria-hidden="true" />
+              <ArrowUpRight
+                className="size-4 shrink-0 text-[var(--ink-text-faint)]"
+                aria-hidden="true"
+              />
             </Link>
           ))}
         </div>
