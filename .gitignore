@@ -11,3 +11,4 @@ coverage
 tsconfig.tsbuildinfo
 **/*.tsbuildinfo
 apps/api/prisma/generated/**
+docs/DashboardArchitectureProposal.md
