@@ -22,6 +22,7 @@ model User {
   sessions        Session[]
   resumes         Resume[]
   jobDescriptions JobDescription[]
+  careerTargets   CareerTarget[]
   interviews      Interview[]
   profile         UserProfile?
 
@@ -72,6 +73,7 @@ model Resume {
   updatedAt DateTime     @updatedAt
   user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   analysis  ResumeAnalysis?
+  careerTargets CareerTarget[]
   interviews Interview[]
 
   @@index([userId, createdAt])
@@ -118,11 +120,38 @@ model JobDescription {
   updatedAt DateTime             @updatedAt
   user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   analysis  JobAnalysis?
+  careerTargets CareerTarget[]
   interviews Interview[]
 
   @@index([userId, createdAt])
   @@index([userId, deletedAt, createdAt])
   @@map("job_description")
+}
+
+enum CareerTargetStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model CareerTarget {
+  id               String             @id @default(uuid())
+  userId           String
+  title            String
+  company          String?
+  jobDescriptionId String?
+  jobUrl           String?
+  location         String?
+  resumeId         String?
+  status           CareerTargetStatus @default(ACTIVE)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobDescription   JobDescription?    @relation(fields: [jobDescriptionId], references: [id], onDelete: SetNull)
+  resume           Resume?            @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+  interviews       Interview[]
+
+  @@index([userId, status, createdAt])
+  @@map("career_target")
 }
 
 enum InterviewStatus {
@@ -157,6 +186,7 @@ model Interview {
   userId           String
   resumeId         String?
   jobDescriptionId String?
+  careerTargetId   String?
   status           InterviewStatus     @default(DRAFT)
   interviewType    InterviewType
   difficulty       InterviewDifficulty @default(MEDIUM)
@@ -170,6 +200,7 @@ model Interview {
   user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   resume           Resume?             @relation(fields: [resumeId], references: [id], onDelete: SetNull)
   jobDescription   JobDescription?     @relation(fields: [jobDescriptionId], references: [id], onDelete: SetNull)
+  careerTarget     CareerTarget?       @relation(fields: [careerTargetId], references: [id], onDelete: SetNull)
   plan             InterviewPlan?
   conversation     Conversation?
   memory           InterviewMemory?

@@ -7,8 +7,6 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
-import { JobDescriptionManager } from "@/features/jobs/components/job-description-manager";
-import { ResumeManager } from "@/features/resumes/components/resume-manager";
 import { Input } from "@/components/ui/input";
 import { ApiError, apiClient } from "@/lib/api-client";
 
@@ -153,10 +151,6 @@ export function ProfileOverview() {
                 : "Complete a practice interview to see your latest insight here."}
             </p>
           </div>
-        </section>
-        <section className="space-y-4" aria-label="Career context management">
-          <ResumeManager />
-          <JobDescriptionManager />
         </section>
       </div>
     </main>

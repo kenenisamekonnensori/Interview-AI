@@ -24,6 +24,11 @@ function toDto(interview: {
     company: string | null;
     deletedAt?: Date | null;
   } | null;
+  careerTarget?: {
+    id: string;
+    title: string | null;
+    company: string | null;
+  } | null;
   conversation?: {
     id: string;
     interviewId: string;
@@ -55,10 +60,18 @@ function toDto(interview: {
           company: interview.jobDescription.company,
         }
       : null;
+  const careerTarget = interview.careerTarget
+    ? {
+        id: interview.careerTarget.id,
+        title: interview.careerTarget.title ?? "",
+        company: interview.careerTarget.company,
+      }
+    : null;
   return {
     ...interview,
     resume,
     jobDescription,
+    careerTarget,
     createdAt: interview.createdAt.toISOString(),
     startedAt: interview.startedAt?.toISOString() ?? null,
     completedAt: interview.completedAt?.toISOString() ?? null,

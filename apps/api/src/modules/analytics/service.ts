@@ -1,13 +1,58 @@
 import {
   interviewEvaluationSchema,
+  type DashboardOverview,
   type InterviewEvaluation,
   type NextPracticeRecommendation,
+  type PerformanceSummary,
 } from "@interviewer-ai/types";
-import type { AnalyticsFilter } from "./schema.js";
+import type { AnalyticsFilter, PerformanceQuery } from "./schema.js";
 import { AnalyticsRepository } from "./repository.js";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 
 const dimensions = ["technical", "communication", "confidence", "problemSolving"] as const;
+const dimensionLabels: Record<(typeof dimensions)[number], string> = {
+  technical: "Technical",
+  communication: "Communication",
+  confidence: "Confidence",
+  problemSolving: "Problem solving",
+};
+
+const thirtyDaysMs = 30 * 24 * 60 * 60 * 1_000;
+const ninetyDaysMs = 3 * thirtyDaysMs;
+
+/** Returns the [from, to] completedAt window for a performance range preset. */
+export function resolvePerformanceWindow(
+  query: Pick<PerformanceQuery, "range" | "from" | "to">,
+  now: Date = new Date(),
+): { from: Date | null; to: Date | null } {
+  if (query.range === "all") return { from: null, to: null };
+  if (query.range === "30d") return { from: new Date(now.getTime() - thirtyDaysMs), to: null };
+  if (query.range === "90d") return { from: new Date(now.getTime() - ninetyDaysMs), to: null };
+  if (!query.from)
+    throw new PerformanceQueryError("INVALID_RANGE", "A custom range requires a start date.");
+  if (query.to && query.from > query.to)
+    throw new PerformanceQueryError("INVALID_RANGE", "The start date must be before the end date.");
+  return { from: query.from, to: query.to ?? null };
+}
+
+export class PerformanceQueryError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "PerformanceQueryError";
+  }
+}
+
+/** Monday 00:00 UTC of the week containing the given date. */
+export function startOfUtcWeek(now: Date) {
+  const date = new Date(now);
+  const utcMondayOffset = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - utcMondayOffset);
+  date.setUTCHours(0, 0, 0, 0);
+  return date;
+}
 
 export class AnalyticsService {
   readonly repository: AnalyticsRepository;
@@ -127,8 +172,156 @@ export class AnalyticsService {
     return interview;
   }
 
+  /**
+   * Server-authoritative dashboard overview. Every value is derived here — the
+   * frontend never computes business metrics. Nullable fields are honest empty
+   * states for features not yet populated (e.g. readiness, no scored reports).
+   */
+  async overview(userId: string): Promise<DashboardOverview> {
+    const [
+      completedInterviews,
+      interviewsThisWeek,
+      recentRows,
+      scoredRows,
+      profile,
+      activeResume,
+      savedJobDescriptionCount,
+      activeInterviewRow,
+      activeTargetRow,
+    ] = await this.repository.overviewContext(userId, startOfUtcWeek(new Date()));
+    const scoredEvaluations = scoredRows.flatMap((row) => {
+      const evaluation = validEvaluation(row.report?.evaluation);
+      return evaluation ? [evaluation] : [];
+    });
+    const averageOverallScore = scoredEvaluations.length
+      ? Math.round(
+          scoredEvaluations.reduce((total, evaluation) => total + evaluation.overallScore, 0) /
+            scoredEvaluations.length,
+        )
+      : null;
+    const recommendation = await this.nextPracticeRecommendation(userId);
+    return {
+      generatedAt: new Date().toISOString(),
+      stats: {
+        completedInterviews,
+        interviewsThisWeek,
+        averageOverallScore,
+        latestOverallScore: scoredEvaluations[0]?.overallScore ?? null,
+        scoredReportCount: scoredEvaluations.length,
+      },
+      preparation: {
+        targetRole: activeTargetRow?.title ?? profile?.targetRole ?? null,
+        activeTarget: activeTargetRow
+          ? {
+              id: activeTargetRow.id,
+              title: activeTargetRow.title,
+              company: activeTargetRow.company,
+              jobUrl: activeTargetRow.jobUrl,
+              location: activeTargetRow.location,
+              updatedAt: activeTargetRow.updatedAt.toISOString(),
+            }
+          : null,
+        hasActiveResume: activeResume !== null,
+        savedJobDescriptionCount,
+      },
+      recommendation,
+      activeInterview: activeInterviewRow
+        ? {
+            id: activeInterviewRow.id,
+            status: activeInterviewRow.status,
+            targetRole: activeInterviewRow.targetRole,
+          }
+        : null,
+      recentInterviews: recentRows.map((interview) => ({
+        id: interview.id,
+        status: interview.status,
+        interviewType: interview.interviewType,
+        targetRole:
+          interview.targetRole ??
+          (interview.jobDescription?.deletedAt ? null : interview.jobDescription?.title) ??
+          null,
+        overallScore: validEvaluation(interview.report?.evaluation)?.overallScore ?? null,
+        reportStatus: interview.report?.status ?? null,
+        createdAt: interview.createdAt.toISOString(),
+        completedAt: interview.completedAt?.toISOString() ?? null,
+      })),
+    };
+  }
+
+  /**
+   * Longitudinal performance summary computed entirely from persisted,
+   * schema-valid evaluations. Statistics are database-derived (no AI calls);
+   * the query is bounded to the resolved window with indexed reads.
+   */
+  async performance(userId: string, query: PerformanceQuery): Promise<PerformanceSummary> {
+    const window = resolvePerformanceWindow(query);
+    const filter: AnalyticsFilter = {
+      page: 1,
+      pageSize: 50,
+      ...(window.from ? { from: window.from } : {}),
+      ...(window.to ? { to: window.to } : {}),
+    };
+    const [rows, completedInterviewCount] = await Promise.all([
+      this.repository.completedWithReports(userId, filter),
+      this.repository.completedCount(userId, filter),
+    ]);
+    const valid = filterValidRows(rows);
+    const scores = valid.map((row) => row.evaluation.overallScore);
+    const average = (values: number[]) =>
+      values.length
+        ? Math.round(values.reduce((total, value) => total + value, 0) / values.length)
+        : null;
+    const recentScore = scores.at(-1) ?? null;
+    const firstScore = scores[0] ?? null;
+    const change = (latest: number | null, baseline: number | null) =>
+      latest !== null && baseline !== null ? latest - baseline : null;
+    const previousScores = scores.slice(0, -1);
+    const previousAverage = average(previousScores);
+    return {
+      window: {
+        preset: query.range,
+        from: window.from?.toISOString() ?? null,
+        to: window.to?.toISOString() ?? null,
+      },
+      completedInterviewCount,
+      validReportCount: valid.length,
+      averageOverallScore: average(scores),
+      recentScore,
+      comparison: {
+        latestScore: recentScore,
+        previousAverage,
+        change: change(recentScore, previousAverage),
+      },
+      trend: {
+        change: change(recentScore, firstScore),
+        direction:
+          recentScore === null || firstScore === null
+            ? null
+            : recentScore > firstScore
+              ? "up"
+              : recentScore < firstScore
+                ? "down"
+                : "flat",
+      },
+      categories: dimensions.map((key) => {
+        const values = valid.map((row) => row.evaluation[key].score);
+        return {
+          key,
+          label: dimensionLabels[key],
+          average: average(values),
+          latest: values.at(-1) ?? null,
+        };
+      }),
+      series: valid.slice(-60).map((row) => ({
+        completedAt: row.completedAt!.toISOString(),
+        overallScore: row.evaluation.overallScore,
+        interviewType: row.interviewType as PerformanceSummary["series"][number]["interviewType"],
+      })),
+    };
+  }
+
   async nextPracticeRecommendation(userId: string): Promise<NextPracticeRecommendation> {
-    const [profile, activeResume, jobDescription, reports] =
+    const [profile, activeResume, jobDescription, reports, careerTarget] =
       await this.repository.recommendationContext(userId);
     const validReports = reports.flatMap((report) => {
       const evaluation = validEvaluation(report.report?.evaluation);
@@ -146,8 +339,12 @@ export class AnalyticsService {
     const latest = validReports[0]?.report;
     const primaryFocus = focusAreas[0];
     const suggestedTargetRole =
-      profile?.targetRole ?? jobDescription?.title ?? "General interview practice";
+      careerTarget?.title ??
+      profile?.targetRole ??
+      jobDescription?.title ??
+      "General interview practice";
     const reasons = [
+      careerTarget ? `Focused on your current target: ${careerTarget.title}.` : null,
       profile?.targetRole ? `Uses your profile target role: ${profile.targetRole}.` : null,
       activeResume ? "Uses your active resume for relevant questions." : null,
       jobDescription
@@ -169,13 +366,14 @@ export class AnalyticsService {
       suggestedDurationMinutes: profile?.defaultInterviewDuration ?? 30,
       ...(activeResume ? { resumeId: activeResume.id } : {}),
       ...(jobDescription ? { jobDescriptionId: jobDescription.id } : {}),
+      ...(careerTarget ? { careerTargetId: careerTarget.id } : {}),
       reasons: reasons.length ? reasons : ["Start with a focused role-based practice interview."],
       focusAreas,
       basis,
-      ...(!profile?.targetRole && !activeResume && !jobDescription
+      ...(!careerTarget && !profile?.targetRole && !activeResume && !jobDescription
         ? {
             setupSuggestion:
-              "Add a target role, resume, or job description to make future practice more tailored.",
+              "Add a target job, target role, resume, or job description to make future practice more tailored.",
           }
         : {}),
     };

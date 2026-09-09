@@ -1,187 +1,234 @@
 "use client";
 
-import type {
-  InterviewDto,
-  JobDescriptionDto,
-  NextPracticeRecommendation,
-  Resume,
-} from "@interviewer-ai/types";
-import { CircleAlert, LoaderCircle, Mic2, Play, UserRound } from "lucide-react";
+import type { DashboardOverview } from "@interviewer-ai/types";
+import { CircleAlert, LoaderCircle, Mic2, Play } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { PreparationState } from "@/features/dashboard/components/preparation-state";
 import { apiClient } from "@/lib/api-client";
+import { greetingForHour } from "@/lib/greeting";
 
-type History = {
-  items: Array<{
-    id: string;
-    status: string;
-    targetRole: string | null;
-    overallScore: number | null;
-  }>;
+const statusLabels: Record<string, string> = {
+  DRAFT: "Draft",
+  PREPARING: "Preparing",
+  READY: "Ready to start",
+  IN_PROGRESS: "In progress",
+  COMPLETING: "Wrapping up",
+  COMPLETED: "Completed",
+  CANCELLED: "Cancelled",
+  FAILED: "Failed",
 };
 
+function statusLabel(status: string) {
+  return statusLabels[status] ?? status.replaceAll("_", " ").toLowerCase();
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 export default function DashboardPage() {
-  const interviews = useQuery({
-    queryKey: ["interviews"],
-    queryFn: () => apiClient<{ interviews: InterviewDto[] }>("/api/v1/interviews"),
+  const overview = useQuery({
+    queryKey: ["analytics", "overview"],
+    queryFn: () => apiClient<{ overview: DashboardOverview }>("/api/v1/analytics/overview"),
   });
-  const recommendation = useQuery({
-    queryKey: ["analytics", "next-practice"],
-    queryFn: () =>
-      apiClient<{ recommendation: NextPracticeRecommendation }>("/api/v1/analytics/next-practice"),
+  // Shares the AppShell query cache, so no extra request is made.
+  const profile = useQuery({
+    queryKey: ["profile"],
+    queryFn: () => apiClient<{ profile: { preferredName: string | null } }>("/api/v1/profile"),
   });
-  const resumes = useQuery({
-    queryKey: ["resumes"],
-    queryFn: () => apiClient<{ resumes: Resume[] }>("/api/v1/resumes"),
-  });
-  const jobs = useQuery({
-    queryKey: ["job-descriptions"],
-    queryFn: () => apiClient<{ jobDescriptions: JobDescriptionDto[] }>("/api/v1/job-descriptions"),
-  });
-  const history = useQuery({
-    queryKey: ["analytics", "history", "dashboard"],
-    queryFn: () => apiClient<History>("/api/v1/analytics/history?page=1&pageSize=1"),
-  });
-  const active = interviews.data?.interviews.find(
-    (item) => item.status === "IN_PROGRESS" || item.status === "READY",
-  );
-  const loading =
-    interviews.isPending ||
-    recommendation.isPending ||
-    resumes.isPending ||
-    jobs.isPending ||
-    history.isPending;
-  const failed =
-    interviews.error || recommendation.error || resumes.error || jobs.error || history.error;
-  const activeResume = resumes.data?.resumes.find(
-    (resume) => resume.isActive && ["READY", "ANALYZED"].includes(resume.status),
-  );
-  const recent = history.data?.items.find(
-    (item) => item.status === "COMPLETED" && item.overallScore !== null,
-  );
+  // The greeting depends on the local clock; render it only after mount to
+  // avoid a server/client hydration mismatch.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const greeting = mounted ? greetingForHour(new Date().getHours()) : "Welcome back";
+  const name = profile.data?.profile.preferredName?.trim();
+
+  if (overview.isPending) return <Loading />;
+  if (overview.error) return <ErrorState onRetry={() => void overview.refetch()} />;
+
+  const data = overview.data.overview;
+  const hasAnyInterview = data.recentInterviews.length > 0;
+
   return (
     <main className="noise min-h-[calc(100vh-5rem)] px-5 py-8 sm:px-8 lg:px-10">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-5xl space-y-5">
         <div className="flex flex-wrap items-end justify-between gap-5">
           <div>
-            <p className="eyebrow">Practice dashboard</p>
+            <p className="eyebrow">Overview</p>
             <h1 className="mt-2 text-3xl font-semibold tracking-[-.045em] sm:text-[2.55rem]">
-              What should you do next?
+              {greeting}
+              {name ? `, ${name}` : ""}
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-              Continue a live session, start a focused practice, or strengthen your context.
+              How you are doing, what to practice next, and how ready you are — built from your real
+              interview history.
             </p>
           </div>
           <Link href="/interviews/new" className="button-primary h-11 px-4 text-sm">
-            <Mic2 className="size-4" /> Start a practice
+            <Mic2 className="size-4" /> Start Interview
           </Link>
         </div>
-        {loading ? (
-          <Loading />
-        ) : failed ? (
-          <ErrorState />
-        ) : (
-          <div className="mt-8 space-y-5">
-            {active ? (
-              <section className="rounded-3xl border border-emerald-300/25 bg-emerald-300/[.07] p-6">
-                <p className="text-sm font-medium text-emerald-200">Continue your practice</p>
-                <h2 className="mt-2 text-xl font-semibold">
-                  {active.targetRole ?? "Practice interview"}
-                </h2>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Your session is ready where you left off.
-                </p>
-                <Link
-                  href={`/interviews/${active.id}`}
-                  className="button-primary mt-4 inline-flex h-10 px-3 text-sm"
-                >
-                  <Play className="size-4" />{" "}
-                  {active.status === "IN_PROGRESS" ? "Continue interview" : "Start interview"}
-                </Link>
-              </section>
-            ) : null}
-            <RecommendationCard recommendation={recommendation.data!.recommendation} />
-            <section className="grid gap-4 sm:grid-cols-2">
-              <div className="surface p-5">
-                <p className="flex items-center gap-2 font-semibold">
-                  <UserRound className="size-4 text-primary" /> Profile and context
-                </p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {activeResume
-                    ? `Active resume: ${activeResume.fileName}.`
-                    : "No active resume yet."}{" "}
-                  {jobs.data!.jobDescriptions.length
-                    ? `${jobs.data!.jobDescriptions.length} saved job description${jobs.data!.jobDescriptions.length === 1 ? "" : "s"}.`
-                    : "Add a job description when you want role-specific practice."}
-                </p>
-                <Link
-                  href={activeResume ? "/profile" : "/resumes"}
-                  className="mt-4 inline-block text-sm font-medium text-primary"
-                >
-                  {activeResume ? "Review profile" : "Add career context"}
-                </Link>
-              </div>
-              <div className="surface p-5">
-                <p className="font-semibold">Recent completed practice</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {recent
-                    ? `${recent.targetRole ?? "Practice interview"}: ${Math.round(recent.overallScore!)} / 100.`
-                    : "No completed reports yet."}
-                </p>
-                <Link
-                  href={recent ? `/interviews/${recent.id}/report` : "/history"}
-                  className="mt-4 inline-block text-sm font-medium text-primary"
-                >
-                  {recent ? "Review latest report" : "View interview history"}
-                </Link>
-              </div>
-            </section>
+
+        {data.activeInterview ? (
+          <section className="rounded-3xl border border-emerald-300/25 bg-emerald-300/[.07] p-6">
+            <p className="text-sm font-medium text-emerald-200">Continue where you left off</p>
+            <h2 className="mt-2 text-xl font-semibold">
+              {data.activeInterview.targetRole ?? "Practice interview"}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              This session is {statusLabel(data.activeInterview.status).toLowerCase()}.
+            </p>
+            <Link
+              href={`/interviews/${data.activeInterview.id}`}
+              className="button-primary mt-4 inline-flex h-10 px-3 text-sm"
+            >
+              <Play className="size-4" />
+              {data.activeInterview.status === "IN_PROGRESS"
+                ? "Continue interview"
+                : "Start interview"}
+            </Link>
+          </section>
+        ) : null}
+
+        <PreparationState
+          preparation={data.preparation}
+          recommendation={data.recommendation}
+          stats={data.stats}
+        />
+
+        <section aria-label="Quick statistics" className="grid gap-4 sm:grid-cols-3">
+          <StatCard
+            label="Interviews completed"
+            value={String(data.stats.completedInterviews)}
+            note={
+              data.stats.completedInterviews
+                ? "Across all interview types."
+                : "Complete your first interview to start this count."
+            }
+          />
+          <StatCard
+            label="Completed this week"
+            value={String(data.stats.interviewsThisWeek)}
+            note="Counted from Monday."
+          />
+          <StatCard
+            label="Average score"
+            value={
+              data.stats.averageOverallScore === null
+                ? "—"
+                : `${data.stats.averageOverallScore} / 100`
+            }
+            note={
+              data.stats.scoredReportCount
+                ? `Across your ${data.stats.scoredReportCount} most recent scored interview${data.stats.scoredReportCount === 1 ? "" : "s"}.`
+                : "Scores appear once a completed report is ready."
+            }
+          />
+        </section>
+
+        <section aria-label="Recent interviews" className="surface p-5">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-semibold">Recent interviews</h2>
+            <Link href="/history" className="text-sm font-medium text-primary">
+              View all
+            </Link>
           </div>
-        )}
+          {hasAnyInterview ? (
+            <ul className="mt-4 divide-y divide-white/[.06]">
+              {data.recentInterviews.map((interview) => (
+                <li key={interview.id}>
+                  <Link
+                    href={
+                      interview.status === "COMPLETED"
+                        ? `/interviews/${interview.id}/report`
+                        : `/interviews/${interview.id}`
+                    }
+                    className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3 transition-colors hover:text-primary"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">
+                        {interview.targetRole ?? "Practice interview"}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        {interview.interviewType.replaceAll("_", " ").toLowerCase()} ·{" "}
+                        {formatDate(interview.createdAt)}
+                      </span>
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {statusLabel(interview.status)}
+                    </span>
+                    <span className="w-14 text-right text-sm font-semibold tabular-nums">
+                      {interview.overallScore === null ? "—" : `${interview.overallScore}`}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="mt-4 rounded-2xl border border-border bg-card/60 p-5 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">No interviews yet</p>
+              <p className="mt-1">
+                You haven&rsquo;t completed an interview yet. Start your first simulation to begin
+                building your interview performance profile.
+              </p>
+              <Link
+                href="/interviews/new"
+                className="button-primary mt-4 inline-flex h-10 px-3 text-sm"
+              >
+                <Mic2 className="size-4" /> Start your first interview
+              </Link>
+            </div>
+          )}
+        </section>
       </div>
     </main>
   );
 }
-function RecommendationCard({ recommendation }: { recommendation: NextPracticeRecommendation }) {
+
+function StatCard({ label, value, note }: { label: string; value: string; note: string }) {
   return (
-    <section className="rounded-3xl border border-primary/25 bg-primary/[.07] p-6">
-      <p className="text-sm font-medium text-primary">Recommended next practice</p>
-      <h2 className="mt-2 text-xl font-semibold">
-        {recommendation.suggestedTargetRole} · {recommendation.interviewType.replaceAll("_", " ")}
-      </h2>
-      <p className="mt-2 text-sm text-muted-foreground">{recommendation.reasons[0]}</p>
-      <p className="mt-2 text-xs font-medium uppercase tracking-wide text-primary">
-        Based on {recommendation.basis === "HISTORY" ? "previous practice" : "your profile"}
-      </p>
-      <div className="mt-4 flex gap-3">
-        <Link href="/interviews/new" className="button-primary h-10 px-3 text-sm">
-          Start this practice
-        </Link>
-        <Link href="/interviews/new" className="text-sm font-medium text-primary">
-          Customize
-        </Link>
-      </div>
-    </section>
+    <div className="surface p-5">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{note}</p>
+    </div>
   );
 }
+
 function Loading() {
   return (
-    <div className="mt-8 flex items-center gap-2 text-sm text-muted-foreground">
-      <LoaderCircle className="size-4 animate-spin" /> Loading your next steps…
-    </div>
+    <main className="noise min-h-[calc(100vh-5rem)] px-5 py-8 sm:px-8 lg:px-10">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> Loading your overview…
+      </div>
+    </main>
   );
 }
-function ErrorState() {
+
+function ErrorState({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="mt-8 rounded-2xl border border-border bg-card/60 p-5 text-sm text-muted-foreground">
-      <CircleAlert className="size-4 text-amber-300" />
-      <p className="mt-2">
-        Your dashboard is unavailable right now. You can still start a practice session.
-      </p>
-      <Link href="/interviews/new" className="mt-3 inline-block font-medium text-primary">
-        Start a practice
-      </Link>
-    </div>
+    <main className="noise min-h-[calc(100vh-5rem)] px-5 py-8 sm:px-8 lg:px-10">
+      <div className="mx-auto max-w-5xl rounded-2xl border border-border bg-card/60 p-5 text-sm text-muted-foreground">
+        <CircleAlert className="size-4 text-amber-300" aria-hidden="true" />
+        <p className="mt-2">
+          Your overview is unavailable right now. You can still start a practice session.
+        </p>
+        <div className="mt-3 flex gap-4">
+          <button
+            type="button"
+            onClick={onRetry}
+            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Try again
+          </button>
+          <Link href="/interviews/new" className="text-sm font-medium text-primary">
+            Start a practice
+          </Link>
+        </div>
+      </div>
+    </main>
   );
 }

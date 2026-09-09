@@ -5,7 +5,7 @@ import Fastify from "fastify";
 import { createAuth } from "./modules/auth/index.js";
 import { createAuthFastifyIntegration } from "./modules/auth/fastify.js";
 import { registerResumeRoutes } from "./modules/resumes/index.js";
-import { registerJobDescriptionRoutes } from "./modules/jobs/index.js";
+import { registerJobDescriptionRoutes, registerCareerTargetRoutes } from "./modules/jobs/index.js";
 import { registerInterviewRoutes } from "./modules/interviews/index.js";
 import { registerConversationRoutes } from "./modules/conversation/index.js";
 import { createCareerAnalysisQueue } from "./services/career-analysis-queue.js";
@@ -131,6 +131,7 @@ export function createApp() {
 
   registerResumeRoutes(app, { database, environment, queue: careerAnalysisQueue, monolith });
   registerJobDescriptionRoutes(app, { database, queue: careerAnalysisQueue, monolith });
+  registerCareerTargetRoutes(app, database);
   const interviewService = registerInterviewRoutes(
     app,
     database,

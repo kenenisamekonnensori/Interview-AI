@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { interviewConfigurationSchema } from "@interviewer-ai/types";
+import {
+  interviewConfigurationSchema,
+  createCareerTargetSchema,
+  updateCareerTargetSchema,
+} from "@interviewer-ai/types";
+import { CareerTargetError, CareerTargetService } from "../modules/jobs/career-target-service.js";
 import { createJobDescriptionSchema } from "../modules/jobs/schema.js";
 import { generatedReportSchema } from "../modules/reports/schema.js";
 import { createResumeUploadSchema } from "../modules/resumes/schema.js";
@@ -25,7 +30,15 @@ import {
 import { classifyQueueFailure, processQueueJob } from "../services/queue-worker.js";
 import { deleteOwnedAccount } from "../services/account-deletion.js";
 import { careerAnalysisJobId } from "../services/career-analysis-queue.js";
-import { AnalyticsService } from "../modules/analytics/service.js";
+import {
+  AnalyticsService,
+  resolvePerformanceWindow,
+  PerformanceQueryError,
+  startOfUtcWeek,
+} from "../modules/analytics/service.js";
+import { dashboardOverviewSchema, performanceSummarySchema } from "@interviewer-ai/types";
+import { performanceQuerySchema } from "../modules/analytics/schema.js";
+import { InterviewLifecycleError, InterviewService } from "../modules/interviews/service.js";
 import { userProfileUpdateSchema } from "../modules/users/schema.js";
 import { UserProfileRepository } from "../modules/users/repository.js";
 import {
@@ -84,6 +97,637 @@ function recommendationService(context: unknown) {
   ).recommendationContext = async () => context;
   return service;
 }
+
+const overviewEvaluation = (overallScore: number) => {
+  const dimension = { score: 60, feedback: "Needs practice.", evidenceTurnIds: [firstTurn] };
+  return {
+    overallScore,
+    technical: dimension,
+    communication: dimension,
+    confidence: dimension,
+    problemSolving: dimension,
+    categoryScores: { General: dimension },
+    strengths: [],
+    weaknesses: [],
+    missedOpportunities: [],
+    recommendations: [],
+  };
+};
+
+function overviewService(context: unknown, recordedUsers: string[] = []) {
+  const service = new AnalyticsService({} as never);
+  const repository = service.repository as unknown as {
+    overviewContext: (userId: string, weekStart: Date) => Promise<unknown>;
+    recommendationContext: (userId: string) => Promise<unknown>;
+  };
+  repository.overviewContext = async (userId: string) => {
+    recordedUsers.push(userId);
+    return context;
+  };
+  repository.recommendationContext = async (userId: string) => {
+    recordedUsers.push(userId);
+    return [null, null, null, []];
+  };
+  return service;
+}
+
+test("dashboard overview returns honest empty states for a new user", async () => {
+  const overview = await overviewService([0, 0, [], [], null, null, 0, null]).overview("user");
+  assert.deepEqual(overview.stats, {
+    completedInterviews: 0,
+    interviewsThisWeek: 0,
+    averageOverallScore: null,
+    latestOverallScore: null,
+    scoredReportCount: 0,
+  });
+  assert.deepEqual(overview.recentInterviews, []);
+  assert.equal(overview.activeInterview, null);
+  assert.equal(overview.preparation.targetRole, null);
+  assert.equal(overview.preparation.hasActiveResume, false);
+  assert.equal(overview.preparation.savedJobDescriptionCount, 0);
+  assert.equal(overview.recommendation.basis, "PROFILE");
+  assert.ok(overview.recommendation.setupSuggestion);
+  assert.equal(dashboardOverviewSchema.safeParse(overview).success, true);
+});
+
+test("dashboard overview aggregates only schema-valid reports and never invents scores", async () => {
+  const now = new Date();
+  const context = [
+    2,
+    1,
+    [
+      {
+        id: firstTurn,
+        status: "IN_PROGRESS",
+        interviewType: "TECHNICAL",
+        targetRole: null,
+        createdAt: now,
+        completedAt: null,
+        jobDescription: { title: "Backend engineer", deletedAt: null },
+        report: null,
+      },
+      {
+        id: secondTurn,
+        status: "COMPLETED",
+        interviewType: "MIXED",
+        targetRole: null,
+        createdAt: new Date(0),
+        completedAt: now,
+        jobDescription: null,
+        report: { status: "READY", evaluation: overviewEvaluation(80) },
+      },
+    ],
+    [
+      { report: { evaluation: overviewEvaluation(80) } },
+      { report: { evaluation: overviewEvaluation(70) } },
+      { report: { evaluation: { broken: true } } },
+    ],
+    { targetRole: "Data analyst" },
+    { id: "33333333-3333-4333-8333-333333333333" },
+    2,
+    { id: firstTurn, status: "IN_PROGRESS", targetRole: null },
+    null,
+  ];
+  const overview = await overviewService(context).overview("user");
+  assert.deepEqual(overview.stats, {
+    completedInterviews: 2,
+    interviewsThisWeek: 1,
+    averageOverallScore: 75,
+    latestOverallScore: 80,
+    scoredReportCount: 2,
+  });
+  assert.deepEqual(overview.preparation, {
+    targetRole: "Data analyst",
+    activeTarget: null,
+    hasActiveResume: true,
+    savedJobDescriptionCount: 2,
+  });
+  assert.deepEqual(overview.activeInterview, {
+    id: firstTurn,
+    status: "IN_PROGRESS",
+    targetRole: null,
+  });
+  assert.equal(overview.recentInterviews[0]?.targetRole, "Backend engineer");
+  assert.equal(overview.recentInterviews[0]?.overallScore, null);
+  assert.equal(overview.recentInterviews[1]?.overallScore, 80);
+  assert.equal(overview.recentInterviews[1]?.completedAt, now.toISOString());
+  assert.equal(dashboardOverviewSchema.safeParse(overview).success, true);
+});
+
+test("dashboard overview reads are scoped to the server-derived user id", async () => {
+  const recordedUsers: string[] = [];
+  await overviewService([0, 0, [], [], null, null, 0, null], recordedUsers).overview("candidate-7");
+  assert.deepEqual(recordedUsers, ["candidate-7", "candidate-7"]);
+});
+
+test("career target creation makes the new target current and archives the previous one", async () => {
+  const calls: Array<{ where: unknown; data: unknown }> = [];
+  const service = new CareerTargetService({
+    $transaction: async (callback: (tx: unknown) => unknown) =>
+      callback({
+        careerTarget: {
+          updateMany: async (arguments_: { where: unknown; data: unknown }) => {
+            calls.push(arguments_);
+            return { count: 1 };
+          },
+          create: async ({ data }: { data: Record<string, unknown> }) => ({
+            id: "11111111-1111-4111-8111-111111111111",
+            title: data.title,
+            company: data.company ?? null,
+            jobDescriptionId: data.jobDescriptionId ?? null,
+            jobUrl: data.jobUrl ?? null,
+            location: data.location ?? null,
+            resumeId: data.resumeId ?? null,
+            status: data.status,
+            createdAt: new Date("2026-09-08T00:00:00.000Z"),
+            updatedAt: new Date("2026-09-08T00:00:00.000Z"),
+          }),
+        },
+      }),
+  } as never);
+
+  const target = await service.create("candidate-1", {
+    title: "Backend Engineer",
+    company: "Acme",
+  });
+  assert.deepEqual(calls, [
+    {
+      where: { userId: "candidate-1", status: "ACTIVE" },
+      data: { status: "ARCHIVED" },
+    },
+  ]);
+  assert.equal(target.title, "Backend Engineer");
+  assert.equal(target.company, "Acme");
+  assert.equal(target.status, "ACTIVE");
+  assert.equal(target.createdAt, "2026-09-08T00:00:00.000Z");
+});
+
+test("career target creation rejects documents the user does not own", async () => {
+  const service = new CareerTargetService({
+    $transaction: async (callback: (tx: unknown) => unknown) =>
+      callback({
+        jobDescription: { findFirst: async () => null },
+        resume: { findFirst: async () => null },
+      }),
+  } as never);
+  await assert.rejects(
+    service.create("candidate-1", {
+      title: "Frontend Engineer",
+      jobDescriptionId: "22222222-2222-4222-8222-222222222222",
+    }),
+    (error: unknown) =>
+      error instanceof CareerTargetError && error.code === "JOB_DESCRIPTION_NOT_FOUND",
+  );
+  await assert.rejects(
+    service.create("candidate-1", {
+      title: "Frontend Engineer",
+      resumeId: "33333333-3333-4333-8333-333333333333",
+    }),
+    (error: unknown) => error instanceof CareerTargetError && error.code === "RESUME_NOT_FOUND",
+  );
+});
+
+test("activating a target demotes other active targets; updates are scoped to the owner", async () => {
+  const demotions: Array<{ where: unknown }> = [];
+  const service = new CareerTargetService({
+    careerTarget: { findFirst: async () => null },
+    $transaction: async (callback: (tx: unknown) => unknown) =>
+      callback({
+        careerTarget: {
+          findFirst: async ({ where }: { where: { id: string; userId: string } }) =>
+            where.id === "44444444-4444-4444-8444-444444444444" && where.userId === "candidate-1"
+              ? {
+                  id: "44444444-4444-4444-8444-444444444444",
+                  userId: "candidate-1",
+                  title: "Data Engineer",
+                  status: "ARCHIVED",
+                }
+              : null,
+          updateMany: async ({ where }: { where: unknown }) => {
+            demotions.push({ where });
+            return { count: 1 };
+          },
+          update: async ({ data }: { data: Record<string, unknown> }) => ({
+            id: "44444444-4444-4444-8444-444444444444",
+            title: "Data Engineer",
+            company: null,
+            jobDescriptionId: null,
+            jobUrl: null,
+            location: null,
+            resumeId: null,
+            status: data.status,
+            createdAt: new Date("2026-09-01T00:00:00.000Z"),
+            updatedAt: new Date("2026-09-08T00:00:00.000Z"),
+          }),
+        },
+      }),
+  } as never);
+
+  const updated = await service.update("44444444-4444-4444-8444-444444444444", "candidate-1", {
+    status: "ACTIVE",
+  });
+  assert.equal(updated.status, "ACTIVE");
+  assert.deepEqual(demotions, [{ where: { userId: "candidate-1", status: "ACTIVE" } }]);
+  await assert.rejects(
+    service.update("44444444-4444-4444-8444-444444444444", "other-user", { status: "ACTIVE" }),
+    (error: unknown) =>
+      error instanceof CareerTargetError && error.code === "CAREER_TARGET_NOT_FOUND",
+  );
+  await assert.rejects(
+    service.archive("44444444-4444-4444-8444-444444444444", "other-user"),
+    CareerTargetError,
+  );
+});
+
+test("archiving is idempotent and only touches owned targets", async () => {
+  let updates = 0;
+  let status = "ACTIVE";
+  const service = new CareerTargetService({
+    careerTarget: {
+      findFirst: async ({ where }: { where: { id: string; userId: string } }) =>
+        where.id === "55555555-5555-4555-8555-555555555555" && where.userId === "candidate-1"
+          ? { id: "55555555-5555-4555-8555-555555555555", userId: "candidate-1", status }
+          : null,
+      update: async () => {
+        updates += 1;
+        status = "ARCHIVED";
+        return { id: "55555555-5555-4555-8555-555555555555", status: "ARCHIVED" };
+      },
+    },
+  } as never);
+  await service.archive("55555555-5555-4555-8555-555555555555", "candidate-1");
+  assert.equal(updates, 1);
+  await service.archive("55555555-5555-4555-8555-555555555555", "candidate-1");
+  assert.equal(updates, 1);
+  await assert.rejects(
+    service.archive("55555555-5555-4555-8555-555555555555", "other-user"),
+    CareerTargetError,
+  );
+});
+
+test("career target schemas enforce titles, URLs, and null-clearing updates", () => {
+  assert.equal(createCareerTargetSchema.safeParse({ title: "Backend Engineer" }).success, true);
+  assert.equal(createCareerTargetSchema.safeParse({ title: "" }).success, false);
+  assert.equal(createCareerTargetSchema.safeParse({}).success, false);
+  assert.equal(
+    createCareerTargetSchema.safeParse({
+      title: "Backend Engineer",
+      jobUrl: "not-a-url",
+    }).success,
+    false,
+  );
+  assert.equal(
+    createCareerTargetSchema.safeParse({
+      title: "Backend Engineer",
+      jobUrl: "https://example.com/jobs/backend",
+    }).success,
+    true,
+  );
+  assert.equal(createCareerTargetSchema.safeParse({ title: "x".repeat(161) }).success, false);
+  const cleared = updateCareerTargetSchema.parse({
+    company: null,
+    jobUrl: null,
+    jobDescriptionId: null,
+  });
+  assert.equal(cleared.company, null);
+  assert.equal(cleared.jobUrl, null);
+});
+
+test("interview creation persists the selected target and defaults the role to its title", async () => {
+  const careerTarget = {
+    id: "66666666-6666-4666-8666-666666666666",
+    userId: "candidate-1",
+    title: "Backend Engineer",
+    status: "ACTIVE",
+  };
+  const seen: { where: unknown; data: unknown }[] = [];
+  const service = new InterviewService(
+    {
+      userProfile: { findUnique: async () => null },
+      resume: { findFirst: async () => null },
+      jobDescription: { findFirst: async () => null },
+      careerTarget: {
+        findFirst: async ({ where }: { where: { id: string; userId: string } }) => {
+          seen.push({ where, data: null });
+          return where.userId === "candidate-1" ? careerTarget : null;
+        },
+      },
+      interview: {
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          seen.push({ where: null, data });
+          return {
+            id: firstTurn,
+            ...data,
+            createdAt: new Date("2026-09-08T00:00:00.000Z"),
+            updatedAt: new Date("2026-09-08T00:00:00.000Z"),
+            resume: null,
+            jobDescription: null,
+            careerTarget: { id: careerTarget.id, title: careerTarget.title, company: null },
+          };
+        },
+      },
+    } as never,
+    {} as never,
+    {} as never,
+    {} as never,
+  );
+
+  const interview = await service.create("candidate-1", {
+    interviewType: "TECHNICAL",
+    difficulty: "MEDIUM",
+    durationMinutes: 30,
+    language: "en",
+    careerTargetId: careerTarget.id,
+  });
+  assert.deepEqual(seen[0]?.where, { id: careerTarget.id, userId: "candidate-1" });
+  assert.equal((seen[1]?.data as Record<string, unknown>).careerTargetId, careerTarget.id);
+  assert.equal((seen[1]?.data as Record<string, unknown>).targetRole, "Backend Engineer");
+  assert.equal(interview.careerTarget?.title, "Backend Engineer");
+});
+
+test("interview creation rejects a target the user does not own", async () => {
+  const service = new InterviewService(
+    {
+      userProfile: { findUnique: async () => null },
+      resume: { findFirst: async () => null },
+      jobDescription: { findFirst: async () => null },
+      careerTarget: { findFirst: async () => null },
+    } as never,
+    {} as never,
+    {} as never,
+    {} as never,
+  );
+  await assert.rejects(
+    service.create("candidate-1", {
+      interviewType: "MIXED",
+      difficulty: "MEDIUM",
+      durationMinutes: 30,
+      language: "en",
+      careerTargetId: "66666666-6666-4666-8666-666666666666",
+    }),
+    (error: unknown) =>
+      error instanceof InterviewLifecycleError && error.code === "CAREER_TARGET_NOT_FOUND",
+  );
+});
+
+test("dashboard overview exposes the current target job with its context", async () => {
+  const updatedAt = new Date("2026-09-08T12:00:00.000Z");
+  const context = [
+    1,
+    0,
+    [],
+    [{ report: { evaluation: overviewEvaluation(80) } }],
+    { targetRole: "Data analyst" },
+    null,
+    0,
+    null,
+    {
+      id: "66666666-6666-4666-8666-666666666666",
+      title: "Backend Engineer",
+      company: "Acme",
+      jobUrl: "https://example.com/jobs/backend",
+      location: "Remote",
+      updatedAt,
+    },
+  ];
+  const overview = await overviewService(context).overview("user");
+  assert.deepEqual(overview.preparation.activeTarget, {
+    id: "66666666-6666-4666-8666-666666666666",
+    title: "Backend Engineer",
+    company: "Acme",
+    jobUrl: "https://example.com/jobs/backend",
+    location: "Remote",
+    updatedAt: "2026-09-08T12:00:00.000Z",
+  });
+  assert.equal(overview.preparation.targetRole, "Backend Engineer");
+  assert.equal(dashboardOverviewSchema.safeParse(overview).success, true);
+});
+
+test("next-practice recommendation prefers the current career target and links it", async () => {
+  const recommendation = await recommendationService([
+    { targetRole: "Data analyst", defaultDifficulty: "MEDIUM", defaultInterviewDuration: 30 },
+    null,
+    null,
+    [],
+    { id: "66666666-6666-4666-8666-666666666666", title: "Backend Engineer" },
+  ]).nextPracticeRecommendation("user");
+  assert.equal(recommendation.suggestedTargetRole, "Backend Engineer");
+  assert.equal(recommendation.careerTargetId, "66666666-6666-4666-8666-666666666666");
+  assert.match(recommendation.reasons.join(" "), /current target: Backend Engineer/);
+});
+
+const performanceEvaluation = (
+  overallScore: number,
+  dimScores: [number, number, number, number],
+) => {
+  const [technical, communication, confidence, problemSolving] = dimScores;
+  const dimension = (score: number) => ({
+    score,
+    feedback: "Needs practice.",
+    evidenceTurnIds: [firstTurn],
+  });
+  return {
+    overallScore,
+    technical: dimension(technical),
+    communication: dimension(communication),
+    confidence: dimension(confidence),
+    problemSolving: dimension(problemSolving),
+    categoryScores: {},
+    strengths: [],
+    weaknesses: [],
+    missedOpportunities: [],
+    recommendations: [],
+  };
+};
+
+const performanceRow = (
+  overallScore: number,
+  dimScores: [number, number, number, number],
+  completedAt: Date,
+  interviewType = "TECHNICAL",
+) => ({
+  id: firstTurn,
+  interviewType,
+  targetRole: null,
+  jobDescription: null,
+  report: { evaluation: performanceEvaluation(overallScore, dimScores) },
+  completedAt,
+});
+
+function performanceService(
+  context: { rows: unknown[]; count: number },
+  recordedUsers: string[] = [],
+) {
+  const service = new AnalyticsService({} as never);
+  const repository = service.repository as unknown as {
+    completedWithReports: (userId: string, filter: unknown) => Promise<unknown>;
+    completedCount: (userId: string, filter: unknown) => Promise<unknown>;
+  };
+  repository.completedWithReports = async (userId: string) => {
+    recordedUsers.push(userId);
+    return context.rows;
+  };
+  repository.completedCount = async (userId: string) => {
+    recordedUsers.push(userId);
+    return context.count;
+  };
+  return service;
+}
+
+test("performance windows resolve presets and reject invalid custom ranges", () => {
+  const now = new Date("2026-09-08T12:00:00.000Z");
+  assert.deepEqual(resolvePerformanceWindow({ range: "all" }, now), { from: null, to: null });
+  assert.equal(
+    resolvePerformanceWindow({ range: "30d" }, now).from?.toISOString(),
+    "2026-08-09T12:00:00.000Z",
+  );
+  assert.equal(
+    resolvePerformanceWindow({ range: "90d" }, now).from?.toISOString(),
+    "2026-06-10T12:00:00.000Z",
+  );
+  assert.deepEqual(
+    resolvePerformanceWindow(
+      {
+        range: "custom",
+        from: new Date("2026-09-01T00:00:00.000Z"),
+        to: new Date("2026-09-08T00:00:00.000Z"),
+      },
+      now,
+    ),
+    { from: new Date("2026-09-01T00:00:00.000Z"), to: new Date("2026-09-08T00:00:00.000Z") },
+  );
+  assert.throws(() => resolvePerformanceWindow({ range: "custom" }, now), PerformanceQueryError);
+  assert.throws(
+    () =>
+      resolvePerformanceWindow(
+        {
+          range: "custom",
+          from: new Date("2026-09-08T00:00:00.000Z"),
+          to: new Date("2026-09-01T00:00:00.000Z"),
+        },
+        now,
+      ),
+    /start date/,
+  );
+});
+
+test("performance query schema accepts presets and custom dates", () => {
+  assert.equal(performanceQuerySchema.safeParse({}).success, true);
+  assert.equal(performanceQuerySchema.safeParse({ range: "30d" }).success, true);
+  assert.equal(performanceQuerySchema.safeParse({ range: "1y" }).success, false);
+  assert.equal(
+    performanceQuerySchema.safeParse({
+      range: "custom",
+      from: "2026-09-01T00:00:00.000Z",
+      to: "2026-09-08T00:00:00.000Z",
+    }).success,
+    true,
+  );
+});
+
+test("performance summary aggregates valid reports, averages, comparison, and trend", async () => {
+  const rows = [
+    performanceRow(80, [70, 80, 75, 65], new Date("2026-08-01T00:00:00.000Z")),
+    performanceRow(70, [65, 70, 60, 55], new Date("2026-08-15T00:00:00.000Z")),
+    performanceRow(90, [85, 90, 80, 70], new Date("2026-09-01T00:00:00.000Z")),
+  ];
+  const performance = await performanceService({ rows, count: 4 }).performance("user", {
+    range: "all",
+  });
+  assert.equal(performance.completedInterviewCount, 4);
+  assert.equal(performance.validReportCount, 3);
+  assert.equal(performance.averageOverallScore, 80);
+  assert.equal(performance.recentScore, 90);
+  assert.deepEqual(performance.comparison, {
+    latestScore: 90,
+    previousAverage: 75,
+    change: 15,
+  });
+  assert.deepEqual(performance.trend, { change: 10, direction: "up" });
+  const technical = performance.categories.find((category) => category.key === "technical")!;
+  assert.equal(technical.label, "Technical");
+  assert.equal(technical.average, 73);
+  assert.equal(technical.latest, 85);
+  assert.equal(
+    performance.categories.find((category) => category.key === "communication")?.average,
+    80,
+  );
+  assert.equal(performance.series.length, 3);
+  assert.equal(performance.series[0]?.overallScore, 80);
+  assert.equal(performance.series[2]?.completedAt, "2026-09-01T00:00:00.000Z");
+  assert.equal(performanceSummarySchema.safeParse(performance).success, true);
+});
+
+test("performance trend reports flat and downward movements from persisted scores", async () => {
+  const flat = await performanceService({
+    rows: [
+      performanceRow(70, [70, 70, 70, 70], new Date("2026-08-01T00:00:00.000Z")),
+      performanceRow(70, [70, 70, 70, 70], new Date("2026-09-01T00:00:00.000Z")),
+    ],
+    count: 2,
+  }).performance("user", { range: "all" });
+  assert.deepEqual(flat.trend, { change: 0, direction: "flat" });
+  const down = await performanceService({
+    rows: [
+      performanceRow(90, [90, 90, 90, 90], new Date("2026-08-01T00:00:00.000Z")),
+      performanceRow(80, [80, 80, 80, 80], new Date("2026-09-01T00:00:00.000Z")),
+    ],
+    count: 2,
+  }).performance("user", { range: "all" });
+  assert.deepEqual(down.trend, { change: -10, direction: "down" });
+  assert.deepEqual(down.comparison, { latestScore: 80, previousAverage: 90, change: -10 });
+});
+
+test("performance summary returns honest empty states for a new user", async () => {
+  const performance = await performanceService({ rows: [], count: 0 }).performance("user", {
+    range: "all",
+  });
+  assert.equal(performance.completedInterviewCount, 0);
+  assert.equal(performance.validReportCount, 0);
+  assert.equal(performance.averageOverallScore, null);
+  assert.equal(performance.recentScore, null);
+  assert.deepEqual(performance.comparison, {
+    latestScore: null,
+    previousAverage: null,
+    change: null,
+  });
+  assert.deepEqual(performance.trend, { change: null, direction: null });
+  assert.deepEqual(
+    performance.categories.map((category) => category.average),
+    [null, null, null, null],
+  );
+  assert.deepEqual(performance.series, []);
+  assert.equal(performanceSummarySchema.safeParse(performance).success, true);
+});
+
+test("performance series is capped and reads are scoped to the server-derived user id", async () => {
+  const rows = Array.from({ length: 65 }, (_, index) =>
+    performanceRow(
+      60 + (index % 20),
+      [60, 60, 60, 60],
+      new Date(2026, 0, index + 1),
+      index % 2 ? "MIXED" : "TECHNICAL",
+    ),
+  );
+  const recordedUsers: string[] = [];
+  const performance = await performanceService({ rows, count: 65 }, recordedUsers).performance(
+    "candidate-7",
+    { range: "30d" },
+  );
+  assert.equal(performance.series.length, 60);
+  assert.deepEqual(recordedUsers, ["candidate-7", "candidate-7"]);
+});
+
+test("the dashboard week window starts Monday 00:00 UTC", () => {
+  assert.equal(
+    startOfUtcWeek(new Date("2026-09-06T15:30:00.000Z")).toISOString(),
+    "2026-08-31T00:00:00.000Z",
+  );
+  assert.equal(
+    startOfUtcWeek(new Date("2026-08-31T04:00:00.000Z")).toISOString(),
+    "2026-08-31T00:00:00.000Z",
+  );
+});
 
 test("interview lifecycle accepts only documented transitions", () => {
   assert.doesNotThrow(() => assertInterviewTransition("READY", "IN_PROGRESS"));
