@@ -1,8 +1,11 @@
 "use client";
 
-import type { DashboardOverview } from "@interviewer-ai/types";
-import { BriefcaseBusiness, Gauge, Mic2, Sparkles, TrendingUp } from "lucide-react";
+import type { DashboardOverview, ReadinessAssessment } from "@interviewer-ai/types";
+import { BriefcaseBusiness, Gauge, LoaderCircle, Mic2, Sparkles, TrendingUp } from "lucide-react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
+
+import { apiClient } from "@/lib/api-client";
 
 type PreparationStateProps = {
   preparation: DashboardOverview["preparation"];
@@ -11,6 +14,10 @@ type PreparationStateProps = {
 };
 
 export function PreparationState({ preparation, recommendation, stats }: PreparationStateProps) {
+  const readiness = useQuery({
+    queryKey: ["analytics", "readiness"],
+    queryFn: () => apiClient<{ readiness: ReadinessAssessment }>("/api/v1/analytics/readiness"),
+  });
   return (
     <section aria-label="Current preparation state" className="grid gap-4 sm:grid-cols-2">
       <article className="surface p-5">
@@ -67,12 +74,35 @@ export function PreparationState({ preparation, recommendation, stats }: Prepara
         <p className="flex items-center gap-2 text-sm font-medium">
           <Gauge className="size-4 text-primary" aria-hidden="true" /> Interview readiness
         </p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Readiness scores are not available yet. Complete scored interviews to build the
-          performance history readiness will be calculated from.
-        </p>
-        <Link href="/interviews/new" className="mt-4 inline-block text-sm font-medium text-primary">
-          Practice toward readiness
+        {readiness.isPending ? (
+          <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+            <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" /> Checking your
+            readiness…
+          </p>
+        ) : readiness.data?.readiness.overall !== null &&
+          readiness.data?.readiness.overall !== undefined ? (
+          <>
+            <p className="mt-2 text-lg font-semibold tabular-nums">
+              {readiness.data.readiness.overall}%
+              {readiness.data.readiness.careerTarget
+                ? ` for ${readiness.data.readiness.careerTarget.title}`
+                : ""}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Deterministic formula v{readiness.data.readiness.formulaVersion} from{" "}
+              {readiness.data.readiness.evidence.validReportCount} scored interview
+              {readiness.data.readiness.evidence.validReportCount === 1 ? "" : "s"}.
+            </p>
+          </>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Not enough evidence yet — {readiness.data?.readiness.evidence.validReportCount ?? 0} of{" "}
+            {readiness.data?.readiness.evidence.minInterviewsRequired ?? 2} scored interviews
+            required.
+          </p>
+        )}
+        <Link href="/readiness" className="mt-4 inline-block text-sm font-medium text-primary">
+          View readiness breakdown
         </Link>
       </article>
 

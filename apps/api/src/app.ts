@@ -12,9 +12,11 @@ import { createCareerAnalysisQueue } from "./services/career-analysis-queue.js";
 import { createReportQueue } from "./services/report-queue.js";
 import { registerReportRoutes } from "./modules/reports/index.js";
 import { registerAnalyticsRoutes } from "./modules/analytics/index.js";
+import { registerPracticePlanRoutes } from "./modules/practice-plan/index.js";
 import { registerUserProfileRoutes } from "./modules/users/index.js";
 import { createRequestRateLimiter } from "./services/request-rate-limit.js";
 import { SkillAnalysisService } from "./services/skill-analysis.service.js";
+import { ReadinessService } from "./modules/analytics/readiness-service.js";
 import {
   configureObservability,
   createRequestId,
@@ -155,9 +157,11 @@ export function createApp() {
     monolith,
     eventBus,
     skillAnalysis,
+    new ReadinessService(database),
   );
   interviewService.setReportService(reportService);
   registerAnalyticsRoutes(app, database);
+  registerPracticePlanRoutes(app, database);
   registerUserProfileRoutes(app, database);
   registerConversationRoutes(app, database, environment, interviewService, eventBus);
 

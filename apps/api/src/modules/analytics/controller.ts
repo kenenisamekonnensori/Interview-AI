@@ -1,10 +1,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 import { AnalyticsService, PerformanceQueryError } from "./service.js";
+import { ReadinessService } from "./readiness-service.js";
 import { analyticsFilterSchema, interviewIdSchema, performanceQuerySchema } from "./schema.js";
 
 export function registerAnalyticsRoutes(app: FastifyInstance, database: PrismaClient) {
   const service = new AnalyticsService(database);
+  const readinessService = new ReadinessService(database);
   const filtered =
     <T>(
       handler: (
@@ -57,6 +59,13 @@ export function registerAnalyticsRoutes(app: FastifyInstance, database: PrismaCl
   app.get("/api/v1/analytics/skills", { preHandler: app.requireVerifiedUser }, async (request) => ({
     skills: await service.skillProfile(request.authContext!.user.id),
   }));
+  app.get(
+    "/api/v1/analytics/readiness",
+    { preHandler: app.requireVerifiedUser },
+    async (request) => ({
+      readiness: await readinessService.assessment(request.authContext!.user.id),
+    }),
+  );
   app.get(
     "/api/v1/analytics/performance",
     { preHandler: app.requireVerifiedUser },

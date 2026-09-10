@@ -10,22 +10,24 @@ datasource db {
 }
 
 model User {
-  id              String            @id
-  name            String
-  email           String            @unique
-  emailVerified   Boolean           @default(false)
-  image           String?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  accounts        Account[]
-  authEmailOutbox AuthEmailOutbox[]
-  sessions        Session[]
-  resumes         Resume[]
-  jobDescriptions JobDescription[]
-  careerTargets   CareerTarget[]
-  interviews      Interview[]
-  profile         UserProfile?
-  skillAnalysis   SkillAnalysis?
+  id                 String              @id
+  name               String
+  email              String              @unique
+  emailVerified      Boolean             @default(false)
+  image              String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  accounts           Account[]
+  authEmailOutbox    AuthEmailOutbox[]
+  sessions           Session[]
+  resumes            Resume[]
+  jobDescriptions    JobDescription[]
+  careerTargets      CareerTarget[]
+  interviews         Interview[]
+  profile            UserProfile?
+  skillAnalysis      SkillAnalysis?
+  practicePlan       PracticePlan?
+  readinessSnapshots ReadinessSnapshot[]
 
   @@map("user")
 }
@@ -60,22 +62,22 @@ enum ResumeStatus {
 }
 
 model Resume {
-  id        String       @id @default(uuid())
-  userId    String
-  storageKey String      @unique
-  fileName  String
-  mimeType  String
-  fileSize  Int
-  status    ResumeStatus @default(PENDING_UPLOAD)
-  isActive  Boolean      @default(false)
-  uploadedAt DateTime?
-  deletedAt DateTime?
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  analysis  ResumeAnalysis?
+  id            String          @id @default(uuid())
+  userId        String
+  storageKey    String          @unique
+  fileName      String
+  mimeType      String
+  fileSize      Int
+  status        ResumeStatus    @default(PENDING_UPLOAD)
+  isActive      Boolean         @default(false)
+  uploadedAt    DateTime?
+  deletedAt     DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysis      ResumeAnalysis?
   careerTargets CareerTarget[]
-  interviews Interview[]
+  interviews    Interview[]
 
   @@index([userId, createdAt])
   @@index([userId, isActive])
@@ -84,19 +86,19 @@ model Resume {
 }
 
 model ResumeAnalysis {
-  id          String   @id @default(uuid())
-  resumeId    String   @unique
-  summary     String
-  skills      Json
-  technologies Json
-  experience  Json
-  education   Json
-  projects    Json
+  id             String   @id @default(uuid())
+  resumeId       String   @unique
+  summary        String
+  skills         Json
+  technologies   Json
+  experience     Json
+  education      Json
+  projects       Json
   certifications Json
-  generatedAt DateTime @default(now())
-  model       String
-  version     Int      @default(1)
-  resume      Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  generatedAt    DateTime @default(now())
+  model          String
+  version        Int      @default(1)
+  resume         Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
 
   @@map("resume_analysis")
 }
@@ -110,19 +112,19 @@ enum JobDescriptionStatus {
 }
 
 model JobDescription {
-  id        String               @id @default(uuid())
-  userId    String
-  title     String?
-  company   String?
-  rawText   String
-  status    JobDescriptionStatus @default(READY)
-  deletedAt DateTime?
-  createdAt DateTime             @default(now())
-  updatedAt DateTime             @updatedAt
-  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  analysis  JobAnalysis?
+  id            String               @id @default(uuid())
+  userId        String
+  title         String?
+  company       String?
+  rawText       String
+  status        JobDescriptionStatus @default(READY)
+  deletedAt     DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysis      JobAnalysis?
   careerTargets CareerTarget[]
-  interviews Interview[]
+  interviews    Interview[]
 
   @@index([userId, createdAt])
   @@index([userId, deletedAt, createdAt])
@@ -150,6 +152,7 @@ model CareerTarget {
   jobDescription   JobDescription?    @relation(fields: [jobDescriptionId], references: [id], onDelete: SetNull)
   resume           Resume?            @relation(fields: [resumeId], references: [id], onDelete: SetNull)
   interviews       Interview[]
+  practicePlans    PracticePlan[]
 
   @@index([userId, status, createdAt])
   @@map("career_target")
@@ -222,11 +225,13 @@ enum ConversationState {
   CLOSING
   COMPLETED
 }
+
 enum ConversationSpeaker {
   USER
   AI
   SYSTEM
 }
+
 enum ConversationTurnType {
   GREETING
   QUESTION
@@ -237,14 +242,15 @@ enum ConversationTurnType {
 }
 
 model Conversation {
-  id          String            @id @default(uuid())
-  interviewId String            @unique
-  state       ConversationState @default(GREETING)
-  sequence    Int               @default(0)
-  startedAt   DateTime          @default(now())
+  id          String             @id @default(uuid())
+  interviewId String             @unique
+  state       ConversationState  @default(GREETING)
+  sequence    Int                @default(0)
+  startedAt   DateTime           @default(now())
   completedAt DateTime?
-  interview   Interview         @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  interview   Interview          @relation(fields: [interviewId], references: [id], onDelete: Cascade)
   turns       ConversationTurn[]
+
   @@map("conversation")
 }
 
@@ -257,59 +263,60 @@ model ConversationTurn {
   text           String
   createdAt      DateTime             @default(now())
   conversation   Conversation         @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
   @@unique([conversationId, sequence])
   @@map("conversation_turn")
 }
 
 model InterviewPlan {
-  id            String   @id @default(uuid())
-  interviewId   String   @unique
-  objectives    Json
-  topics        Json
+  id               String    @id @default(uuid())
+  interviewId      String    @unique
+  objectives       Json
+  topics           Json
   evaluationRubric Json
-  timeline      Json
+  timeline         Json
   followUpStrategy String
   fallbackStrategy String
-  model         String
-  generatedAt   DateTime @default(now())
-  version       Int      @default(1)
-  interview     Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  model            String
+  generatedAt      DateTime  @default(now())
+  version          Int       @default(1)
+  interview        Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
 
   @@map("interview_plan")
 }
 
 model InterviewMemory {
-  id                       String   @id @default(uuid())
-  interviewId              String   @unique
-  askedQuestions           Json     @default("[]")
-  topicCoverage            Json     @default("[]")
-  candidateStrengths       Json     @default("[]")
-  weakAreas                Json     @default("[]")
-  missedFollowUps          Json     @default("[]")
-  questionDifficulty       InterviewDifficulty @default(MEDIUM)
-  remainingObjectives      Json     @default("[]")
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
-  interview                Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  id                  String              @id @default(uuid())
+  interviewId         String              @unique
+  askedQuestions      Json                @default("[]")
+  topicCoverage       Json                @default("[]")
+  candidateStrengths  Json                @default("[]")
+  weakAreas           Json                @default("[]")
+  missedFollowUps     Json                @default("[]")
+  questionDifficulty  InterviewDifficulty @default(MEDIUM)
+  remainingObjectives Json                @default("[]")
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  interview           Interview           @relation(fields: [interviewId], references: [id], onDelete: Cascade)
 
   @@map("interview_memory")
 }
 
 model InterviewReport {
-  id                 String               @id @default(uuid())
-  interviewId        String               @unique
-  status             ReportStatus         @default(PENDING)
-  evaluation         Json?
-  summary            String?
-  evidence           Json                 @default("[]")
+  id                   String                @id @default(uuid())
+  interviewId          String                @unique
+  status               ReportStatus          @default(PENDING)
+  evaluation           Json?
+  summary              String?
+  evidence             Json                  @default("[]")
   hiringRecommendation HiringRecommendation?
-  failureReason      String?
-  generationAttempts Int                  @default(0)
-  generatedAt        DateTime?
-  model              String?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  interview          Interview            @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  failureReason        String?
+  generationAttempts   Int                   @default(0)
+  generatedAt          DateTime?
+  model                String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  interview            Interview             @relation(fields: [interviewId], references: [id], onDelete: Cascade)
 
   @@map("interview_report")
 }
@@ -329,20 +336,62 @@ enum HiringRecommendation {
 }
 
 model JobAnalysis {
-  id                String   @id @default(uuid())
-  jobDescriptionId  String   @unique
-  requiredSkills    Json
-  preferredSkills   Json
-  responsibilities  Json
-  keywords          Json
-  seniority         String?
-  technologyStack   Json
-  generatedAt       DateTime @default(now())
-  model             String
-  version           Int      @default(1)
-  jobDescription    JobDescription @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)
+  id               String         @id @default(uuid())
+  jobDescriptionId String         @unique
+  requiredSkills   Json
+  preferredSkills  Json
+  responsibilities Json
+  keywords         Json
+  seniority        String?
+  technologyStack  Json
+  generatedAt      DateTime       @default(now())
+  model            String
+  version          Int            @default(1)
+  jobDescription   JobDescription @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)
 
   @@map("job_analysis")
+}
+
+model PracticePlan {
+  id                      String             @id @default(uuid())
+  userId                  String             @unique
+  status                  String             @default("READY")
+  version                 Int                @default(1)
+  goal                    String
+  targetRole              String?
+  careerTargetId          String?
+  basedOnInterviewIds     String[]           @default([])
+  basedOnValidReportCount Int                @default(0)
+  generatedAt             DateTime?
+  failureReason           String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+  user                    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  careerTarget            CareerTarget?      @relation(fields: [careerTargetId], references: [id], onDelete: SetNull)
+  items                   PracticePlanItem[]
+
+  @@map("practice_plan")
+}
+
+model PracticePlanItem {
+  id               String       @id @default(uuid())
+  practicePlanId   String
+  position         Int          @default(0)
+  phase            String
+  priority         String       @default("MEDIUM")
+  activityType     String
+  title            String
+  description      String?
+  rationale        String
+  estimatedMinutes Int
+  status           String       @default("PENDING")
+  completedAt      DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  practicePlan     PracticePlan @relation(fields: [practicePlanId], references: [id], onDelete: Cascade)
+
+  @@index([practicePlanId])
+  @@map("practice_plan_item")
 }
 
 model SkillAnalysis {
@@ -362,6 +411,30 @@ model SkillAnalysis {
   user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("skill_analysis")
+}
+
+enum ReadinessTrigger {
+  REPORT_READY
+  MANUAL
+}
+
+model ReadinessSnapshot {
+  id               String           @id @default(uuid())
+  userId           String
+  careerTargetId   String?
+  overall          Int
+  components       Json
+  formulaVersion   Int
+  interviewCount   Int
+  validReportCount Int
+  trigger          ReadinessTrigger @default(REPORT_READY)
+  recordedAt       DateTime         @default(now())
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, careerTargetId, validReportCount])
+  @@index([userId, recordedAt])
+  @@index([userId, careerTargetId, recordedAt])
+  @@map("readiness_snapshot")
 }
 
 model Session {

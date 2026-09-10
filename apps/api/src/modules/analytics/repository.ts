@@ -126,6 +126,30 @@ export class AnalyticsRepository {
     return this.database.skillAnalysis.findUnique({ where: { userId } });
   }
 
+  /** The user's active target with its linked job analysis, for readiness. */
+  activeTargetWithJob(userId: string) {
+    return this.database.careerTarget.findFirst({
+      where: { userId, status: "ACTIVE" },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        company: true,
+        jobDescription: {
+          select: { deletedAt: true, analysis: { select: { requiredSkills: true } } },
+        },
+      },
+    });
+  }
+
+  readinessSnapshots(userId: string) {
+    return this.database.readinessSnapshot.findMany({
+      where: { userId },
+      orderBy: { recordedAt: "desc" },
+      take: 30,
+    });
+  }
+
   recommendationContext(userId: string) {
     return Promise.all([
       this.database.userProfile.findUnique({ where: { userId } }),

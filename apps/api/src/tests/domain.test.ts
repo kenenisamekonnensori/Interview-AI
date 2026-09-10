@@ -39,7 +39,12 @@ import {
 import {
   dashboardOverviewSchema,
   performanceSummarySchema,
+  practicePlanSchema,
+  readinessAssessmentSchema,
   skillProfileSchema,
+  type SkillAssessment,
+  type SkillKey,
+  type SkillStatus,
 } from "@interviewer-ai/types";
 import { performanceQuerySchema } from "../modules/analytics/schema.js";
 import { normalizeCategoryKey } from "../modules/analytics/skill-taxonomy.js";
@@ -50,6 +55,22 @@ import {
   validSkillReportRows,
 } from "../modules/analytics/skill-engine.js";
 import { skillAnalysisOutputSchema } from "../modules/analytics/skill-analysis-schema.js";
+import {
+  computeReadiness,
+  evidenceScore,
+  mapRequiredSkills,
+  MIN_INTERVIEWS_FOR_SCORE,
+  type ReadinessReportRow,
+  type ReadinessSnapshotRow,
+  type ReadinessTarget,
+} from "../modules/analytics/readiness-engine.js";
+import {
+  buildPlanItems,
+  planGoal,
+  planTargetRole,
+  PLAN_PHASES,
+} from "../modules/practice-plan/engine.js";
+import { PracticePlanError, PracticePlanService } from "../modules/practice-plan/service.js";
 import { InterviewLifecycleError, InterviewService } from "../modules/interviews/service.js";
 import { userProfileUpdateSchema } from "../modules/users/schema.js";
 import { UserProfileRepository } from "../modules/users/repository.js";
@@ -1017,6 +1038,333 @@ test("computeSkillProfile orders weaknesses first and stays deterministic", () =
   assert.ok(0 < strengthIndex);
 });
 
+const skillAssessment = (
+  skillKey: SkillKey,
+  status: SkillStatus,
+  level: number,
+  observationCount: number,
+  trendChange = 0,
+  trendDirection: "up" | "down" | "flat" = "flat",
+): SkillAssessment => ({
+  skillKey,
+  label: skillKey,
+  status,
+  level,
+  latestScore: level,
+  trend: { change: trendChange, direction: trendDirection },
+  confidence: "LOW",
+  observationCount,
+  explanation: "Explanation.",
+  recommendedPractice: "Practice.",
+  supportingInterviews: [],
+});
+
+const planItemUuid = (index: number) =>
+  `77777777-7777-4777-8777-77777777${String(index).padStart(4, "0")}`;
+
+function planService(context: unknown, recorded: { replaceArgs?: unknown[] } = {}) {
+  const service = new PracticePlanService({} as never);
+  type PlanDraft = {
+    version: number;
+    goal: string;
+    targetRole: string | null;
+    careerTargetId: string | null;
+    basedOnInterviewIds: string[];
+    basedOnValidReportCount: number;
+    items: Record<string, unknown>[];
+  };
+  const repository = service.repository as unknown as {
+    context: (userId: string) => Promise<unknown>;
+    replacePlan: (userId: string, data: PlanDraft) => Promise<unknown>;
+    findPlan: (userId: string) => Promise<unknown>;
+    findItem: (userId: string, itemId: string) => Promise<unknown>;
+    updateItemStatus: (
+      itemId: string,
+      status: string,
+      completedAt: Date | null,
+    ) => Promise<unknown>;
+  };
+  repository.context = async () => context;
+  repository.replacePlan = async (_userId: string, data: PlanDraft) => {
+    recorded.replaceArgs = [...(recorded.replaceArgs ?? []), data];
+    return {
+      id: "00000000-0000-4000-8000-000000000000",
+      status: "READY",
+      version: data.version,
+      goal: data.goal,
+      targetRole: data.targetRole,
+      careerTargetId: data.careerTargetId,
+      basedOnInterviewIds: data.basedOnInterviewIds,
+      basedOnValidReportCount: data.basedOnValidReportCount,
+      generatedAt: new Date("2026-09-10T00:00:00.000Z"),
+      items: data.items.map((item: Record<string, unknown>, index: number) => ({
+        id: planItemUuid(index),
+        ...item,
+      })),
+    };
+  };
+  return service;
+}
+
+const existingPlan = (overrides: Record<string, unknown> = {}) => ({
+  id: "00000000-0000-4000-8000-000000000000",
+  status: "READY",
+  version: 3,
+  goal: "Prepare for Backend Engineer interview",
+  targetRole: null,
+  careerTargetId: null,
+  basedOnInterviewIds: [] as string[],
+  basedOnValidReportCount: 0,
+  generatedAt: new Date("2026-09-01T00:00:00.000Z"),
+  items: [
+    {
+      id: planItemUuid(0),
+      position: 0,
+      phase: PLAN_PHASES.simulate,
+      priority: "MEDIUM",
+      activityType: "MOCK_INTERVIEW",
+      title: "Full mock interview",
+      description: null,
+      rationale: "r",
+      estimatedMinutes: 45,
+      status: "COMPLETED",
+      completedAt: new Date("2026-09-02T00:00:00.000Z"),
+    },
+  ],
+  ...overrides,
+});
+
+test("practice plan engine prioritizes weaknesses, target requirements, and improvements", () => {
+  const items = buildPlanItems({
+    skills: [
+      skillAssessment("system-design", "WEAKNESS", 53, 2),
+      skillAssessment("communication", "IMPROVING", 74, 3, 6, "up"),
+      skillAssessment("technical", "STRENGTH", 84, 4),
+    ],
+    target: {
+      id: "t1",
+      title: "Backend Engineer",
+      company: "Acme",
+      requiredSkills: ["System Design", "SQL", "Distributed Systems"],
+    },
+    profileTargetRole: null,
+  });
+  const gaps = items.filter((item) => item.phase === PLAN_PHASES.gaps && item.priority === "HIGH");
+  assert.equal(gaps.length, 3);
+  assert.equal(gaps[0]?.title, "System design trade-offs");
+  assert.equal(gaps[0]?.activityType, "SYSTEM_DESIGN_EXERCISE");
+  assert.match(gaps[0]?.rationale ?? "", /Average 53\/100 across 2 scored interviews/);
+  // "System Design" is deduped against the weakness item; SQL and Distributed Systems remain
+  assert.ok(gaps.some((item) => item.title === "SQL for Backend Engineer"));
+  assert.ok(gaps.some((item) => item.title === "Distributed Systems for Backend Engineer"));
+  assert.ok(items.some((item) => item.title === "Continue communication practice"));
+  assert.ok(
+    items.some(
+      (item) => item.title === "Full mock interview" && item.phase === PLAN_PHASES.simulate,
+    ),
+  );
+  const phases = items.map((item) => item.phase);
+  assert.equal(phases[0], PLAN_PHASES.gaps);
+  assert.equal(phases[phases.length - 1], PLAN_PHASES.simulate);
+});
+
+test("practice plan goal and target role follow the active target and profile", () => {
+  const target = { id: "t1", title: "Backend Engineer", company: "Acme", requiredSkills: [] };
+  assert.equal(
+    planGoal({ skills: [], target, profileTargetRole: "x" }),
+    "Prepare for Backend Engineer at Acme interview",
+  );
+  assert.equal(planTargetRole({ skills: [], target, profileTargetRole: "x" }), "Backend Engineer");
+  assert.equal(
+    planGoal({ skills: [], target: null, profileTargetRole: "Data analyst" }),
+    "Prepare for Data analyst interviews",
+  );
+  assert.equal(
+    planGoal({ skills: [], target: null, profileTargetRole: null }),
+    "Prepare for your next interview",
+  );
+  assert.equal(planTargetRole({ skills: [], target: null, profileTargetRole: null }), null);
+});
+
+test("practice plan engine produces a baseline mock for a new user", () => {
+  const items = buildPlanItems({ skills: [], target: null, profileTargetRole: null });
+  assert.equal(items.length, 1);
+  assert.equal(items[0]?.title, "Full mock interview");
+  assert.equal(items[0]?.activityType, "MOCK_INTERVIEW");
+});
+
+test("practice plan is built deterministically for a user without a plan", async () => {
+  const plan = await planService([null, null, [], null]).getPlan("user");
+  assert.equal(plan.version, 1);
+  assert.equal(plan.goal, "Prepare for your next interview");
+  assert.equal(plan.targetRole, null);
+  assert.equal(plan.basedOnValidReportCount, 0);
+  assert.equal(plan.progress.total, 1);
+  assert.equal(plan.progress.completed, 0);
+  assert.equal(plan.items[0]?.title, "Full mock interview");
+  assert.equal(plan.nextActivity?.title, "Full mock interview");
+  assert.equal(practicePlanSchema.safeParse(plan).success, true);
+});
+
+test("practice plan is served unchanged when it is current", async () => {
+  const interviewId = firstTurn;
+  const existing = existingPlan({ basedOnInterviewIds: [interviewId], basedOnValidReportCount: 1 });
+  const recorded: { replaceArgs?: unknown[] } = {};
+  const service = planService(
+    [
+      null,
+      null,
+      [skillRow(interviewId, new Date("2026-08-01T00:00:00.000Z"), [70, 70, 70, 70], {})],
+      existing,
+    ],
+    recorded,
+  );
+  const plan = await service.getPlan("user");
+  assert.equal(recorded.replaceArgs, undefined);
+  assert.equal(plan.id, "00000000-0000-4000-8000-000000000000");
+  assert.equal(plan.version, 3);
+});
+
+test("practice plan rebuilds when new interviews land and carries completed items over", async () => {
+  const recorded: { replaceArgs?: unknown[] } = {};
+  const service = planService(
+    [
+      null,
+      null,
+      [skillRow(firstTurn, new Date("2026-08-01T00:00:00.000Z"), [70, 70, 70, 70], {})],
+      existingPlan(),
+    ],
+    recorded,
+  );
+  const plan = await service.getPlan("user");
+  assert.ok(recorded.replaceArgs);
+  assert.equal(plan.version, 4);
+  assert.equal(plan.basedOnValidReportCount, 1);
+  // completed baseline mock was carried over by stable key
+  assert.equal(plan.items[0]?.status, "COMPLETED");
+  assert.equal(plan.items[0]?.completedAt, "2026-09-02T00:00:00.000Z");
+  assert.equal(practicePlanSchema.safeParse(plan).success, true);
+});
+
+test("regeneration preserves completed items that are no longer recommended", async () => {
+  const recorded: { replaceArgs?: unknown[] } = {};
+  // existing plan has a completed weakness item that the new (empty) data no longer recommends
+  const withWeakness = existingPlan({
+    items: [
+      {
+        id: planItemUuid(0),
+        position: 0,
+        phase: PLAN_PHASES.simulate,
+        priority: "MEDIUM",
+        activityType: "MOCK_INTERVIEW",
+        title: "Full mock interview",
+        description: null,
+        rationale: "r",
+        estimatedMinutes: 45,
+        status: "COMPLETED",
+        completedAt: new Date("2026-09-02T00:00:00.000Z"),
+      },
+      {
+        id: planItemUuid(1),
+        position: 1,
+        phase: PLAN_PHASES.gaps,
+        priority: "HIGH",
+        activityType: "SYSTEM_DESIGN_EXERCISE",
+        title: "System design trade-offs",
+        description: null,
+        rationale: "old",
+        estimatedMinutes: 30,
+        status: "COMPLETED",
+        completedAt: new Date("2026-09-03T00:00:00.000Z"),
+      },
+    ],
+  });
+  const regenerated = await planService([null, null, [], withWeakness], recorded).regenerate(
+    "user",
+  );
+  assert.equal(regenerated.items.length, 2);
+  assert.equal(regenerated.items[0]?.title, "Full mock interview");
+  assert.equal(regenerated.items[0]?.status, "COMPLETED");
+  assert.equal(regenerated.items[1]?.title, "System design trade-offs");
+  assert.equal(regenerated.items[1]?.phase, "Completed");
+  assert.equal(regenerated.items[1]?.status, "COMPLETED");
+  assert.equal(regenerated.progress.completed, 2);
+  assert.equal(regenerated.progress.total, 2);
+  assert.equal(practicePlanSchema.safeParse(regenerated).success, true);
+});
+
+test("practice plan items update only for their owner and track completion time", async () => {
+  const updated: Array<{ itemId: string; status: string; completedAt: Date | null }> = [];
+  const service = new PracticePlanService({} as never);
+  const repository = service.repository as unknown as {
+    findItem: (userId: string, itemId: string) => Promise<unknown>;
+    updateItemStatus: (
+      itemId: string,
+      status: string,
+      completedAt: Date | null,
+    ) => Promise<unknown>;
+  };
+  repository.findItem = async (userId: string, itemId: string) =>
+    userId === "candidate-1" && itemId === firstTurn ? { id: firstTurn } : null;
+  repository.updateItemStatus = async (
+    itemId: string,
+    status: string,
+    completedAt: Date | null,
+  ) => {
+    updated.push({ itemId, status, completedAt });
+    return {
+      id: itemId,
+      activityType: "MOCK_INTERVIEW",
+      title: "Full mock interview",
+      description: null,
+      rationale: "r",
+      phase: PLAN_PHASES.simulate,
+      priority: "MEDIUM",
+      status,
+      estimatedMinutes: 45,
+      completedAt,
+    };
+  };
+  await service.updateItem("candidate-1", firstTurn, "COMPLETED");
+  assert.equal(updated[0]?.status, "COMPLETED");
+  assert.ok(updated[0]?.completedAt instanceof Date);
+  await service.updateItem("candidate-1", firstTurn, "PENDING");
+  assert.equal(updated[1]?.status, "PENDING");
+  assert.equal(updated[1]?.completedAt, null);
+  await assert.rejects(
+    service.updateItem("other-user", firstTurn, "COMPLETED"),
+    (error: unknown) =>
+      error instanceof PracticePlanError && error.code === "PRACTICE_ITEM_NOT_FOUND",
+  );
+});
+
+test("practice plan reads are scoped to the server-derived user id", async () => {
+  const recordedUsers: string[] = [];
+  const service = new PracticePlanService({} as never);
+  const repository = service.repository as unknown as {
+    context: (userId: string) => Promise<unknown>;
+    replacePlan: (userId: string, data: never) => Promise<unknown>;
+  };
+  repository.context = async (userId: string) => {
+    recordedUsers.push(userId);
+    return [null, null, [], null];
+  };
+  repository.replacePlan = async () => ({
+    id: "00000000-0000-4000-8000-000000000000",
+    status: "READY",
+    version: 1,
+    goal: "g",
+    targetRole: null,
+    careerTargetId: null,
+    basedOnInterviewIds: [],
+    basedOnValidReportCount: 0,
+    generatedAt: new Date(),
+    items: [],
+  });
+  await service.getPlan("candidate-7");
+  assert.deepEqual(recordedUsers, ["candidate-7"]);
+});
+
 test("the dashboard week window starts Monday 00:00 UTC", () => {
   assert.equal(
     startOfUtcWeek(new Date("2026-09-06T15:30:00.000Z")).toISOString(),
@@ -1675,6 +2023,219 @@ test("in-flight pre-warms are awaited once and cleaned up after settling", async
   assert.equal(isPreWarmInFlight("turn-1"), false);
   assert.equal(awaitPreWarm("turn-1"), null);
   clearTtsAudioCache();
+});
+
+// --- Stage 6: readiness engine ---
+
+const NOW = new Date("2026-09-11T00:00:00.000Z");
+
+const readinessRow = (
+  id: string,
+  completedAt: Date,
+  dimScores: [number, number, number, number],
+  categoryScores: Record<
+    string,
+    { score: number; feedback: string; evidenceTurnIds: string[] }
+  > = {},
+  interviewType = "TECHNICAL",
+): ReadinessReportRow => ({
+  id,
+  interviewType,
+  report: { evaluation: skillEvaluation(dimScores, categoryScores) },
+  completedAt,
+});
+
+const snapshotRow = (overall: number, at: string): ReadinessSnapshotRow => ({
+  id: `snap-${overall}`,
+  overall,
+  recordedAt: new Date(at),
+  interviewCount: 2,
+});
+
+const noTarget: ReadinessTarget | null = null;
+
+const skillAssessmentStub = (
+  skillKey: SkillKey,
+  overrides: Partial<SkillAssessment> = {},
+): SkillAssessment => ({
+  skillKey,
+  label: skillKey,
+  status: "STRENGTH",
+  level: 80,
+  latestScore: 80,
+  trend: { change: null, direction: null },
+  confidence: "MEDIUM",
+  observationCount: 4,
+  explanation: "Explanation.",
+  recommendedPractice: "Practice.",
+  supportingInterviews: [],
+  ...overrides,
+});
+
+test("readiness evidence saturates instead of rewarding raw volume", () => {
+  assert.equal(evidenceScore(2), 50);
+  assert.equal(evidenceScore(8), 80);
+  assert.equal(evidenceScore(18), 90);
+});
+
+test("readiness requires a minimum number of scored interviews", () => {
+  assert.equal(MIN_INTERVIEWS_FOR_SCORE, 2);
+  const single = computeReadiness({
+    reports: [readinessRow("i1", new Date("2026-08-01T00:00:00.000Z"), [70, 70, 70, 70])],
+    skills: [],
+    target: noTarget,
+    snapshots: [],
+    now: NOW,
+  });
+  assert.equal(single.overall, null);
+  assert.match(single.explanation ?? "", /needs more evidence/);
+});
+
+const targetWithSkills: ReadinessTarget = {
+  id: "11111111-1111-4111-8111-111111111111",
+  title: "Backend Engineer",
+  company: "Example Co",
+  requiredSkills: ["System Design", "SQL", "Kubernetes"],
+};
+
+test("readiness is job-specific and derives the score from documented weights", () => {
+  // 3 TECHNICAL interviews: technical 70/75/80 (mean 75), communication 80/82/84
+  // (mean ~82), problemSolving 60/62/64 (mean 62), plus "SQL" categories ->
+  // databases observations and BEHAVIORAL-type rows.
+  const rows = [
+    readinessRow("i1", new Date("2026-08-01T00:00:00.000Z"), [70, 80, 70, 60], {
+      SQL: dim(70),
+    }),
+    readinessRow("i2", new Date("2026-08-05T00:00:00.000Z"), [75, 82, 72, 62], {
+      SQL: dim(75),
+    }),
+    readinessRow("i3", new Date("2026-08-09T00:00:00.000Z"), [80, 84, 74, 64], {
+      SQL: dim(80),
+    }),
+    readinessRow("i4", new Date("2026-08-12T00:00:00.000Z"), [72, 78, 76, 66], {}, "BEHAVIORAL"),
+  ];
+  const result = computeReadiness({
+    reports: rows,
+    skills: [],
+    target: targetWithSkills,
+    snapshots: [],
+    now: NOW,
+  });
+  assert.equal(result.formulaVersion, 1);
+  assert.equal(result.careerTarget?.title, "Backend Engineer");
+  assert.equal(result.evidence.validReportCount, 4);
+  const technical = result.components.find((component) => component.category === "TECHNICAL");
+  const jobSpecific = result.components.find((component) => component.category === "JOB_SPECIFIC");
+  assert.equal(technical?.score, 74); // technical dims across all 4 rows: 70/75/80/72
+  assert.equal(jobSpecific?.score, 75); // only SQL -> databases observations (70/75/80)
+  assert.equal(result.overall, 73);
+  // Deterministic: same inputs, same score.
+  const again = computeReadiness({
+    reports: rows,
+    skills: [],
+    target: targetWithSkills,
+    snapshots: [],
+    now: NOW,
+  });
+  assert.equal(again.overall, result.overall);
+});
+
+test("readiness gaps separate weak skills from missing evidence", () => {
+  const rows = [
+    readinessRow("i1", new Date("2026-08-01T00:00:00.000Z"), [50, 60, 55, 45], {
+      "System Design": dim(45),
+    }),
+    readinessRow("i2", new Date("2026-08-05T00:00:00.000Z"), [52, 62, 57, 47], {
+      "System Design": dim(48),
+    }),
+  ];
+  const skills = [
+    skillAssessmentStub("system-design", {
+      status: "WEAKNESS",
+      level: 46,
+      observationCount: 2,
+      label: "System Design",
+    }),
+  ];
+  const result = computeReadiness({
+    reports: rows,
+    skills,
+    target: targetWithSkills,
+    snapshots: [],
+    now: NOW,
+  });
+  const kinds = Object.fromEntries(result.gaps.map((gap) => [gap.label, gap.kind]));
+  assert.equal(kinds["System Design"], "WEAK_SKILL");
+  assert.equal(kinds["Databases"], "MISSING_EVIDENCE"); // SQL maps onto databases
+  assert.equal(kinds["Kubernetes"], "MISSING_EVIDENCE");
+  assert.ok(result.gaps.length >= 3);
+  assert.match(result.explanation ?? "", /limited|No scored evidence/);
+});
+
+test("readiness explanation cites the role and the formula version", () => {
+  const rows = [
+    readinessRow("i1", new Date("2026-08-01T00:00:00.000Z"), [80, 80, 80, 80]),
+    readinessRow("i2", new Date("2026-08-05T00:00:00.000Z"), [82, 82, 82, 82]),
+  ];
+  const result = computeReadiness({
+    reports: rows,
+    skills: [],
+    target: targetWithSkills,
+    snapshots: [],
+    now: NOW,
+  });
+  assert.match(result.explanation ?? "", /Backend Engineer at Example Co/);
+  assert.match(result.explanation ?? "", /formula v1/);
+  assert.ok((result.strengths.length ?? 0) <= 3);
+});
+
+test("readiness trend compares against the most recent snapshot", () => {
+  const rows = [
+    readinessRow("i1", new Date("2026-08-01T00:00:00.000Z"), [80, 80, 80, 80]),
+    readinessRow("i2", new Date("2026-08-05T00:00:00.000Z"), [82, 82, 82, 82]),
+  ];
+  const result = computeReadiness({
+    reports: rows,
+    skills: [],
+    target: targetWithSkills,
+    snapshots: [
+      snapshotRow(68, "2026-08-01T00:00:00.000Z"),
+      snapshotRow(64, "2026-07-01T00:00:00.000Z"),
+    ],
+    now: NOW,
+  });
+  assert.equal(result.previousOverall, 68);
+  assert.equal(result.snapshots.length, 2);
+  assert.equal(result.change, (result.overall ?? 0) - 68);
+  assert.ok((result.overall ?? 0) > 68);
+});
+
+test("readiness validates against the shared contract and handles no-target users", () => {
+  const rows = [
+    readinessRow("i1", new Date("2026-08-01T00:00:00.000Z"), [70, 70, 70, 70]),
+    readinessRow("i2", new Date("2026-08-05T00:00:00.000Z"), [72, 72, 72, 72]),
+  ];
+  const result = computeReadiness({
+    reports: rows,
+    skills: [],
+    target: noTarget,
+    snapshots: [],
+    now: NOW,
+  });
+  assert.equal(result.careerTarget, null);
+  assert.equal(result.overall !== null, true);
+  const parsed = readinessAssessmentSchema.safeParse(result);
+  assert.equal(parsed.success, true);
+});
+
+test("job skill mapping normalizes aliases and reports unmapped keywords", () => {
+  const { mapped, unmapped } = mapRequiredSkills([
+    "PostgreSQL",
+    "distributed systems",
+    "Kubernetes",
+  ]);
+  assert.deepEqual([...mapped].sort(), ["databases", "system-design"]);
+  assert.deepEqual(unmapped, ["Kubernetes"]);
 });
 
 test("monolith mode defaults to true and executes tasks in-process without requiring workers", async () => {

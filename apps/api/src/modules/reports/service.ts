@@ -75,6 +75,10 @@ export class ReportService {
     private readonly events: InterviewEventPublisher,
     private readonly monolith?: MonolithExecutionManager,
     private readonly skillAnalysis?: Pick<SkillAnalysisService, "enqueueRefresh">,
+    private readonly readiness?: Pick<
+      import("../../modules/analytics/readiness-service.js").ReadinessService,
+      "recordSnapshotAfterReport"
+    >,
   ) {
     this.repository = new ReportRepository(database);
     this.aiProvider = createAiProvider(environment);
@@ -204,6 +208,17 @@ export class ReportService {
           await this.skillAnalysis?.enqueueRefresh(userId);
         } catch (error) {
           logSafeError(consoleLogger, "Skill analysis enqueue failed", error, {
+            interviewId,
+            userId,
+          });
+        }
+        try {
+          // Readiness snapshots are event-driven too (report READY), never on
+          // page load, and idempotent via the unique (user, target, count)
+          // constraint. A failure must not fail report generation.
+          await this.readiness?.recordSnapshotAfterReport(userId);
+        } catch (error) {
+          logSafeError(consoleLogger, "Readiness snapshot failed", error, {
             interviewId,
             userId,
           });

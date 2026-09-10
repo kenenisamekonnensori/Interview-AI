@@ -411,6 +411,149 @@ export const skillProfileSchema = z.object({
 });
 export type SkillProfile = z.infer<typeof skillProfileSchema>;
 
+/**
+ * Version of the deterministic readiness formula. Bump when weighting or
+ * category semantics change so historical snapshots remain interpretable.
+ *
+ * Formula v1: overall = weighted mean of available category scores plus an
+ * evidence-saturation component, with weights renormalized over the categories
+ * that actually have scored evidence:
+ *   evidence 20% (saturating: n/(n+2)), job skill coverage 20%, technical 20%,
+ *   communication 15%, behavioral 15%, problem solving 10%.
+ * A score requires at least 2 interviews with schema-valid reports.
+ */
+export const readinessFormulaVersion = 1 as const;
+export const readinessFormulaVersionSchema = z.literal(readinessFormulaVersion);
+
+export const readinessCategories = [
+  "TECHNICAL",
+  "COMMUNICATION",
+  "BEHAVIORAL",
+  "PROBLEM_SOLVING",
+  "JOB_SPECIFIC",
+] as const;
+export const readinessCategorySchema = z.enum(readinessCategories);
+export type ReadinessCategory = z.infer<typeof readinessCategorySchema>;
+
+export const readinessComponentSchema = z.object({
+  category: readinessCategorySchema,
+  label: z.string().min(1),
+  /** Category average from persisted evaluations; null when no evidence exists. */
+  score: z.number().min(0).max(100).nullable(),
+  /** Base weight before renormalization (documented in readinessFormulaVersion). */
+  weight: z.number().min(0).max(1),
+  /** Number of scored observations behind the score. */
+  evidenceCount: z.number().int().nonnegative(),
+});
+export type ReadinessComponent = z.infer<typeof readinessComponentSchema>;
+
+export const readinessGapSchema = z.object({
+  skillKey: skillKeySchema.nullable(),
+  label: z.string().min(1),
+  kind: z.enum(["WEAK_SKILL", "MISSING_EVIDENCE"]),
+  detail: z.string().min(1),
+});
+export type ReadinessGap = z.infer<typeof readinessGapSchema>;
+
+/**
+ * Server-authoritative readiness for the user's active target job. The score
+ * is computed deterministically (never by an LLM); snapshots are recorded when
+ * reports complete so the trend reflects real history, not per-load churn.
+ */
+export const readinessAssessmentSchema = z.object({
+  formulaVersion: readinessFormulaVersionSchema,
+  careerTarget: z
+    .object({
+      id: z.uuid(),
+      title: z.string(),
+      company: z.string().nullable(),
+    })
+    .nullable(),
+  overall: z.number().min(0).max(100).nullable(),
+  previousOverall: z.number().min(0).max(100).nullable(),
+  change: z.number().nullable(),
+  components: z.array(readinessComponentSchema).max(10),
+  strengths: z.array(z.string().min(1)).max(3),
+  gaps: z.array(readinessGapSchema).max(8),
+  explanation: z.string().min(1).nullable(),
+  /** Timestamp of the newest completed interview behind the score. */
+  dataAsOf: z.string().datetime().nullable(),
+  evidence: z.object({
+    interviewCount: z.number().int().nonnegative(),
+    validReportCount: z.number().int().nonnegative(),
+    minInterviewsRequired: z.number().int().positive(),
+  }),
+  /** Prior snapshots (newest first); the current computation is not included. */
+  snapshots: z
+    .array(
+      z.object({
+        id: z.uuid(),
+        overall: z.number().min(0).max(100),
+        recordedAt: z.string().datetime(),
+        interviewCount: z.number().int().nonnegative(),
+      }),
+    )
+    .max(30),
+  generatedAt: z.string().datetime(),
+});
+export type ReadinessAssessment = z.infer<typeof readinessAssessmentSchema>;
+
+/** Practice activity kinds map to the interview flows the platform already supports. */
+export const practiceActivityTypes = [
+  "MOCK_INTERVIEW",
+  "QUESTION_SET",
+  "TECHNICAL_TOPIC",
+  "SYSTEM_DESIGN_EXERCISE",
+  "CODING_EXERCISE",
+  "COMMUNICATION_EXERCISE",
+] as const;
+export const practiceActivityTypeSchema = z.enum(practiceActivityTypes);
+export type PracticeActivityType = z.infer<typeof practiceActivityTypeSchema>;
+
+export const practiceItemStatuses = ["PENDING", "COMPLETED"] as const;
+export const practiceItemStatusSchema = z.enum(practiceItemStatuses);
+export type PracticeItemStatus = z.infer<typeof practiceItemStatusSchema>;
+
+export const practicePlanItemSchema = z.object({
+  id: z.uuid(),
+  activityType: practiceActivityTypeSchema,
+  title: z.string().min(1),
+  description: z.string().nullable(),
+  rationale: z.string().min(1),
+  phase: z.string().min(1),
+  priority: z.enum(["HIGH", "MEDIUM", "LOW"]),
+  status: practiceItemStatusSchema,
+  estimatedMinutes: z.number().int().positive(),
+  completedAt: z.string().datetime().nullable(),
+});
+export type PracticePlanItemDto = z.infer<typeof practicePlanItemSchema>;
+
+/**
+ * Server-authoritative practice plan. The plan is built deterministically from
+ * persisted interview data (never on page load churn), persisted with a version,
+ * and regenerated only when the underlying data changes — completed items are
+ * carried over so progress is never silently lost.
+ */
+export const practicePlanSchema = z.object({
+  id: z.uuid(),
+  status: z.enum(["READY", "FAILED"]),
+  version: z.number().int().nonnegative(),
+  goal: z.string().min(1),
+  targetRole: z.string().nullable(),
+  careerTargetId: z.uuid().nullable(),
+  basedOnInterviewIds: z.array(z.uuid()).max(200),
+  basedOnValidReportCount: z.number().int().nonnegative(),
+  generatedAt: z.string().datetime().nullable(),
+  progress: z.object({
+    completed: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+    estimatedMinutesTotal: z.number().int().nonnegative(),
+  }),
+  nextActivity: practicePlanItemSchema.nullable(),
+  items: z.array(practicePlanItemSchema).max(40),
+});
+export type PracticePlanDto = z.infer<typeof practicePlanSchema>;
+
 export const apiErrorSchema = z.object({
   code: z.string().min(1),
   message: z.string().min(1),

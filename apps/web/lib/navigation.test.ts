@@ -16,6 +16,7 @@ test("sidebar navigation matches the dashboard information architecture", () => 
           "Resume & Jobs",
           "Performance",
           "Skills & Weaknesses",
+          "Readiness",
           "Practice Plan",
         ],
       ],
