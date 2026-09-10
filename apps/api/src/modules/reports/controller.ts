@@ -27,6 +27,10 @@ export function registerReportRoutes(
   monolith?: MonolithExecutionManager,
   eventBus?: RealtimeEventBus,
   skillAnalysis?: Pick<SkillAnalysisService, "enqueueRefresh">,
+  readiness?: Pick<
+    import("../../modules/analytics/readiness-service.js").ReadinessService,
+    "recordSnapshotAfterReport"
+  >,
 ) {
   const service = new ReportService(
     database,
@@ -35,6 +39,7 @@ export function registerReportRoutes(
     new InterviewEventPublisher(app.log, eventBus),
     monolith,
     skillAnalysis,
+    readiness,
   );
   app.get(
     "/api/v1/interviews/:id/report",

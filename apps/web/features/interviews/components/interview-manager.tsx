@@ -8,6 +8,7 @@ import type {
   NextPracticeRecommendation,
   Resume,
 } from "@interviewer-ai/types";
+import { interviewTypes } from "@interviewer-ai/types";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +45,18 @@ export function InterviewManager() {
   const [jobDescriptionId, setJobDescriptionId] = useState("");
   const [careerTargetId, setCareerTargetId] = useState("");
   const [failure, setFailure] = useState<InterviewStartInput | null>(null);
+  // Optional ?type= prefill from the practice plan's “Start activity” actions.
+  const [presetType, setPresetType] = useState<InterviewConfiguration["interviewType"] | null>(
+    null,
+  );
+
+  useEffect(() => {
+    const type = new URLSearchParams(window.location.search).get("type");
+    if (type && (interviewTypes as readonly string[]).includes(type)) {
+      setPresetType(type as InterviewConfiguration["interviewType"]);
+      setCustomOpen(true);
+    }
+  }, []);
 
   const profile = useQuery({
     queryKey: ["profile"],
@@ -125,7 +138,7 @@ export function InterviewManager() {
   });
 
   const customConfiguration = (): InterviewStartInput => ({
-    interviewType: "MIXED",
+    interviewType: presetType ?? "MIXED",
     ...(role.trim() ? { targetRole: role.trim() } : {}),
     ...(difficulty ? { difficulty } : {}),
     ...(resumeId ? { resumeId } : {}),
@@ -238,6 +251,7 @@ export function InterviewManager() {
             careerTargetId={careerTargetId}
             setCareerTargetId={setCareerTargetId}
             pending={launch.isPending}
+            presetType={presetType}
             onStart={() => launch.mutate(customConfiguration())}
           />
         ) : null}
@@ -266,9 +280,11 @@ function CustomSetup(props: {
   careerTargetId: string;
   setCareerTargetId: (value: string) => void;
   pending: boolean;
+  presetType: InterviewConfiguration["interviewType"] | null;
   onStart: () => void;
 }) {
   const usesProfileOnly =
+    !props.presetType &&
     !props.role.trim() &&
     !props.difficulty &&
     !props.resumeId &&
@@ -276,6 +292,13 @@ function CustomSetup(props: {
     !props.careerTargetId;
   return (
     <div className="mt-6 space-y-4 border-t border-border pt-5">
+      {props.presetType ? (
+        <p className="flex gap-2 rounded-xl border border-primary/25 bg-primary/10 p-3 text-sm text-muted-foreground">
+          <Info className="mt-0.5 size-4 shrink-0 text-primary" />
+          Starting from your practice plan: a {props.presetType.replace("_", " ")} interview. You
+          can still adjust everything below.
+        </p>
+      ) : null}
       <p className="text-sm text-muted-foreground">
         Every option is optional. Add any combination that helps, or leave them blank for a
         profile-based practice session.

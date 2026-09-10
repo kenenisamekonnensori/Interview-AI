@@ -1,6 +1,7 @@
 import {
   BriefcaseBusiness,
   CreditCard,
+  Gauge,
   History,
   LayoutGrid,
   ListChecks,
@@ -27,9 +28,9 @@ export type NavigationSection = {
 
 /**
  * Dashboard sidebar information architecture. Routes reuse the existing
- * application pages; Performance, Skills & Weaknesses, Practice Plan, and
- * Subscription are structural placeholders served by proper empty-state pages
- * until their backend intelligence ships in later stages.
+ * application pages; Performance, Skills & Weaknesses, Readiness, and Practice
+ * Plan are backed by their server-authoritative analytics endpoints, while
+ * Subscription remains a placeholder until billing ships.
  */
 export const navigationSections: NavigationSection[] = [
   {
@@ -41,6 +42,7 @@ export const navigationSections: NavigationSection[] = [
       { label: "Resume & Jobs", href: "/resumes", icon: BriefcaseBusiness },
       { label: "Performance", href: "/performance", icon: TrendingUp },
       { label: "Skills & Weaknesses", href: "/skills", icon: Target },
+      { label: "Readiness", href: "/readiness", icon: Gauge },
       { label: "Practice Plan", href: "/practice-plan", icon: ListChecks },
     ],
   },

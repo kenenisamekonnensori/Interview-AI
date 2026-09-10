@@ -126,6 +126,30 @@ export class AnalyticsRepository {
     return this.database.skillAnalysis.findUnique({ where: { userId } });
   }
 
+  /** The user's active target with its linked job analysis, for readiness. */
+  activeTargetWithJob(userId: string) {
+    return this.database.careerTarget.findFirst({
+      where: { userId, status: "ACTIVE" },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        company: true,
+        jobDescription: {
+          select: { deletedAt: true, analysis: { select: { requiredSkills: true } } },
+        },
+      },
+    });
+  }
+
+  readinessSnapshots(userId: string) {
+    return this.database.readinessSnapshot.findMany({
+      where: { userId },
+      orderBy: { recordedAt: "desc" },
+      take: 30,
+    });
+  }
+
   recommendationContext(userId: string) {
     return Promise.all([
       this.database.userProfile.findUnique({ where: { userId } }),
@@ -136,6 +160,7 @@ export class AnalyticsRepository {
       this.database.jobDescription.findFirst({
         where: { userId, deletedAt: null, status: { in: ["READY", "ANALYZED"] } },
         orderBy: { createdAt: "desc" },
+        include: { analysis: { select: { requiredSkills: true } } },
       }),
       this.database.interview.findMany({
         where: { userId, status: "COMPLETED", report: { is: { status: "READY" } } },
@@ -146,8 +171,16 @@ export class AnalyticsRepository {
       this.database.careerTarget.findFirst({
         where: { userId, status: "ACTIVE" },
         orderBy: { updatedAt: "desc" },
-        select: { id: true, title: true },
+        select: { id: true, title: true, company: true },
       }),
     ]);
+  }
+
+  /** Plan rows for the recommendation engine (read-only; never rebuilds the plan). */
+  practicePlanRow(userId: string) {
+    return this.database.practicePlan.findUnique({
+      where: { userId },
+      include: { items: { orderBy: { position: "asc" } } },
+    });
   }
 }
