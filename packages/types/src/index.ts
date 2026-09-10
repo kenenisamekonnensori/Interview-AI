@@ -561,6 +561,33 @@ export const apiErrorSchema = z.object({
 });
 export type ApiErrorShape = z.infer<typeof apiErrorSchema>;
 
+/**
+ * Structured next-step recommendation. The chosen action and priority are
+ * computed deterministically from persisted data (severity, job relevance,
+ * trend, plan state); reasons always cite the evidence behind the pick.
+ */
+export const recommendationActionTypes = [
+  "START_MOCK_INTERVIEW",
+  "PRACTICE_WEAK_SKILL",
+  "REVIEW_PREVIOUS_INTERVIEW",
+  "PRACTICE_BEHAVIORAL",
+  "CONTINUE_PRACTICE_PLAN",
+  "PREPARE_TARGET_JOB",
+  "UPDATE_RESUME",
+] as const;
+export const recommendationActionTypeSchema = z.enum(recommendationActionTypes);
+export type RecommendationActionType = z.infer<typeof recommendationActionTypeSchema>;
+
+export const recommendationActionSchema = z.object({
+  /** Where the CTA routes in the web app. */
+  href: z.string().min(1).max(200),
+  /** Optional interview type prefilled via /interviews/new?type=… */
+  interviewType: interviewTypeSchema.optional(),
+  /** Practice-plan item the action targets, for plan-linked recommendations. */
+  planItemId: z.uuid().optional(),
+});
+export type RecommendationAction = z.infer<typeof recommendationActionSchema>;
+
 export const nextPracticeRecommendationSchema = z.object({
   suggestedTargetRole: z.string().min(1),
   interviewType: interviewTypeSchema,
@@ -573,6 +600,15 @@ export const nextPracticeRecommendationSchema = z.object({
   focusAreas: z.array(z.string().min(1)).max(3),
   basis: z.enum(["PROFILE", "HISTORY"]),
   setupSuggestion: z.string().min(1).optional(),
+  /** Deterministic action selection: severity × job relevance × trend × plan. */
+  actionType: recommendationActionTypeSchema,
+  /** User-facing gap statement, e.g. "Your biggest current gap is System Design." */
+  gapStatement: z.string().min(1),
+  /** Imperative next step derived from the action type and evidence. */
+  actionLabel: z.string().min(1),
+  action: recommendationActionSchema,
+  /** Numeric priority used for deterministic ordering (higher = more urgent). */
+  priority: z.number().min(0).max(100),
 });
 export type NextPracticeRecommendation = z.infer<typeof nextPracticeRecommendationSchema>;
 

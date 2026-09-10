@@ -10,6 +10,8 @@ import {
 import type { AnalyticsFilter, PerformanceQuery } from "./schema.js";
 import { AnalyticsRepository } from "./repository.js";
 import { computeSkillProfile, validSkillReportRows } from "./skill-engine.js";
+import { recommendNextAction } from "./recommendation-engine.js";
+import { computeReadiness } from "./readiness-engine.js";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 
 const dimensions = ["technical", "communication", "confidence", "problemSolving"] as const;
@@ -354,6 +356,12 @@ export class AnalyticsService {
     };
   }
 
+  /**
+   * Structured next-step recommendation. The engine picks the action
+   * deterministically from persisted skills, readiness, plan, and history;
+   * this method only gathers that data (user-scoped) and preserves the
+   * pre-existing interview-creation defaults for the CTA.
+   */
   async nextPracticeRecommendation(userId: string): Promise<NextPracticeRecommendation> {
     const [profile, activeResume, jobDescription, reports, careerTarget] =
       await this.repository.recommendationContext(userId);
@@ -361,49 +369,94 @@ export class AnalyticsService {
       const evaluation = validEvaluation(report.report?.evaluation);
       return evaluation ? [{ report, evaluation }] : [];
     });
-    const weaknesses = validReports.flatMap(({ evaluation }) =>
-      evaluation.weaknesses.map((item) => item.text),
+    const skills = computeSkillProfile(
+      validReports.map(({ report }) => ({
+        id: report.id,
+        interviewType: report.interviewType,
+        report: { evaluation: (report as { report: { evaluation: unknown } }).report.evaluation },
+        completedAt: report.completedAt,
+      })),
     );
-    const counts = new Map<string, number>();
-    for (const weakness of weaknesses) counts.set(weakness, (counts.get(weakness) ?? 0) + 1);
-    const focusAreas = [...counts.entries()]
-      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-      .slice(0, 3)
-      .map(([text]) => text);
-    const latest = validReports[0]?.report;
-    const primaryFocus = focusAreas[0];
-    const suggestedTargetRole =
-      careerTarget?.title ??
-      profile?.targetRole ??
-      jobDescription?.title ??
-      "General interview practice";
-    const reasons = [
-      careerTarget ? `Focused on your current target: ${careerTarget.title}.` : null,
-      profile?.targetRole ? `Uses your profile target role: ${profile.targetRole}.` : null,
-      activeResume ? "Uses your active resume for relevant questions." : null,
-      jobDescription
-        ? `Uses your saved job description${jobDescription.title ? ` for ${jobDescription.title}` : ""}.`
+    const [rows, targetRow, snapshots, planRow] = await Promise.all([
+      this.repository.completedWithReports(userId, { page: 1, pageSize: 50 }),
+      this.repository.activeTargetWithJob(userId),
+      this.repository.readinessSnapshots(userId),
+      this.repository.practicePlanRow(userId),
+    ]);
+    const readiness = computeReadiness({
+      reports: rows,
+      skills,
+      target: targetRow
+        ? {
+            id: targetRow.id,
+            title: targetRow.title,
+            company: targetRow.company,
+            requiredSkills: extractRequiredSkills(targetRow.jobDescription),
+          }
         : null,
-      primaryFocus
-        ? `${counts.get(primaryFocus)! > 1 ? "Recurring" : "Recent"} feedback suggests focusing on ${primaryFocus}.`
+      snapshots: snapshots.map((snapshot) => ({
+        id: snapshot.id,
+        overall: snapshot.overall,
+        recordedAt: snapshot.recordedAt,
+        interviewCount: snapshot.interviewCount,
+      })),
+      now: new Date(),
+    });
+    const plan = planRow
+      ? {
+          pendingCount: planRow.items.filter((item) => item.status === "PENDING").length,
+          nextActivity: (() => {
+            const item = planRow.items.find((entry) => entry.status === "PENDING");
+            return item
+              ? {
+                  id: item.id,
+                  activityType: item.activityType,
+                  title: item.title,
+                  priority: item.priority,
+                  rationale: item.rationale,
+                }
+              : null;
+          })(),
+          items: planRow.items.map((item) => ({
+            id: item.id,
+            activityType: item.activityType,
+            title: item.title,
+            priority: item.priority,
+            status: item.status,
+          })),
+        }
+      : null;
+    const latest = validReports[0]?.report ?? null;
+    const result = recommendNextAction({
+      profileTargetRole:
+        careerTarget?.title ?? profile?.targetRole ?? jobDescription?.title ?? null,
+      defaultDifficulty: profile?.defaultDifficulty ?? "MEDIUM",
+      defaultDurationMinutes: profile?.defaultInterviewDuration ?? 30,
+      skills,
+      readiness,
+      plan,
+      target: careerTarget
+        ? {
+            id: careerTarget.id,
+            title: careerTarget.title,
+            company: careerTarget.company ?? null,
+            requiredSkills: extractRequiredSkills(jobDescription),
+          }
         : null,
-    ]
-      .filter((reason): reason is string => Boolean(reason))
-      .slice(0, 3);
-    const basis = validReports.length ? "HISTORY" : "PROFILE";
+      hasActiveResume: Boolean(activeResume),
+      latestReport: latest
+        ? {
+            interviewId: latest.id,
+            interviewType: latest.interviewType,
+            summary: latest.report?.summary ?? null,
+          }
+        : null,
+    });
+    // Preserve the interview-creation defaults the CTA has always carried.
     return {
-      suggestedTargetRole,
-      interviewType:
-        (latest?.interviewType as NextPracticeRecommendation["interviewType"] | undefined) ??
-        "MIXED",
-      difficulty: profile?.defaultDifficulty ?? "MEDIUM",
-      suggestedDurationMinutes: profile?.defaultInterviewDuration ?? 30,
+      ...result,
       ...(activeResume ? { resumeId: activeResume.id } : {}),
       ...(jobDescription ? { jobDescriptionId: jobDescription.id } : {}),
-      ...(careerTarget ? { careerTargetId: careerTarget.id } : {}),
-      reasons: reasons.length ? reasons : ["Start with a focused role-based practice interview."],
-      focusAreas,
-      basis,
       ...(!careerTarget && !profile?.targetRole && !activeResume && !jobDescription
         ? {
             setupSuggestion:
@@ -412,6 +465,15 @@ export class AnalyticsService {
         : {}),
     };
   }
+}
+
+function extractRequiredSkills(
+  jobDescription: { deletedAt: Date | null; analysis: { requiredSkills: unknown } | null } | null,
+): string[] {
+  if (!jobDescription || jobDescription.deletedAt) return [];
+  const raw = jobDescription.analysis?.requiredSkills;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
 function validEvaluation(value: unknown) {

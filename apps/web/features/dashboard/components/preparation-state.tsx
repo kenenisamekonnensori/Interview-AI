@@ -128,21 +128,32 @@ export function PreparationState({ preparation, recommendation, stats }: Prepara
         </Link>
       </article>
 
-      <article className="surface p-5">
+      <article className="surface p-5 sm:col-span-2">
         <p className="flex items-center gap-2 text-sm font-medium">
-          <Sparkles className="size-4 text-primary" aria-hidden="true" /> Recommended practice
+          <Sparkles className="size-4 text-primary" aria-hidden="true" /> Recommended next step
         </p>
-        <p className="mt-2 truncate text-lg font-semibold">{recommendation.suggestedTargetRole}</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {recommendation.interviewType.replaceAll("_", " ").toLowerCase()} ·{" "}
-          {recommendation.difficulty.toLowerCase()} · {recommendation.suggestedDurationMinutes} min
+        <p className="mt-2 text-lg font-semibold">{recommendation.gapStatement}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{recommendation.actionLabel}</p>
+        <p className="mt-2 max-w-2xl text-xs text-muted-foreground">
+          {recommendation.reasons.join(" ")}
         </p>
-        <Link
-          href="/interviews/new"
-          className="button-primary mt-4 inline-flex h-9 items-center px-3 text-xs"
-        >
-          <Mic2 className="size-3.5" /> Start this practice
-        </Link>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <Link
+            href={recommendation.action.href}
+            className="button-primary inline-flex h-9 items-center px-3 text-xs"
+          >
+            <Mic2 className="size-3.5" /> Start practice
+          </Link>
+          {recommendation.actionType === "REVIEW_PREVIOUS_INTERVIEW" ? (
+            <span className="text-xs text-muted-foreground">
+              Review converts last-session feedback into durable improvement.
+            </span>
+          ) : (
+            <Link href="/practice-plan" className="inline-block text-sm font-medium text-primary">
+              View full plan
+            </Link>
+          )}
+        </div>
       </article>
     </section>
   );

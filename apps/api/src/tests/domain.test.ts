@@ -38,6 +38,7 @@ import {
 } from "../modules/analytics/service.js";
 import {
   dashboardOverviewSchema,
+  nextPracticeRecommendationSchema,
   performanceSummarySchema,
   practicePlanSchema,
   readinessAssessmentSchema,
@@ -64,6 +65,10 @@ import {
   type ReadinessSnapshotRow,
   type ReadinessTarget,
 } from "../modules/analytics/readiness-engine.js";
+import {
+  recommendNextAction,
+  type RecommendationContext,
+} from "../modules/analytics/recommendation-engine.js";
 import {
   buildPlanItems,
   planGoal,
@@ -123,11 +128,18 @@ const recommendationEvaluation = (weaknesses: string[]) => {
 
 function recommendationService(context: unknown) {
   const service = new AnalyticsService({} as never);
-  (
-    service.repository as unknown as {
-      recommendationContext: (userId: string) => Promise<unknown>;
-    }
-  ).recommendationContext = async () => context;
+  const repository = service.repository as unknown as {
+    recommendationContext: (userId: string) => Promise<unknown>;
+    completedWithReports: (userId: string, filter: unknown) => Promise<unknown>;
+    activeTargetWithJob: (userId: string) => Promise<unknown>;
+    readinessSnapshots: (userId: string) => Promise<unknown>;
+    practicePlanRow: (userId: string) => Promise<unknown>;
+  };
+  repository.recommendationContext = async () => context;
+  repository.completedWithReports = async () => [];
+  repository.activeTargetWithJob = async () => null;
+  repository.readinessSnapshots = async () => [];
+  repository.practicePlanRow = async () => null;
   return service;
 }
 
@@ -152,6 +164,10 @@ function overviewService(context: unknown, recordedUsers: string[] = []) {
   const repository = service.repository as unknown as {
     overviewContext: (userId: string, weekStart: Date) => Promise<unknown>;
     recommendationContext: (userId: string) => Promise<unknown>;
+    completedWithReports: (userId: string, filter: unknown) => Promise<unknown>;
+    activeTargetWithJob: (userId: string) => Promise<unknown>;
+    readinessSnapshots: (userId: string) => Promise<unknown>;
+    practicePlanRow: (userId: string) => Promise<unknown>;
   };
   repository.overviewContext = async (userId: string) => {
     recordedUsers.push(userId);
@@ -161,6 +177,10 @@ function overviewService(context: unknown, recordedUsers: string[] = []) {
     recordedUsers.push(userId);
     return [null, null, null, []];
   };
+  repository.completedWithReports = async () => [];
+  repository.activeTargetWithJob = async () => null;
+  repository.readinessSnapshots = async () => [];
+  repository.practicePlanRow = async () => null;
   return service;
 }
 
@@ -542,11 +562,17 @@ test("next-practice recommendation prefers the current career target and links i
     null,
     null,
     [],
-    { id: "66666666-6666-4666-8666-666666666666", title: "Backend Engineer" },
+    {
+      id: "66666666-6666-4666-8666-666666666666",
+      title: "Backend Engineer",
+      company: null,
+    },
   ]).nextPracticeRecommendation("user");
   assert.equal(recommendation.suggestedTargetRole, "Backend Engineer");
   assert.equal(recommendation.careerTargetId, "66666666-6666-4666-8666-666666666666");
-  assert.match(recommendation.reasons.join(" "), /current target: Backend Engineer/);
+  assert.equal(recommendation.actionType, "PREPARE_TARGET_JOB");
+  assert.match(recommendation.gapStatement, /preparing for Backend Engineer/);
+  assert.match(recommendation.actionLabel, /Backend Engineer/);
 });
 
 const performanceEvaluation = (
@@ -1580,11 +1606,12 @@ test("next-practice recommendation serves new and profile-only users conservativ
   assert.equal(profileOnly.difficulty, "HARD");
 });
 
-test("next-practice recommendation uses valid report weaknesses and recurring evidence", async () => {
+test("next-practice recommendation consolidates recent feedback once history exists", async () => {
   const report = (weaknesses: string[], id: string) => ({
     id,
     interviewType: "TECHNICAL",
     report: { evaluation: recommendationEvaluation(weaknesses) },
+    completedAt: new Date("2026-08-01T00:00:00.000Z"),
   });
   const recommendation = await recommendationService([
     { targetRole: "Backend engineer", defaultDifficulty: "MEDIUM", defaultInterviewDuration: 30 },
@@ -1593,14 +1620,19 @@ test("next-practice recommendation uses valid report weaknesses and recurring ev
     [report(["Explain trade-offs clearly."], "one")],
   ]).nextPracticeRecommendation("user");
   assert.equal(recommendation.basis, "HISTORY");
-  assert.deepEqual(recommendation.focusAreas, ["Explain trade-offs clearly."]);
+  // With a single scored report there is no behavioral evidence yet, so the
+  // engine prioritizes building it over consolidating one report.
+  assert.equal(recommendation.actionType, "PRACTICE_BEHAVIORAL");
+  assert.match(recommendation.reasons.join(" "), /0 scored observations/);
   const recurring = await recommendationService([
     null,
     null,
     null,
     [report(["Quantify impact."], "one"), report(["Quantify impact."], "two")],
   ]).nextPracticeRecommendation("user");
-  assert.match(recurring.reasons.join(" "), /Recurring feedback/);
+  assert.equal(recurring.basis, "HISTORY");
+  assert.ok(recurring.priority > 0);
+  assert.ok(recurring.action.href.length > 0);
 });
 
 test("supported interview defaults and accessibility preferences persist as validated user settings", () => {
@@ -2267,4 +2299,166 @@ test("monolith mode defaults to true and executes tasks in-process without requi
       process.env.WORKER_MODE = originalMode;
     }
   }
+});
+
+// --- Stage 7: recommendation engine ---
+
+const recSkill = (
+  skillKey: SkillKey,
+  overrides: Partial<SkillAssessment> = {},
+): SkillAssessment => ({
+  skillKey,
+  label: skillKey,
+  status: "WEAKNESS",
+  level: 55,
+  latestScore: 55,
+  trend: { change: null, direction: null },
+  confidence: "MEDIUM",
+  observationCount: 5,
+  explanation: "Explanation.",
+  recommendedPractice: "Practice.",
+  supportingInterviews: [],
+  ...overrides,
+});
+
+const recContext = (overrides: Partial<RecommendationContext> = {}): RecommendationContext => ({
+  profileTargetRole: null,
+  defaultDifficulty: "MEDIUM",
+  defaultDurationMinutes: 30,
+  skills: [],
+  readiness: null,
+  plan: null,
+  target: null,
+  hasActiveResume: true,
+  latestReport: null,
+  ...overrides,
+});
+
+const recReadiness = (overall: number): RecommendationContext["readiness"] => ({
+  formulaVersion: 1,
+  careerTarget: null,
+  overall,
+  previousOverall: null,
+  change: null,
+  components: [],
+  strengths: [],
+  gaps: [],
+  explanation: null,
+  dataAsOf: null,
+  evidence: {
+    interviewCount: 4,
+    validReportCount: 4,
+    minInterviewsRequired: 2,
+  },
+  snapshots: [],
+  generatedAt: NOW.toISOString(),
+});
+
+const recPlan = (
+  priority: string,
+  title = "Practice system design trade-offs",
+): RecommendationContext["plan"] => ({
+  pendingCount: 3,
+  nextActivity: {
+    id: planItemUuid(0),
+    activityType: "SYSTEM_DESIGN_EXERCISE",
+    title,
+    priority,
+    rationale: "System Design is a weakness — highest leverage activity.",
+  },
+  items: [
+    {
+      id: planItemUuid(0),
+      activityType: "SYSTEM_DESIGN_EXERCISE",
+      title,
+      priority,
+      status: "PENDING",
+    },
+  ],
+});
+
+test("recommendation engine prioritizes weak job-required skills with plan agreement", () => {
+  const result = recommendNextAction(
+    recContext({
+      skills: [recSkill("system-design", { label: "System Design" })],
+      target: {
+        id: "11111111-1111-4111-8111-111111111111",
+        title: "Backend Engineer",
+        company: null,
+        requiredSkills: ["System Design"],
+      },
+      plan: recPlan("HIGH", "System Design trade-off drills"),
+      readiness: recReadiness(71),
+      latestReport: {
+        interviewId: planItemUuid(1),
+        interviewType: "SYSTEM_DESIGN",
+        summary: "Solid fundamentals.",
+      },
+    }),
+  );
+  assert.equal(result.actionType, "PRACTICE_WEAK_SKILL");
+  assert.equal(result.gapStatement, "Your biggest current gap is System Design.");
+  assert.match(result.action.href, /type=SYSTEM_DESIGN/);
+  assert.ok(result.priority >= 60); // severity 40 + relevance 20 + plan 15
+  assert.match(result.reasons.join(" "), /required for this job/);
+  assert.match(result.reasons.join(" "), /readiness is 71%/i);
+});
+
+test("recommendation engine deterministic: same inputs yield the same action", () => {
+  const context = recContext({
+    skills: [recSkill("system-design"), recSkill("databases", { level: 52, observationCount: 6 })],
+  });
+  const first = recommendNextAction(context);
+  const second = recommendNextAction(context);
+  assert.deepEqual(first, second);
+});
+
+test("recommendation engine picks the plan item when it outweighs other evidence", () => {
+  const result = recommendNextAction(
+    recContext({
+      skills: [],
+      plan: recPlan("HIGH"),
+      latestReport: { interviewId: planItemUuid(1), interviewType: "MIXED", summary: null },
+    }),
+  );
+  assert.equal(result.actionType, "CONTINUE_PRACTICE_PLAN");
+  assert.equal(result.action.planItemId, planItemUuid(0));
+  assert.match(result.gapStatement, /practice plan/);
+});
+
+test("recommendation engine surfaces setup actions before any scored history", () => {
+  const withTarget = recommendNextAction(
+    recContext({
+      hasActiveResume: false,
+      target: {
+        id: "11111111-1111-4111-8111-111111111111",
+        title: "Backend Engineer",
+        company: "Example Co",
+        requiredSkills: [],
+      },
+    }),
+  );
+  assert.equal(withTarget.actionType, "PREPARE_TARGET_JOB");
+  assert.equal(withTarget.basis, "PROFILE");
+  const resumeFirst = recommendNextAction(recContext({ hasActiveResume: false }));
+  assert.equal(resumeFirst.actionType, "UPDATE_RESUME");
+  assert.equal(resumeFirst.action.href, "/resumes");
+});
+
+test("recommendation engine validates against the shared contract", () => {
+  const result = recommendNextAction(
+    recContext({
+      skills: [recSkill("behavioral", { label: "Behavioral Interviewing" })],
+      readiness: recReadiness(64),
+    }),
+  );
+  const parsed = nextPracticeRecommendationSchema.safeParse(result);
+  assert.equal(parsed.success, true);
+  assert.equal(result.interviewType, "BEHAVIORAL");
+});
+
+test("recommendation engine falls back to a mock interview when nothing else applies", () => {
+  const result = recommendNextAction(recContext());
+  assert.equal(result.actionType, "START_MOCK_INTERVIEW");
+  assert.equal(result.suggestedTargetRole, "General interview practice");
 });
