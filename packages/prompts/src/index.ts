@@ -3,6 +3,7 @@ export { buildFollowUpGuidance } from "./follow-up.js";
 export { buildInterviewerBehaviorPrompt, type InterviewerPromptInput } from "./interviewer.js";
 export { buildInterviewPlanPrompt } from "./interview-plan.js";
 export { buildReportPrompt } from "./report.js";
+export { buildSkillAnalysisPrompt } from "./skill-analysis.js";
 export { safetyPrivacyPrompt } from "./safety.js";
 
 export const promptLibraryVersion = "0.2.0";

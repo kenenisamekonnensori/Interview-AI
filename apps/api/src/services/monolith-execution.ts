@@ -6,6 +6,7 @@ import { analyzeJobDescription, markJobAnalysisFailed } from "./job-analysis.ser
 import { planInterview, markInterviewPlanFailed } from "./interview-plan.service.js";
 import type { ReportService } from "../modules/reports/service.js";
 import { processNextAuthEmail } from "./auth-email.service.js";
+import { analyzeUserSkills, markSkillAnalysisFailed } from "./skill-analysis.service.js";
 
 /**
  * Checks whether the backend is running in Monolith Mode (default pre-user stage)
@@ -156,6 +157,38 @@ export class MonolithExecutionManager {
             interviewId,
             error: error instanceof Error ? error.message : String(error),
           });
+        }
+      });
+    });
+
+    return true;
+  }
+
+  dispatchSkillAnalysis(userId: string, correlationId?: string): boolean {
+    if (!isMonolithMode()) return false;
+
+    console.info(`[Monolith Mode] Running skill analysis directly for user ${userId}`);
+    observability().event("monolith.execution.started", {
+      task: "skill-analysis",
+      userId,
+      correlationId,
+    });
+
+    setImmediate(() => {
+      withCorrelationId(correlationId, async () => {
+        try {
+          await analyzeUserSkills(this.database, this.environment, userId);
+          observability().event("monolith.execution.completed", {
+            task: "skill-analysis",
+            userId,
+          });
+        } catch (error) {
+          observability().event("monolith.execution.failed", {
+            task: "skill-analysis",
+            userId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          await markSkillAnalysisFailed(this.database, userId);
         }
       });
     });

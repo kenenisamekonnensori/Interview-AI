@@ -17,6 +17,7 @@ function toDto(report: Awaited<ReturnType<ReportService["details"]>>) {
 
 import type { MonolithExecutionManager } from "../../services/monolith-execution.js";
 import type { RealtimeEventBus } from "../../services/realtime-events.js";
+import type { SkillAnalysisService } from "../../services/skill-analysis.service.js";
 
 export function registerReportRoutes(
   app: FastifyInstance,
@@ -25,6 +26,7 @@ export function registerReportRoutes(
   queue: ReturnType<typeof createReportQueue>,
   monolith?: MonolithExecutionManager,
   eventBus?: RealtimeEventBus,
+  skillAnalysis?: Pick<SkillAnalysisService, "enqueueRefresh">,
 ) {
   const service = new ReportService(
     database,
@@ -32,6 +34,7 @@ export function registerReportRoutes(
     queue,
     new InterviewEventPublisher(app.log, eventBus),
     monolith,
+    skillAnalysis,
   );
   app.get(
     "/api/v1/interviews/:id/report",

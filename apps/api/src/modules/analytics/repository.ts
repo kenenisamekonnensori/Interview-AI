@@ -122,6 +122,10 @@ export class AnalyticsRepository {
     ]);
   }
 
+  skillAnalysisRow(userId: string) {
+    return this.database.skillAnalysis.findUnique({ where: { userId } });
+  }
+
   recommendationContext(userId: string) {
     return Promise.all([
       this.database.userProfile.findUnique({ where: { userId } }),

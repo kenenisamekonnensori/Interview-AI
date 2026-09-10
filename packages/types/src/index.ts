@@ -304,6 +304,113 @@ export const performanceSummarySchema = z.object({
 });
 export type PerformanceSummary = z.infer<typeof performanceSummarySchema>;
 
+/**
+ * Controlled skill taxonomy. Skills are canonical keys, never arbitrary
+ * AI-generated names: free-form evaluation category labels are normalized onto
+ * this taxonomy (unknown labels are ignored, never fabricated). Extending the
+ * taxonomy means adding a key here and to the alias map in the API.
+ */
+export const skillKeys = [
+  "communication",
+  "problem-solving",
+  "technical",
+  "confidence",
+  "system-design",
+  "algorithms",
+  "data-structures",
+  "databases",
+  "behavioral",
+  "leadership",
+  "coding",
+] as const;
+export const skillKeySchema = z.enum(skillKeys);
+export type SkillKey = z.infer<typeof skillKeySchema>;
+
+export const skillStatuses = [
+  "INSUFFICIENT_EVIDENCE",
+  "WEAKNESS",
+  "IMPROVING",
+  "STRENGTH",
+  "DEVELOPING",
+] as const;
+export const skillStatusSchema = z.enum(skillStatuses);
+export type SkillStatus = z.infer<typeof skillStatusSchema>;
+
+export const skillConfidenceLevels = ["LOW", "MEDIUM", "HIGH"] as const;
+export const skillConfidenceSchema = z.enum(skillConfidenceLevels);
+export type SkillConfidence = z.infer<typeof skillConfidenceSchema>;
+
+export const skillAnalysisStatuses = ["GENERATING", "READY", "FAILED"] as const;
+export const skillAnalysisStatusSchema = z.enum(skillAnalysisStatuses);
+export type SkillAnalysisStatus = z.infer<typeof skillAnalysisStatusSchema>;
+
+/** One skill's longitudinal assessment, derived deterministically from evaluations. */
+export const skillAssessmentSchema = z.object({
+  skillKey: skillKeySchema,
+  label: z.string().min(1),
+  status: skillStatusSchema,
+  level: z.number().min(0).max(100).nullable(),
+  latestScore: z.number().min(0).max(100).nullable(),
+  trend: z.object({
+    change: z.number().min(-100).max(100).nullable(),
+    direction: z.enum(["up", "down", "flat"]).nullable(),
+  }),
+  confidence: skillConfidenceSchema,
+  observationCount: z.number().int().nonnegative(),
+  explanation: z.string().min(1),
+  recommendedPractice: z.string().min(1),
+  supportingInterviews: z
+    .array(
+      z.object({
+        interviewId: z.uuid(),
+        completedAt: z.string().datetime(),
+        score: z.number().min(0).max(100),
+        interviewType: interviewTypeSchema,
+      }),
+    )
+    .max(5),
+});
+export type SkillAssessment = z.infer<typeof skillAssessmentSchema>;
+
+/** Persisted AI interpretation of the deterministic profile (never the source of truth). */
+export const skillAnalysisDtoSchema = z.object({
+  status: skillAnalysisStatusSchema,
+  version: z.number().int().nonnegative(),
+  summary: z.string().nullable(),
+  insights: z
+    .record(
+      z.string(),
+      z.object({
+        insight: z.string(),
+        recommendedPractice: z.string(),
+      }),
+    )
+    .superRefine((insights, context) => {
+      for (const key of Object.keys(insights))
+        if (!skillKeySchema.safeParse(key).success)
+          context.addIssue({ code: "custom", message: `Unknown skill key: ${key}` });
+    })
+    .nullable(),
+  basedOnObservationCount: z.number().int().nonnegative(),
+  basedOnInterviewIds: z.array(z.uuid()).max(200),
+  model: z.string().nullable(),
+  generatedAt: z.string().datetime().nullable(),
+});
+export type SkillAnalysisDto = z.infer<typeof skillAnalysisDtoSchema>;
+
+/**
+ * Server-authoritative skill profile. Skills and all numbers are computed
+ * deterministically from persisted evaluations; `analysis` is an optional
+ * persisted AI interpretation that is refreshed only after interviews complete.
+ */
+export const skillProfileSchema = z.object({
+  generatedAt: z.string().datetime(),
+  validReportCount: z.number().int().nonnegative(),
+  skills: z.array(skillAssessmentSchema).max(30),
+  analysis: skillAnalysisDtoSchema.nullable(),
+});
+export type SkillProfile = z.infer<typeof skillProfileSchema>;
+
 export const apiErrorSchema = z.object({
   code: z.string().min(1),
   message: z.string().min(1),

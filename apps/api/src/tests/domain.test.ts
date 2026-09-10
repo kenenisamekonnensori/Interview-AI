@@ -36,8 +36,20 @@ import {
   PerformanceQueryError,
   startOfUtcWeek,
 } from "../modules/analytics/service.js";
-import { dashboardOverviewSchema, performanceSummarySchema } from "@interviewer-ai/types";
+import {
+  dashboardOverviewSchema,
+  performanceSummarySchema,
+  skillProfileSchema,
+} from "@interviewer-ai/types";
 import { performanceQuerySchema } from "../modules/analytics/schema.js";
+import { normalizeCategoryKey } from "../modules/analytics/skill-taxonomy.js";
+import {
+  assessSkill,
+  computeSkillObservations,
+  computeSkillProfile,
+  validSkillReportRows,
+} from "../modules/analytics/skill-engine.js";
+import { skillAnalysisOutputSchema } from "../modules/analytics/skill-analysis-schema.js";
 import { InterviewLifecycleError, InterviewService } from "../modules/interviews/service.js";
 import { userProfileUpdateSchema } from "../modules/users/schema.js";
 import { UserProfileRepository } from "../modules/users/repository.js";
@@ -716,6 +728,293 @@ test("performance series is capped and reads are scoped to the server-derived us
   );
   assert.equal(performance.series.length, 60);
   assert.deepEqual(recordedUsers, ["candidate-7", "candidate-7"]);
+});
+
+const dim = (score: number) => ({
+  score,
+  feedback: "Feedback.",
+  evidenceTurnIds: [firstTurn],
+});
+
+const skillEvaluation = (
+  dimScores: [number, number, number, number],
+  categoryScores: Record<string, { score: number; feedback: string; evidenceTurnIds: string[] }>,
+) => {
+  const [technical, communication, confidence, problemSolving] = dimScores;
+  return {
+    overallScore: Math.round((technical + communication + confidence + problemSolving) / 4),
+    technical: dim(technical),
+    communication: dim(communication),
+    confidence: dim(confidence),
+    problemSolving: dim(problemSolving),
+    categoryScores,
+    strengths: [],
+    weaknesses: [],
+    missedOpportunities: [],
+    recommendations: [],
+  };
+};
+
+const skillRow = (
+  id: string,
+  completedAt: Date,
+  dimScores: [number, number, number, number],
+  categoryScores: Record<string, { score: number; feedback: string; evidenceTurnIds: string[] }>,
+  interviewType = "TECHNICAL",
+) => ({
+  id,
+  interviewType,
+  report: { evaluation: skillEvaluation(dimScores, categoryScores) },
+  completedAt,
+});
+
+const obs = (interviewId: string, score: number, at = "2026-08-01T00:00:00.000Z") => ({
+  skillKey: "technical" as const,
+  score,
+  feedback: "Feedback.",
+  interviewId,
+  completedAt: new Date(at),
+  interviewType: "TECHNICAL" as const,
+});
+
+function skillsService(
+  context: { rows: unknown[]; analysis: unknown },
+  recordedUsers: string[] = [],
+) {
+  const service = new AnalyticsService({} as never);
+  const repository = service.repository as unknown as {
+    completedWithReports: (userId: string, filter: unknown) => Promise<unknown>;
+    skillAnalysisRow: (userId: string) => Promise<unknown>;
+  };
+  repository.completedWithReports = async (userId: string) => {
+    recordedUsers.push(userId);
+    return context.rows;
+  };
+  repository.skillAnalysisRow = async (userId: string) => {
+    recordedUsers.push(userId);
+    return context.analysis;
+  };
+  return service;
+}
+
+test("skill taxonomy normalizes free-form category labels onto canonical skills", () => {
+  assert.equal(normalizeCategoryKey("System Design"), "system-design");
+  assert.equal(normalizeCategoryKey("Architecture"), "system-design");
+  assert.equal(normalizeCategoryKey("SQL"), "databases");
+  assert.equal(normalizeCategoryKey("Data Structures"), "data-structures");
+  assert.equal(normalizeCategoryKey("Behavioral Interviewing"), "behavioral");
+  assert.equal(normalizeCategoryKey("Code Quality"), "coding");
+  assert.equal(normalizeCategoryKey("Something Obscure"), null);
+});
+
+test("skill observations always include fixed dimensions and only mapped categories", () => {
+  const rows = [
+    skillRow("i1", new Date("2026-08-01T00:00:00.000Z"), [70, 80, 90, 60], {
+      "System Design": dim(65),
+      "Unmapped X": dim(50),
+    }),
+  ];
+  const observations = computeSkillObservations(rows);
+  assert.equal(observations.get("communication")?.[0]?.score, 80);
+  assert.equal(observations.get("technical")?.[0]?.score, 70);
+  assert.equal(observations.get("confidence")?.[0]?.score, 90);
+  assert.equal(observations.get("problem-solving")?.[0]?.score, 60);
+  assert.equal(observations.get("system-design")?.[0]?.score, 65);
+  assert.equal(observations.get("algorithms"), undefined);
+  assert.equal([...observations.keys()].length, 5);
+});
+
+test("skill engine requires a completed timestamp and a schema-valid evaluation", () => {
+  const rows = [
+    skillRow("i1", new Date("2026-08-01T00:00:00.000Z"), [70, 70, 70, 70], {}),
+    {
+      id: "i2",
+      interviewType: "TECHNICAL",
+      report: { evaluation: skillEvaluation([70, 70, 70, 70], {}) },
+      completedAt: null,
+    },
+    {
+      id: "i3",
+      interviewType: "TECHNICAL",
+      report: { evaluation: { broken: true } },
+      completedAt: new Date("2026-09-01T00:00:00.000Z"),
+    },
+  ];
+  assert.equal(validSkillReportRows(rows).length, 1);
+  assert.equal(computeSkillObservations(rows).size, 4);
+});
+
+test("skill statuses require repeated evidence and separate strengths from weaknesses", () => {
+  const single = assessSkill("technical", [obs("i1", 50)]);
+  assert.equal(single.status, "INSUFFICIENT_EVIDENCE");
+  assert.equal(single.confidence, "LOW");
+  assert.equal(single.observationCount, 1);
+  const weak = assessSkill("technical", [obs("i1", 55), obs("i2", 55)]);
+  assert.equal(weak.status, "WEAKNESS");
+  const strong = assessSkill("technical", [obs("i1", 80), obs("i2", 80)]);
+  assert.equal(strong.status, "STRENGTH");
+  const improving = assessSkill("technical", [obs("i1", 50), obs("i2", 60)]);
+  assert.equal(improving.status, "IMPROVING");
+  const developing = assessSkill("technical", [obs("i1", 70), obs("i2", 72)]);
+  assert.equal(developing.status, "DEVELOPING");
+});
+
+test("skill trend compares halves once there is enough evidence", () => {
+  const four = [obs("i1", 80), obs("i2", 80), obs("i3", 80), obs("i4", 30)];
+  const skill = assessSkill("technical", four);
+  assert.deepEqual(skill.trend, { change: -25, direction: "down" });
+  const two = [obs("i1", 80), obs("i2", 30)];
+  assert.deepEqual(assessSkill("technical", two).trend, { change: -50, direction: "down" });
+});
+
+test("skill confidence grows with the volume of observations", () => {
+  const observations = (count: number) =>
+    Array.from({ length: count }, (_, index) => obs(`i${index}`, 70));
+  assert.equal(assessSkill("technical", observations(2)).confidence, "LOW");
+  assert.equal(assessSkill("technical", observations(5)).confidence, "MEDIUM");
+  assert.equal(assessSkill("technical", observations(10)).confidence, "HIGH");
+});
+
+test("skill profile derives assessments from evaluations and validates as the contract", async () => {
+  const rows = [
+    skillRow(firstTurn, new Date("2026-08-01T00:00:00.000Z"), [50, 85, 70, 75], {
+      "System Design": dim(50),
+    }),
+    skillRow(
+      secondTurn,
+      new Date("2026-09-01T00:00:00.000Z"),
+      [52, 83, 76, 78],
+      { "System Design": dim(55) },
+      "MIXED",
+    ),
+  ];
+  const profile = await skillsService({ rows, analysis: null }).skillProfile("user");
+  assert.equal(profile.validReportCount, 2);
+  assert.equal(profile.analysis, null);
+  const technical = profile.skills.find((skill) => skill.skillKey === "technical")!;
+  assert.equal(technical.level, 51);
+  assert.equal(technical.latestScore, 52);
+  assert.equal(technical.observationCount, 2);
+  assert.equal(technical.status, "WEAKNESS");
+  const communication = profile.skills.find((skill) => skill.skillKey === "communication")!;
+  assert.equal(communication.status, "STRENGTH");
+  assert.equal(communication.level, 84);
+  const confidence = profile.skills.find((skill) => skill.skillKey === "confidence")!;
+  assert.equal(confidence.status, "IMPROVING");
+  const systemDesign = profile.skills.find((skill) => skill.skillKey === "system-design")!;
+  assert.equal(systemDesign.level, 53);
+  assert.equal(systemDesign.observationCount, 2);
+  assert.deepEqual(systemDesign.supportingInterviews[0], {
+    interviewId: secondTurn,
+    completedAt: "2026-09-01T00:00:00.000Z",
+    score: 55,
+    interviewType: "MIXED",
+  });
+  assert.ok(technical.explanation.includes("51/100"));
+  assert.ok(technical.recommendedPractice.length > 0);
+  assert.equal(skillProfileSchema.safeParse(profile).success, true);
+});
+
+test("skill profile returns honest empty states and excludes invalid evaluations", async () => {
+  const empty = await skillsService({ rows: [], analysis: null }).skillProfile("user");
+  assert.equal(empty.validReportCount, 0);
+  assert.deepEqual(empty.skills, []);
+  assert.equal(empty.analysis, null);
+  assert.equal(skillProfileSchema.safeParse(empty).success, true);
+  const withInvalid = await skillsService({
+    rows: [
+      skillRow(firstTurn, new Date("2026-08-01T00:00:00.000Z"), [70, 70, 70, 70], {}),
+      {
+        id: secondTurn,
+        interviewType: "MIXED",
+        report: { evaluation: { broken: true } },
+        completedAt: new Date("2026-09-01T00:00:00.000Z"),
+      },
+    ],
+    analysis: null,
+  }).skillProfile("user");
+  assert.equal(withInvalid.validReportCount, 1);
+  assert.equal(withInvalid.skills.length, 4);
+});
+
+test("skill profile surfaces the persisted AI interpretation when present", async () => {
+  const rows = [
+    skillRow(firstTurn, new Date("2026-08-01T00:00:00.000Z"), [70, 70, 70, 70], {}),
+    skillRow(secondTurn, new Date("2026-09-01T00:00:00.000Z"), [75, 75, 75, 75], {}),
+  ];
+  const analysisRow = {
+    status: "READY",
+    version: 2,
+    model: "gemini-3.5-flash-lite",
+    summary: "You are strongest in communication.",
+    insights: {
+      communication: { insight: "Clear structure.", recommendedPractice: "Keep using STAR." },
+    },
+    basedOnInterviewIds: [firstTurn, secondTurn],
+    basedOnObservationCount: 8,
+    generatedAt: new Date("2026-09-10T00:00:00.000Z"),
+    failureReason: null,
+  };
+  const profile = await skillsService({ rows, analysis: analysisRow }).skillProfile("user");
+  assert.deepEqual(profile.analysis, {
+    status: "READY",
+    version: 2,
+    summary: "You are strongest in communication.",
+    insights: {
+      communication: { insight: "Clear structure.", recommendedPractice: "Keep using STAR." },
+    },
+    basedOnObservationCount: 8,
+    basedOnInterviewIds: [firstTurn, secondTurn],
+    model: "gemini-3.5-flash-lite",
+    generatedAt: "2026-09-10T00:00:00.000Z",
+  });
+  assert.equal(skillProfileSchema.safeParse(profile).success, true);
+});
+
+test("skill profile reads are scoped to the server-derived user id", async () => {
+  const recordedUsers: string[] = [];
+  await skillsService({ rows: [], analysis: null }, recordedUsers).skillProfile("candidate-7");
+  assert.deepEqual(recordedUsers, ["candidate-7", "candidate-7"]);
+});
+
+test("skill analysis output accepts only canonical skills and strict shapes", () => {
+  const valid = {
+    summary: "Communication is a strength; system design needs work.",
+    insights: {
+      communication: {
+        insight: "Clear structure.",
+        recommendedPractice: "Keep using STAR.",
+      },
+      "system-design": {
+        insight: "Trade-offs are missing.",
+        recommendedPractice: "Practice design walkthroughs.",
+      },
+    },
+  };
+  assert.equal(skillAnalysisOutputSchema.safeParse(valid).success, true);
+  assert.equal(skillAnalysisOutputSchema.safeParse({ ...valid, extra: true }).success, false);
+  assert.equal(
+    skillAnalysisOutputSchema.safeParse({
+      ...valid,
+      insights: {
+        notaskill: { insight: "x", recommendedPractice: "y" },
+      },
+    }).success,
+    false,
+  );
+});
+
+test("computeSkillProfile orders weaknesses first and stays deterministic", () => {
+  const profile = computeSkillProfile([
+    skillRow("i1", new Date("2026-08-01T00:00:00.000Z"), [85, 55, 70, 80], {}),
+    skillRow("i2", new Date("2026-09-01T00:00:00.000Z"), [82, 58, 68, 80], {}),
+  ]);
+  const keys = profile.map((skill) => skill.skillKey);
+  assert.equal(profile[0]?.status, "WEAKNESS");
+  assert.equal(profile[0]?.skillKey, "communication");
+  const strengthIndex = keys.indexOf("technical");
+  assert.equal(profile[strengthIndex]?.status, "STRENGTH");
+  assert.ok(0 < strengthIndex);
 });
 
 test("the dashboard week window starts Monday 00:00 UTC", () => {

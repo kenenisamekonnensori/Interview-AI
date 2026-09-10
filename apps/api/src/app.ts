@@ -14,6 +14,7 @@ import { registerReportRoutes } from "./modules/reports/index.js";
 import { registerAnalyticsRoutes } from "./modules/analytics/index.js";
 import { registerUserProfileRoutes } from "./modules/users/index.js";
 import { createRequestRateLimiter } from "./services/request-rate-limit.js";
+import { SkillAnalysisService } from "./services/skill-analysis.service.js";
 import {
   configureObservability,
   createRequestId,
@@ -65,6 +66,12 @@ export function createApp() {
   );
   const careerAnalysisQueue = createCareerAnalysisQueue(environment.REDIS_URL);
   const reportQueue = createReportQueue(environment.REDIS_URL);
+  const skillAnalysis = new SkillAnalysisService(
+    database,
+    environment,
+    careerAnalysisQueue,
+    monolith,
+  );
   const rateLimiter = createRequestRateLimiter(environment.REDIS_URL);
   const eventBus = new RealtimeEventBus(environment.REDIS_URL);
 
@@ -147,6 +154,7 @@ export function createApp() {
     reportQueue,
     monolith,
     eventBus,
+    skillAnalysis,
   );
   interviewService.setReportService(reportService);
   registerAnalyticsRoutes(app, database);

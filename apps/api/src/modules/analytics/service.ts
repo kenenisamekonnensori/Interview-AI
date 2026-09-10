@@ -4,9 +4,12 @@ import {
   type InterviewEvaluation,
   type NextPracticeRecommendation,
   type PerformanceSummary,
+  type SkillAnalysisDto,
+  type SkillProfile,
 } from "@interviewer-ai/types";
 import type { AnalyticsFilter, PerformanceQuery } from "./schema.js";
 import { AnalyticsRepository } from "./repository.js";
+import { computeSkillProfile, validSkillReportRows } from "./skill-engine.js";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 
 const dimensions = ["technical", "communication", "confidence", "problemSolving"] as const;
@@ -317,6 +320,37 @@ export class AnalyticsService {
         overallScore: row.evaluation.overallScore,
         interviewType: row.interviewType as PerformanceSummary["series"][number]["interviewType"],
       })),
+    };
+  }
+
+  /**
+   * Longitudinal skill profile. Levels, trends, confidence, and statuses are
+   * computed deterministically from persisted evaluations; the AI
+   * interpretation is served only if the background job already persisted it
+   * (the read path never calls the AI provider).
+   */
+  async skillProfile(userId: string): Promise<SkillProfile> {
+    const [rows, analysis] = await Promise.all([
+      this.repository.completedWithReports(userId, { page: 1, pageSize: 50 }),
+      this.repository.skillAnalysisRow(userId),
+    ]);
+    const valid = validSkillReportRows(rows);
+    return {
+      generatedAt: new Date().toISOString(),
+      validReportCount: valid.length,
+      skills: computeSkillProfile(valid),
+      analysis: analysis
+        ? {
+            status: analysis.status as SkillAnalysisDto["status"],
+            version: analysis.version,
+            summary: analysis.summary,
+            insights: (analysis.insights as SkillAnalysisDto["insights"]) ?? null,
+            basedOnObservationCount: analysis.basedOnObservationCount,
+            basedOnInterviewIds: analysis.basedOnInterviewIds,
+            model: analysis.model,
+            generatedAt: analysis.generatedAt?.toISOString() ?? null,
+          }
+        : null,
     };
   }
 
