@@ -56,9 +56,8 @@ export class InterviewService {
       difficulty: input.difficulty ?? profile?.defaultDifficulty ?? "MEDIUM",
       durationMinutes: input.durationMinutes ?? profile?.defaultInterviewDuration ?? 30,
       language: input.language ?? profile?.preferredLanguage ?? "en",
-      targetRole: input.targetRole ?? profile?.targetRole ?? undefined,
     };
-    const [resume, job] = await Promise.all([
+    const [resume, job, careerTarget] = await Promise.all([
       configuration.resumeId
         ? this.database.resume.findFirst({
             where: {
@@ -74,6 +73,11 @@ export class InterviewService {
             where: { id: configuration.jobDescriptionId, userId, deletedAt: null },
           })
         : null,
+      configuration.careerTargetId
+        ? this.database.careerTarget.findFirst({
+            where: { id: configuration.careerTargetId, userId },
+          })
+        : null,
     ]);
     if (configuration.resumeId && !resume)
       throw new InterviewLifecycleError(
@@ -85,6 +89,11 @@ export class InterviewService {
         "JOB_DESCRIPTION_NOT_FOUND",
         "Choose a job description you own.",
       );
+    if (configuration.careerTargetId && !careerTarget)
+      throw new InterviewLifecycleError(
+        "CAREER_TARGET_NOT_FOUND",
+        "Choose a career target you own.",
+      );
     return this.database.interview.create({
       data: {
         userId,
@@ -92,13 +101,15 @@ export class InterviewService {
         difficulty: configuration.difficulty,
         durationMinutes: configuration.durationMinutes,
         language: configuration.language,
-        targetRole: configuration.targetRole ?? null,
+        targetRole: configuration.targetRole ?? careerTarget?.title ?? profile?.targetRole ?? null,
         resumeId: resume?.id ?? null,
         jobDescriptionId: job?.id ?? null,
+        careerTargetId: careerTarget?.id ?? null,
       },
       include: {
         resume: { select: { id: true, fileName: true } },
         jobDescription: { select: { id: true, title: true, company: true } },
+        careerTarget: { select: { id: true, title: true, company: true } },
       },
     });
   }

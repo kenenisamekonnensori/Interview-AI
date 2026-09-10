@@ -6,6 +6,7 @@ import { createAiProvider } from "../ai/index.js";
 import { AiProviderError, isRetryableAiError } from "../ai/errors.js";
 import { InterviewEventPublisher } from "../interviews/events.js";
 import type { createReportQueue } from "../../services/report-queue.js";
+import type { SkillAnalysisService } from "../../services/skill-analysis.service.js";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 import { ReportRepository } from "./repository.js";
 import { generatedReportSchema } from "./schema.js";
@@ -73,6 +74,7 @@ export class ReportService {
     private readonly queue: ReturnType<typeof createReportQueue>,
     private readonly events: InterviewEventPublisher,
     private readonly monolith?: MonolithExecutionManager,
+    private readonly skillAnalysis?: Pick<SkillAnalysisService, "enqueueRefresh">,
   ) {
     this.repository = new ReportRepository(database);
     this.aiProvider = createAiProvider(environment);
@@ -192,8 +194,20 @@ export class ReportService {
       );
       if (!saved.count) return;
       const report = await this.repository.context(interviewId);
-      const persisted = report ? await this.repository.findOwned(interviewId, report.userId) : null;
-      if (persisted?.status === "READY")
+      const userId = report?.userId;
+      const persisted = userId ? await this.repository.findOwned(interviewId, userId) : null;
+      if (persisted?.status === "READY" && userId) {
+        try {
+          // Event-driven skill analysis: refresh the persisted AI interpretation
+          // after a new report lands (never on page load). A failure here must
+          // not fail report generation, which is already durable.
+          await this.skillAnalysis?.enqueueRefresh(userId);
+        } catch (error) {
+          logSafeError(consoleLogger, "Skill analysis enqueue failed", error, {
+            interviewId,
+            userId,
+          });
+        }
         this.events.publish({
           name: "ReportGenerated",
           payload: {
@@ -212,6 +226,7 @@ export class ReportService {
             occurredAt: persisted.generatedAt!.toISOString(),
           },
         });
+      }
     } catch (error) {
       if (error instanceof AiProviderError)
         logSafeError(consoleLogger, "Report generation failed", error, {

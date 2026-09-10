@@ -43,6 +43,7 @@ export type InterviewDifficulty = z.infer<typeof interviewDifficultySchema>;
 export const interviewConfigurationSchema = z.object({
   resumeId: z.uuid().optional(),
   jobDescriptionId: z.uuid().optional(),
+  careerTargetId: z.uuid().optional(),
   interviewType: interviewTypeSchema,
   difficulty: interviewDifficultySchema,
   durationMinutes: z.number().int().min(10).max(120),
@@ -50,6 +51,46 @@ export const interviewConfigurationSchema = z.object({
   targetRole: z.string().trim().min(1).max(160).optional(),
 });
 export type InterviewConfiguration = z.infer<typeof interviewConfigurationSchema>;
+
+export const careerTargetStatuses = ["ACTIVE", "ARCHIVED"] as const;
+export const careerTargetStatusSchema = z.enum(careerTargetStatuses);
+export type CareerTargetStatus = z.infer<typeof careerTargetStatusSchema>;
+
+export const createCareerTargetSchema = z.object({
+  title: z.string().trim().min(1).max(160),
+  company: z.string().trim().max(160).optional(),
+  jobDescriptionId: z.uuid().optional(),
+  jobUrl: z.string().trim().url().max(2048).optional(),
+  location: z.string().trim().max(160).optional(),
+  resumeId: z.uuid().optional(),
+});
+export type CreateCareerTargetRequest = z.infer<typeof createCareerTargetSchema>;
+
+export const updateCareerTargetSchema = z.object({
+  title: z.string().trim().min(1).max(160).optional(),
+  company: z.string().trim().max(160).nullable().optional(),
+  jobDescriptionId: z.uuid().nullable().optional(),
+  jobUrl: z.string().trim().url().max(2048).nullable().optional(),
+  location: z.string().trim().max(160).nullable().optional(),
+  resumeId: z.uuid().nullable().optional(),
+  status: careerTargetStatusSchema.optional(),
+});
+export type UpdateCareerTargetRequest = z.infer<typeof updateCareerTargetSchema>;
+
+export const careerTargetDtoSchema = z.object({
+  id: z.uuid(),
+  title: z.string(),
+  company: z.string().nullable(),
+  jobDescriptionId: z.uuid().nullable(),
+  jobUrl: z.string().nullable(),
+  location: z.string().nullable(),
+  resumeId: z.uuid().nullable(),
+  status: careerTargetStatusSchema,
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type CareerTargetDto = z.infer<typeof careerTargetDtoSchema>;
+export type CareerTargetListResponse = { careerTargets: CareerTargetDto[] };
 
 export const interviewPlanSchema = z.object({
   objectives: z.array(z.string().trim().min(1)).min(1),
@@ -144,6 +185,9 @@ export const interviewDtoSchema = interviewConfigurationSchema.extend({
   jobDescription: z
     .object({ id: z.uuid(), title: z.string().nullable(), company: z.string().nullable() })
     .nullable(),
+  careerTarget: z
+    .object({ id: z.uuid(), title: z.string(), company: z.string().nullable() })
+    .nullable(),
 });
 export type InterviewDto = z.infer<typeof interviewDtoSchema>;
 export type CreateInterviewRequest = InterviewConfiguration;
@@ -210,6 +254,163 @@ export const interviewReportSchema = z.object({
 });
 export type InterviewReport = z.infer<typeof interviewReportSchema>;
 
+export const performanceRangePresets = ["all", "30d", "90d", "custom"] as const;
+export const performanceRangePresetSchema = z.enum(performanceRangePresets);
+export type PerformanceRangePreset = z.infer<typeof performanceRangePresetSchema>;
+
+/**
+ * Server-authoritative longitudinal performance summary. Every value is
+ * computed by the API from schema-valid, persisted evaluations; no AI call is
+ * used for statistics. Nullable fields are explicit empty states.
+ */
+export const performanceSummarySchema = z.object({
+  window: z.object({
+    preset: performanceRangePresetSchema,
+    from: z.string().datetime().nullable(),
+    to: z.string().datetime().nullable(),
+  }),
+  completedInterviewCount: z.number().int().nonnegative(),
+  validReportCount: z.number().int().nonnegative(),
+  averageOverallScore: z.number().min(0).max(100).nullable(),
+  recentScore: z.number().min(0).max(100).nullable(),
+  comparison: z.object({
+    latestScore: z.number().min(0).max(100).nullable(),
+    previousAverage: z.number().min(0).max(100).nullable(),
+    change: z.number().min(-100).max(100).nullable(),
+  }),
+  trend: z.object({
+    change: z.number().min(-100).max(100).nullable(),
+    direction: z.enum(["up", "down", "flat"]).nullable(),
+  }),
+  categories: z
+    .array(
+      z.object({
+        key: z.string().min(1),
+        label: z.string().min(1),
+        average: z.number().min(0).max(100).nullable(),
+        latest: z.number().min(0).max(100).nullable(),
+      }),
+    )
+    .max(6),
+  series: z
+    .array(
+      z.object({
+        completedAt: z.string().datetime(),
+        overallScore: z.number().min(0).max(100),
+        interviewType: interviewTypeSchema,
+      }),
+    )
+    .max(60),
+});
+export type PerformanceSummary = z.infer<typeof performanceSummarySchema>;
+
+/**
+ * Controlled skill taxonomy. Skills are canonical keys, never arbitrary
+ * AI-generated names: free-form evaluation category labels are normalized onto
+ * this taxonomy (unknown labels are ignored, never fabricated). Extending the
+ * taxonomy means adding a key here and to the alias map in the API.
+ */
+export const skillKeys = [
+  "communication",
+  "problem-solving",
+  "technical",
+  "confidence",
+  "system-design",
+  "algorithms",
+  "data-structures",
+  "databases",
+  "behavioral",
+  "leadership",
+  "coding",
+] as const;
+export const skillKeySchema = z.enum(skillKeys);
+export type SkillKey = z.infer<typeof skillKeySchema>;
+
+export const skillStatuses = [
+  "INSUFFICIENT_EVIDENCE",
+  "WEAKNESS",
+  "IMPROVING",
+  "STRENGTH",
+  "DEVELOPING",
+] as const;
+export const skillStatusSchema = z.enum(skillStatuses);
+export type SkillStatus = z.infer<typeof skillStatusSchema>;
+
+export const skillConfidenceLevels = ["LOW", "MEDIUM", "HIGH"] as const;
+export const skillConfidenceSchema = z.enum(skillConfidenceLevels);
+export type SkillConfidence = z.infer<typeof skillConfidenceSchema>;
+
+export const skillAnalysisStatuses = ["GENERATING", "READY", "FAILED"] as const;
+export const skillAnalysisStatusSchema = z.enum(skillAnalysisStatuses);
+export type SkillAnalysisStatus = z.infer<typeof skillAnalysisStatusSchema>;
+
+/** One skill's longitudinal assessment, derived deterministically from evaluations. */
+export const skillAssessmentSchema = z.object({
+  skillKey: skillKeySchema,
+  label: z.string().min(1),
+  status: skillStatusSchema,
+  level: z.number().min(0).max(100).nullable(),
+  latestScore: z.number().min(0).max(100).nullable(),
+  trend: z.object({
+    change: z.number().min(-100).max(100).nullable(),
+    direction: z.enum(["up", "down", "flat"]).nullable(),
+  }),
+  confidence: skillConfidenceSchema,
+  observationCount: z.number().int().nonnegative(),
+  explanation: z.string().min(1),
+  recommendedPractice: z.string().min(1),
+  supportingInterviews: z
+    .array(
+      z.object({
+        interviewId: z.uuid(),
+        completedAt: z.string().datetime(),
+        score: z.number().min(0).max(100),
+        interviewType: interviewTypeSchema,
+      }),
+    )
+    .max(5),
+});
+export type SkillAssessment = z.infer<typeof skillAssessmentSchema>;
+
+/** Persisted AI interpretation of the deterministic profile (never the source of truth). */
+export const skillAnalysisDtoSchema = z.object({
+  status: skillAnalysisStatusSchema,
+  version: z.number().int().nonnegative(),
+  summary: z.string().nullable(),
+  insights: z
+    .record(
+      z.string(),
+      z.object({
+        insight: z.string(),
+        recommendedPractice: z.string(),
+      }),
+    )
+    .superRefine((insights, context) => {
+      for (const key of Object.keys(insights))
+        if (!skillKeySchema.safeParse(key).success)
+          context.addIssue({ code: "custom", message: `Unknown skill key: ${key}` });
+    })
+    .nullable(),
+  basedOnObservationCount: z.number().int().nonnegative(),
+  basedOnInterviewIds: z.array(z.uuid()).max(200),
+  model: z.string().nullable(),
+  generatedAt: z.string().datetime().nullable(),
+});
+export type SkillAnalysisDto = z.infer<typeof skillAnalysisDtoSchema>;
+
+/**
+ * Server-authoritative skill profile. Skills and all numbers are computed
+ * deterministically from persisted evaluations; `analysis` is an optional
+ * persisted AI interpretation that is refreshed only after interviews complete.
+ */
+export const skillProfileSchema = z.object({
+  generatedAt: z.string().datetime(),
+  validReportCount: z.number().int().nonnegative(),
+  skills: z.array(skillAssessmentSchema).max(30),
+  analysis: skillAnalysisDtoSchema.nullable(),
+});
+export type SkillProfile = z.infer<typeof skillProfileSchema>;
+
 export const apiErrorSchema = z.object({
   code: z.string().min(1),
   message: z.string().min(1),
@@ -224,12 +425,68 @@ export const nextPracticeRecommendationSchema = z.object({
   suggestedDurationMinutes: z.number().int().min(10).max(120),
   resumeId: z.uuid().optional(),
   jobDescriptionId: z.uuid().optional(),
+  careerTargetId: z.uuid().optional(),
   reasons: z.array(z.string().min(1)).max(3),
   focusAreas: z.array(z.string().min(1)).max(3),
   basis: z.enum(["PROFILE", "HISTORY"]),
   setupSuggestion: z.string().min(1).optional(),
 });
 export type NextPracticeRecommendation = z.infer<typeof nextPracticeRecommendationSchema>;
+
+/**
+ * Server-authoritative dashboard overview. Every metric is computed by the API
+ * from persisted, schema-valid data; nullable fields are explicit empty states
+ * (never fabricated client-side).
+ */
+export const dashboardOverviewSchema = z.object({
+  generatedAt: z.string().datetime(),
+  stats: z.object({
+    completedInterviews: z.number().int().nonnegative(),
+    interviewsThisWeek: z.number().int().nonnegative(),
+    averageOverallScore: z.number().min(0).max(100).nullable(),
+    latestOverallScore: z.number().min(0).max(100).nullable(),
+    /** Number of schema-valid reports behind the average, for explainability. */
+    scoredReportCount: z.number().int().nonnegative(),
+  }),
+  preparation: z.object({
+    targetRole: z.string().nullable(),
+    activeTarget: z
+      .object({
+        id: z.uuid(),
+        title: z.string(),
+        company: z.string().nullable(),
+        jobUrl: z.string().nullable(),
+        location: z.string().nullable(),
+        updatedAt: z.string().datetime(),
+      })
+      .nullable(),
+    hasActiveResume: z.boolean(),
+    savedJobDescriptionCount: z.number().int().nonnegative(),
+  }),
+  recommendation: nextPracticeRecommendationSchema,
+  activeInterview: z
+    .object({
+      id: z.uuid(),
+      status: interviewStatusSchema,
+      targetRole: z.string().nullable(),
+    })
+    .nullable(),
+  recentInterviews: z
+    .array(
+      z.object({
+        id: z.uuid(),
+        status: interviewStatusSchema,
+        interviewType: interviewTypeSchema,
+        targetRole: z.string().nullable(),
+        overallScore: z.number().min(0).max(100).nullable(),
+        reportStatus: reportStatusSchema.nullable(),
+        createdAt: z.string().datetime(),
+        completedAt: z.string().datetime().nullable(),
+      }),
+    )
+    .max(5),
+});
+export type DashboardOverview = z.infer<typeof dashboardOverviewSchema>;
 
 /** Safe, application-level guidance supplied when a persisted candidate turn awaits an AI turn. */
 export const aiResponseRecoverySchema = z.object({

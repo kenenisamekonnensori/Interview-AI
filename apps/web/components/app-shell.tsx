@@ -1,6 +1,6 @@
 "use client";
 
-import { History, LayoutGrid, Menu, Mic2, PanelLeftClose, Settings, UserRound } from "lucide-react";
+import { Menu, Mic2, PanelLeftClose } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -9,19 +9,10 @@ import { useQuery } from "@tanstack/react-query";
 
 import { SignOutButton } from "@/features/auth/components/sign-out-button";
 import { cn } from "@/lib/utils";
+import { isRouteActive, navigationSections, type NavigationItem } from "@/lib/navigation";
 import { apiClient } from "@/lib/api-client";
 import { Brand } from "./brand";
 import { ThemeToggle } from "./theme-toggle";
-
-const primary = [
-  ["Overview", "/dashboard", LayoutGrid],
-  ["Start interview", "/interviews/new", Mic2],
-  ["Interview history", "/history", History],
-];
-const secondary = [
-  ["Profile", "/profile", UserRound],
-  ["Settings", "/settings", Settings],
-];
 
 export function AppShell({ children }: PropsWithChildren) {
   const pathname = usePathname();
@@ -86,20 +77,19 @@ export function AppShell({ children }: PropsWithChildren) {
             />
           </button>
         </div>
-        <nav className="flex flex-1 flex-col gap-7 overflow-y-auto px-3 py-2">
-          <NavSection
-            entries={primary}
-            pathname={pathname}
-            compact={compact}
-            onNavigate={() => setOpen(false)}
-          />
-          <NavSection
-            label="Your space"
-            entries={secondary}
-            pathname={pathname}
-            compact={compact}
-            onNavigate={() => setOpen(false)}
-          />
+        <nav
+          aria-label="Dashboard"
+          className="flex flex-1 flex-col gap-7 overflow-y-auto px-3 py-2"
+        >
+          {navigationSections.map((section) => (
+            <NavSection
+              key={section.label}
+              section={section}
+              pathname={pathname}
+              compact={compact}
+              onNavigate={() => setOpen(false)}
+            />
+          ))}
         </nav>
         <div className="border-t border-white/[.06] p-3">
           <div
@@ -154,15 +144,13 @@ export function AppShell({ children }: PropsWithChildren) {
 }
 
 function NavSection({
-  entries,
+  section,
   pathname,
-  label,
   compact,
   onNavigate,
 }: {
-  entries: (string | typeof LayoutGrid)[][];
+  section: { label: string; items: NavigationItem[] };
   pathname: string;
-  label?: string;
   compact: boolean;
   onNavigate: () => void;
 }) {
@@ -174,28 +162,28 @@ function NavSection({
           compact && "lg:hidden",
         )}
       >
-        {label ?? "Workspace"}
+        {section.label}
       </p>
       <div className="space-y-1">
-        {entries.map(([name, href, Icon]) => {
-          const active =
-            href === "/dashboard" ? pathname === href : pathname.startsWith(href as string);
-          const Glyph = Icon as typeof LayoutGrid;
+        {section.items.map((item) => {
+          const active = isRouteActive(pathname, item.href);
+          const Glyph = item.icon;
           return (
             <Link
-              key={href as string}
-              href={href as string}
+              key={item.href}
+              href={item.href}
               onClick={onNavigate}
+              aria-current={active ? "page" : undefined}
               className={cn(
                 "sidebar-link",
                 active && "sidebar-link-active",
                 compact && "lg:justify-center lg:px-0",
               )}
-              title={compact ? (name as string) : undefined}
+              title={compact ? item.label : undefined}
             >
-              <Glyph className="size-[18px] shrink-0" />
-              <span className={cn(compact && "lg:hidden")}>{name as string}</span>
-              {name === "Start interview" && !compact ? (
+              <Glyph className="size-[18px] shrink-0" aria-hidden="true" />
+              <span className={cn(compact && "lg:hidden")}>{item.label}</span>
+              {item.href === "/interviews/new" && !compact ? (
                 <span className="ml-auto size-1.5 rounded-full bg-violet-300" />
               ) : null}
             </Link>

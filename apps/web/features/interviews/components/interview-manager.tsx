@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  CareerTargetDto,
   InterviewConfiguration,
   InterviewDto,
   JobDescriptionDto,
@@ -41,6 +42,7 @@ export function InterviewManager() {
   const [difficulty, setDifficulty] = useState<InterviewConfiguration["difficulty"] | "">("");
   const [resumeId, setResumeId] = useState("");
   const [jobDescriptionId, setJobDescriptionId] = useState("");
+  const [careerTargetId, setCareerTargetId] = useState("");
   const [failure, setFailure] = useState<InterviewStartInput | null>(null);
 
   const profile = useQuery({
@@ -54,6 +56,10 @@ export function InterviewManager() {
   const jobs = useQuery({
     queryKey: ["job-descriptions"],
     queryFn: () => apiClient<{ jobDescriptions: JobDescriptionDto[] }>("/api/v1/job-descriptions"),
+  });
+  const careerTargets = useQuery({
+    queryKey: ["career-targets"],
+    queryFn: () => apiClient<{ careerTargets: CareerTargetDto[] }>("/api/v1/career-targets"),
   });
   const history = useQuery({
     queryKey: ["analytics-history", "recommendation"],
@@ -72,6 +78,10 @@ export function InterviewManager() {
       ),
     [resumes.data],
   );
+  const activeTarget = useMemo(
+    () => careerTargets.data?.careerTargets.find((target) => target.status === "ACTIVE"),
+    [careerTargets.data],
+  );
   const relevantJob = useMemo(
     () =>
       jobs.data?.jobDescriptions.find((job) => job.status === "ANALYZED" || job.status === "READY"),
@@ -87,8 +97,9 @@ export function InterviewManager() {
       targetRole: defaults?.targetRole ?? relevantJob?.title ?? "General interview practice",
       ...(activeResume ? { resumeId: activeResume.id } : {}),
       ...(relevantJob ? { jobDescriptionId: relevantJob.id } : {}),
+      ...(activeTarget ? { careerTargetId: activeTarget.id } : {}),
     }),
-    [activeResume, defaults, relevantJob],
+    [activeResume, activeTarget, defaults, relevantJob],
   );
 
   const launch = useMutation({
@@ -119,8 +130,10 @@ export function InterviewManager() {
     ...(difficulty ? { difficulty } : {}),
     ...(resumeId ? { resumeId } : {}),
     ...(jobDescriptionId ? { jobDescriptionId } : {}),
+    ...(careerTargetId ? { careerTargetId } : {}),
   });
   const reasons = [
+    activeTarget ? `your current target (${activeTarget.title})` : null,
     activeResume ? `your active resume (${activeResume.fileName})` : null,
     defaults?.targetRole ? `your target role (${defaults.targetRole})` : null,
     relevantJob ? `a saved job description (${relevantJob.title ?? "saved role"})` : null,
@@ -140,6 +153,7 @@ export function InterviewManager() {
         ...(recommendation.jobDescriptionId
           ? { jobDescriptionId: recommendation.jobDescriptionId }
           : {}),
+        ...(recommendation.careerTargetId ? { careerTargetId: recommendation.careerTargetId } : {}),
       }
     : fallbackRecommendation;
 
@@ -216,18 +230,21 @@ export function InterviewManager() {
             setDifficulty={setDifficulty}
             resumes={resumes.data?.resumes ?? []}
             jobs={jobs.data?.jobDescriptions ?? []}
+            targets={careerTargets.data?.careerTargets ?? []}
             resumeId={resumeId}
             setResumeId={setResumeId}
             jobDescriptionId={jobDescriptionId}
             setJobDescriptionId={setJobDescriptionId}
+            careerTargetId={careerTargetId}
+            setCareerTargetId={setCareerTargetId}
             pending={launch.isPending}
             onStart={() => launch.mutate(customConfiguration())}
           />
         ) : null}
       </section>
       <p className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
-        <Link className="underline underline-offset-4" href="/profile">
-          Manage your resume and job descriptions in Profile
+        <Link className="underline underline-offset-4" href="/resumes">
+          Manage your targets, resume, and job descriptions
         </Link>
       </p>
     </div>
@@ -241,15 +258,22 @@ function CustomSetup(props: {
   setDifficulty: (value: InterviewConfiguration["difficulty"] | "") => void;
   resumes: Resume[];
   jobs: JobDescriptionDto[];
+  targets: CareerTargetDto[];
   resumeId: string;
   setResumeId: (value: string) => void;
   jobDescriptionId: string;
   setJobDescriptionId: (value: string) => void;
+  careerTargetId: string;
+  setCareerTargetId: (value: string) => void;
   pending: boolean;
   onStart: () => void;
 }) {
   const usesProfileOnly =
-    !props.role.trim() && !props.difficulty && !props.resumeId && !props.jobDescriptionId;
+    !props.role.trim() &&
+    !props.difficulty &&
+    !props.resumeId &&
+    !props.jobDescriptionId &&
+    !props.careerTargetId;
   return (
     <div className="mt-6 space-y-4 border-t border-border pt-5">
       <p className="text-sm text-muted-foreground">
@@ -271,6 +295,20 @@ function CustomSetup(props: {
         <option value="">Use your profile difficulty (or Medium)</option>
         {["EASY", "MEDIUM", "HARD", "EXPERT"].map((value) => (
           <option key={value}>{value}</option>
+        ))}
+      </select>
+      <select
+        className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+        value={props.careerTargetId}
+        onChange={(event) => props.setCareerTargetId(event.target.value)}
+      >
+        <option value="">No target job for this interview</option>
+        {props.targets.map((target) => (
+          <option key={target.id} value={target.id}>
+            {target.title}
+            {target.status === "ACTIVE" ? " · Current" : ""}
+            {target.company ? ` · ${target.company}` : ""}
+          </option>
         ))}
       </select>
       <select

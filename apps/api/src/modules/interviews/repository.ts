@@ -17,6 +17,7 @@ export class InterviewRepository {
         report: true,
         resume: { select: { id: true, fileName: true, deletedAt: true } },
         jobDescription: { select: { id: true, title: true, company: true, deletedAt: true } },
+        careerTarget: { select: { id: true, title: true, company: true } },
       },
     });
   }
@@ -27,6 +28,7 @@ export class InterviewRepository {
       include: {
         resume: { select: { id: true, fileName: true, deletedAt: true } },
         jobDescription: { select: { id: true, title: true, company: true, deletedAt: true } },
+        careerTarget: { select: { id: true, title: true, company: true } },
       },
       orderBy: { createdAt: "desc" },
     });

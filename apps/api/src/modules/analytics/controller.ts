@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
-import { AnalyticsService } from "./service.js";
-import { analyticsFilterSchema, interviewIdSchema } from "./schema.js";
+import { AnalyticsService, PerformanceQueryError } from "./service.js";
+import { analyticsFilterSchema, interviewIdSchema, performanceQuerySchema } from "./schema.js";
 
 export function registerAnalyticsRoutes(app: FastifyInstance, database: PrismaClient) {
   const service = new AnalyticsService(database);
@@ -41,11 +41,40 @@ export function registerAnalyticsRoutes(app: FastifyInstance, database: PrismaCl
     filtered((userId, filter) => service.summary(userId, filter)),
   );
   app.get(
+    "/api/v1/analytics/overview",
+    { preHandler: app.requireVerifiedUser },
+    async (request) => ({
+      overview: await service.overview(request.authContext!.user.id),
+    }),
+  );
+  app.get(
     "/api/v1/analytics/next-practice",
     { preHandler: app.requireVerifiedUser },
     async (request) => ({
       recommendation: await service.nextPracticeRecommendation(request.authContext!.user.id),
     }),
+  );
+  app.get("/api/v1/analytics/skills", { preHandler: app.requireVerifiedUser }, async (request) => ({
+    skills: await service.skillProfile(request.authContext!.user.id),
+  }));
+  app.get(
+    "/api/v1/analytics/performance",
+    { preHandler: app.requireVerifiedUser },
+    async (request, reply) => {
+      const query = performanceQuerySchema.safeParse(request.query);
+      if (!query.success)
+        return reply
+          .status(400)
+          .send({ code: "VALIDATION_ERROR", message: "Invalid performance range." });
+      try {
+        return {
+          performance: await service.performance(request.authContext!.user.id, query.data),
+        };
+      } catch (error) {
+        if (!(error instanceof PerformanceQueryError)) throw error;
+        return reply.status(400).send({ code: error.code, message: error.message });
+      }
+    },
   );
   app.get(
     "/api/v1/analytics/interviews/:id",

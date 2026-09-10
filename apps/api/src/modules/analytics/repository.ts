@@ -49,6 +49,12 @@ export class AnalyticsRepository {
     });
   }
 
+  completedCount(userId: string, filter: AnalyticsFilter) {
+    return this.database.interview.count({
+      where: { ...this.where(userId, filter), status: "COMPLETED" },
+    });
+  }
+
   completedDetail(userId: string, interviewId: string) {
     return this.database.interview.findFirst({
       where: { id: interviewId, userId, status: "COMPLETED", report: { is: { status: "READY" } } },
@@ -58,6 +64,66 @@ export class AnalyticsRepository {
         plan: true,
       },
     });
+  }
+
+  /** Batched queries for the dashboard overview. All reads are scoped to the user. */
+  overviewContext(userId: string, weekStart: Date) {
+    return Promise.all([
+      this.database.interview.count({ where: { userId, status: "COMPLETED" } }),
+      this.database.interview.count({
+        where: { userId, status: "COMPLETED", completedAt: { gte: weekStart } },
+      }),
+      this.database.interview.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          status: true,
+          interviewType: true,
+          targetRole: true,
+          createdAt: true,
+          completedAt: true,
+          jobDescription: { select: { title: true, deletedAt: true } },
+          report: { select: { status: true, evaluation: true } },
+        },
+      }),
+      this.database.interview.findMany({
+        where: { userId, status: "COMPLETED", report: { is: { status: "READY" } } },
+        orderBy: { completedAt: "desc" },
+        take: 20,
+        select: { report: { select: { evaluation: true } } },
+      }),
+      this.database.userProfile.findUnique({ where: { userId }, select: { targetRole: true } }),
+      this.database.resume.findFirst({
+        where: { userId, isActive: true, deletedAt: null, status: { in: ["READY", "ANALYZED"] } },
+        select: { id: true },
+      }),
+      this.database.jobDescription.count({
+        where: { userId, deletedAt: null, status: { in: ["READY", "ANALYZED"] } },
+      }),
+      this.database.interview.findFirst({
+        where: { userId, status: { in: ["READY", "IN_PROGRESS"] } },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, status: true, targetRole: true },
+      }),
+      this.database.careerTarget.findFirst({
+        where: { userId, status: "ACTIVE" },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          title: true,
+          company: true,
+          jobUrl: true,
+          location: true,
+          updatedAt: true,
+        },
+      }),
+    ]);
+  }
+
+  skillAnalysisRow(userId: string) {
+    return this.database.skillAnalysis.findUnique({ where: { userId } });
   }
 
   recommendationContext(userId: string) {
@@ -76,6 +142,11 @@ export class AnalyticsRepository {
         include: { report: true },
         orderBy: { completedAt: "desc" },
         take: 6,
+      }),
+      this.database.careerTarget.findFirst({
+        where: { userId, status: "ACTIVE" },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true, title: true },
       }),
     ]);
   }

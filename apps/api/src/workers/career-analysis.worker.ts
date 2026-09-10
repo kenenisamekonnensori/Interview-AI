@@ -19,6 +19,7 @@ import {
 import { analyzeResume, markResumeAnalysisFailed } from "../services/resume-analysis.service.js";
 import { analyzeJobDescription, markJobAnalysisFailed } from "../services/job-analysis.service.js";
 import { planInterview, markInterviewPlanFailed } from "../services/interview-plan.service.js";
+import { analyzeUserSkills, markSkillAnalysisFailed } from "../services/skill-analysis.service.js";
 
 /**
  * Career Analysis Worker (Worker Mode - Future Architecture).
@@ -35,8 +36,10 @@ async function markTerminalFailure(job: CareerAnalysisJob, failure: QueueFailure
     await markResumeAnalysisFailed(database, job.resumeId, job.userId);
   } else if (job.kind === "job-description") {
     await markJobAnalysisFailed(database, job.jobDescriptionId, job.userId);
-  } else {
+  } else if (job.kind === "interview-plan") {
     await markInterviewPlanFailed(database, job.interviewId, job.userId);
+  } else {
+    await markSkillAnalysisFailed(database, job.userId);
   }
   observability().event("queue.job.terminal-failure-recorded", {
     queue: "career-analysis",
@@ -56,7 +59,9 @@ const worker = new Worker<CareerAnalysisJob>(
             ? analyzeResume(database, environment, job.data.resumeId, job.data.userId)
             : job.data.kind === "job-description"
               ? analyzeJobDescription(database, environment, job.data.jobDescriptionId)
-              : planInterview(database, environment, job.data.interviewId),
+              : job.data.kind === "interview-plan"
+                ? planInterview(database, environment, job.data.interviewId)
+                : analyzeUserSkills(database, environment, job.data.userId),
         onTerminalFailure: (failure) => markTerminalFailure(job.data, failure),
       }),
     ),

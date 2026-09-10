@@ -7,7 +7,8 @@ import { observability } from "./observability.js";
 export type CareerAnalysisJob =
   | { kind: "resume"; resumeId: string; userId: string; correlationId?: string }
   | { kind: "job-description"; jobDescriptionId: string; userId: string; correlationId?: string }
-  | { kind: "interview-plan"; interviewId: string; userId: string; correlationId?: string };
+  | { kind: "interview-plan"; interviewId: string; userId: string; correlationId?: string }
+  | { kind: "skill-analysis"; userId: string; correlationId?: string };
 
 const options: JobsOptions = {
   attempts: 3,
@@ -26,7 +27,9 @@ export function careerAnalysisJobId(job: CareerAnalysisJob) {
       ? job.resumeId
       : job.kind === "job-description"
         ? job.jobDescriptionId
-        : job.interviewId;
+        : job.kind === "interview-plan"
+          ? job.interviewId
+          : job.userId;
   return `${job.kind}-${entityId}`;
 }
 

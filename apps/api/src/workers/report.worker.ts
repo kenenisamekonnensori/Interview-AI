@@ -6,7 +6,9 @@ import { serverEnvironmentSchema } from "@interviewer-ai/config";
 import { createAuthDatabase } from "../modules/auth/database.js";
 import { InterviewEventPublisher } from "../modules/interviews/events.js";
 import { ReportService } from "../modules/reports/service.js";
+import { createCareerAnalysisQueue } from "../services/career-analysis-queue.js";
 import { createReportQueue, type ReportJob } from "../services/report-queue.js";
+import { SkillAnalysisService } from "../services/skill-analysis.service.js";
 import { createRedisConnectionOptions } from "../services/redis-connection.js";
 import { RealtimeEventBus } from "../services/realtime-events.js";
 import {
@@ -27,6 +29,11 @@ const database = createAuthDatabase(environment.DATABASE_URL);
 configureObservability(console);
 const queue = createReportQueue(environment.REDIS_URL);
 const eventBus = new RealtimeEventBus(environment.REDIS_URL);
+const skillAnalysis = new SkillAnalysisService(
+  database,
+  environment,
+  createCareerAnalysisQueue(environment.REDIS_URL),
+);
 const reports = new ReportService(
   database,
   environment,
@@ -35,6 +42,8 @@ const reports = new ReportService(
     { info: (payload, message) => console.info(message, payload) },
     eventBus,
   ),
+  undefined,
+  skillAnalysis,
 );
 
 const worker = new Worker<ReportJob>(

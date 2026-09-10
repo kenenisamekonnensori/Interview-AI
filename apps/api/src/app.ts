@@ -5,7 +5,7 @@ import Fastify from "fastify";
 import { createAuth } from "./modules/auth/index.js";
 import { createAuthFastifyIntegration } from "./modules/auth/fastify.js";
 import { registerResumeRoutes } from "./modules/resumes/index.js";
-import { registerJobDescriptionRoutes } from "./modules/jobs/index.js";
+import { registerJobDescriptionRoutes, registerCareerTargetRoutes } from "./modules/jobs/index.js";
 import { registerInterviewRoutes } from "./modules/interviews/index.js";
 import { registerConversationRoutes } from "./modules/conversation/index.js";
 import { createCareerAnalysisQueue } from "./services/career-analysis-queue.js";
@@ -14,6 +14,7 @@ import { registerReportRoutes } from "./modules/reports/index.js";
 import { registerAnalyticsRoutes } from "./modules/analytics/index.js";
 import { registerUserProfileRoutes } from "./modules/users/index.js";
 import { createRequestRateLimiter } from "./services/request-rate-limit.js";
+import { SkillAnalysisService } from "./services/skill-analysis.service.js";
 import {
   configureObservability,
   createRequestId,
@@ -65,6 +66,12 @@ export function createApp() {
   );
   const careerAnalysisQueue = createCareerAnalysisQueue(environment.REDIS_URL);
   const reportQueue = createReportQueue(environment.REDIS_URL);
+  const skillAnalysis = new SkillAnalysisService(
+    database,
+    environment,
+    careerAnalysisQueue,
+    monolith,
+  );
   const rateLimiter = createRequestRateLimiter(environment.REDIS_URL);
   const eventBus = new RealtimeEventBus(environment.REDIS_URL);
 
@@ -131,6 +138,7 @@ export function createApp() {
 
   registerResumeRoutes(app, { database, environment, queue: careerAnalysisQueue, monolith });
   registerJobDescriptionRoutes(app, { database, queue: careerAnalysisQueue, monolith });
+  registerCareerTargetRoutes(app, database);
   const interviewService = registerInterviewRoutes(
     app,
     database,
@@ -146,6 +154,7 @@ export function createApp() {
     reportQueue,
     monolith,
     eventBus,
+    skillAnalysis,
   );
   interviewService.setReportService(reportService);
   registerAnalyticsRoutes(app, database);
