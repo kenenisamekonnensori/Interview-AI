@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { PlanUsageCard } from "@/features/billing/components/plan-usage-card";
 import { PreparationState } from "@/features/dashboard/components/preparation-state";
 import { apiClient } from "@/lib/api-client";
 import { greetingForHour } from "@/lib/greeting";
@@ -128,6 +129,8 @@ export default function DashboardPage() {
             }
           />
         </section>
+
+        <PlanUsageCard />
 
         <section aria-label="Recent interviews" className="surface p-5">
           <div className="flex items-center justify-between gap-3">

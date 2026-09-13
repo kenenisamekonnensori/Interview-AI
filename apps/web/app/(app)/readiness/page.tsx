@@ -14,17 +14,38 @@ import {
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 
+import { UpgradeNotice } from "@/features/billing/components/upgrade-notice";
+import { parseEntitlementError } from "@/features/billing/lib/billing-helpers";
 import { apiClient } from "@/lib/api-client";
 import { changeLabel } from "@/features/readiness/lib/readiness-helpers";
 
 export default function ReadinessPage() {
   const readiness = useQuery({
     queryKey: ["analytics", "readiness"],
+    // A plan boundary is a definitive answer, not something to retry.
+    retry: (failureCount, error) => !parseEntitlementError(error) && failureCount < 2,
     queryFn: () => apiClient<{ readiness: ReadinessAssessment }>("/api/v1/analytics/readiness"),
   });
 
   if (readiness.isPending) return <Loading />;
-  if (readiness.error) return <ErrorState onRetry={() => void readiness.refetch()} />;
+  if (readiness.error) {
+    const entitlement = parseEntitlementError(readiness.error);
+    if (entitlement)
+      return (
+        <main className="noise min-h-[calc(100vh-5rem)] px-5 py-8 sm:px-8 lg:px-10">
+          <div className="mx-auto max-w-5xl space-y-5">
+            <div>
+              <p className="eyebrow">Readiness</p>
+              <h1 className="mt-2 text-3xl font-semibold tracking-[-.045em]">
+                Interview readiness
+              </h1>
+            </div>
+            <UpgradeNotice feature={entitlement.feature} />
+          </div>
+        </main>
+      );
+    return <ErrorState onRetry={() => void readiness.refetch()} />;
+  }
 
   const data = readiness.data.readiness;
   const trend = changeLabel(data.change);

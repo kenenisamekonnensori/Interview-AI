@@ -28,6 +28,11 @@ model User {
   skillAnalysis      SkillAnalysis?
   practicePlan       PracticePlan?
   readinessSnapshots ReadinessSnapshot[]
+  billingCustomers   BillingCustomer[]
+  subscriptions      Subscription[]
+  usageRecords       UsageRecord[]
+  usageCounters      UsageCounter[]
+  billingEvents      BillingEvent[]
 
   @@map("user")
 }
@@ -435,6 +440,167 @@ model ReadinessSnapshot {
   @@index([userId, recordedAt])
   @@index([userId, careerTargetId, recordedAt])
   @@map("readiness_snapshot")
+}
+
+enum BillingProvider {
+  PADDLE
+}
+
+enum BillingPlan {
+  FREE
+  PRO
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  PAUSED
+  CANCELED
+}
+
+enum BillingInterval {
+  MONTH
+  YEAR
+}
+
+enum BillingEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+enum UsageResource {
+  MOCK_INTERVIEW
+  AI_ANALYSIS
+}
+
+enum UsageRecordStatus {
+  RESERVED
+  COMMITTED
+  RELEASED
+}
+
+/// The application's relationship with a billing-provider customer. Paddle is
+/// the source of truth for the financial relationship; this row only maps the
+/// external customer to exactly one application user.
+model BillingCustomer {
+  id                 String          @id @default(uuid())
+  userId             String
+  provider           BillingProvider @default(PADDLE)
+  providerCustomerId String
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@unique([provider, providerCustomerId])
+  @@map("billing_customer")
+}
+
+/// Local, webhook-synchronized copy of the provider's subscription state. This
+/// is the authoritative source for application access decisions so that no
+/// request ever depends on a live provider API call.
+model Subscription {
+  id                         String             @id @default(uuid())
+  userId                     String
+  provider                   BillingProvider    @default(PADDLE)
+  providerSubscriptionId     String
+  providerCustomerId         String
+  plan                       BillingPlan        @default(FREE)
+  status                     SubscriptionStatus
+  billingInterval            BillingInterval?
+  currentPeriodStart         DateTime?
+  currentPeriodEnd           DateTime?
+  cancelAtPeriodEnd          Boolean            @default(false)
+  scheduledChange            Json?
+  scheduledChangeEffectiveAt DateTime?
+  providerCreatedAt          DateTime?
+  providerUpdatedAt          DateTime?
+  lastEventType              String?
+  lastWebhookOccurredAt      DateTime?
+  createdAt                  DateTime           @default(now())
+  updatedAt                  DateTime           @updatedAt
+  user                       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usageRecords               UsageRecord[]
+
+  @@unique([provider, providerSubscriptionId])
+  @@index([userId, status])
+  @@index([provider, providerCustomerId])
+  @@map("subscription")
+}
+
+/// Durable, deduplicated record of every provider webhook delivery. Webhook
+/// delivery is at-least-once and unordered, so the unique event key plus the
+/// stored occurredAt are what make processing idempotent and order-safe.
+model BillingEvent {
+  id              String             @id @default(uuid())
+  provider        BillingProvider    @default(PADDLE)
+  providerEventId String
+  eventType       String
+  occurredAt      DateTime
+  status          BillingEventStatus @default(PENDING)
+  payload         Json
+  error           String?
+  attempts        Int                @default(0)
+  processedAt     DateTime?
+  userId          String?
+  subscriptionId  String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  user            User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerEventId])
+  @@index([status, occurredAt])
+  @@index([userId, occurredAt])
+  @@map("billing_event")
+}
+
+/// Append-only ledger of metered consumption. Quantity is never inferred from
+/// client input: rows are written by server operations that carry a stable
+/// reference so a retried request cannot consume twice.
+model UsageRecord {
+  id             String            @id @default(uuid())
+  userId         String
+  subscriptionId String?
+  resource       UsageResource
+  quantity       Int               @default(1)
+  periodStart    DateTime
+  periodEnd      DateTime
+  referenceType  String
+  referenceId    String
+  status         UsageRecordStatus @default(RESERVED)
+  committedAt    DateTime?
+  releasedAt     DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription   Subscription?     @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@unique([resource, referenceType, referenceId])
+  @@index([userId, resource, periodStart])
+  @@index([userId, resource, status])
+  @@map("usage_record")
+}
+
+/// Materialized per-period consumption counter. Limit enforcement is a single
+/// conditional atomic upsert against this row, which is what makes concurrent
+/// requests unable to exceed a limit.
+model UsageCounter {
+  id          String        @id @default(uuid())
+  userId      String
+  resource    UsageResource
+  periodStart DateTime
+  periodEnd   DateTime
+  used        Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, resource, periodStart])
+  @@map("usage_counter")
 }
 
 model Session {

@@ -5,6 +5,8 @@ import { CircleAlert, LoaderCircle, Mic2 } from "lucide-react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 
+import { UpgradeNotice } from "@/features/billing/components/upgrade-notice";
+import { parseEntitlementError } from "@/features/billing/lib/billing-helpers";
 import { AnalysisCard } from "@/features/skills/components/analysis-card";
 import { SkillCard } from "@/features/skills/components/skill-card";
 import { groupSkills } from "@/features/skills/lib/group-skills";
@@ -13,11 +15,30 @@ import { apiClient } from "@/lib/api-client";
 export default function SkillsPage() {
   const skills = useQuery({
     queryKey: ["analytics", "skills"],
+    // A plan boundary is a definitive answer, not something to retry.
+    retry: (failureCount, error) => !parseEntitlementError(error) && failureCount < 2,
     queryFn: () => apiClient<{ skills: SkillProfile }>("/api/v1/analytics/skills"),
   });
 
   if (skills.isPending) return <Loading />;
-  if (skills.error) return <ErrorState onRetry={() => void skills.refetch()} />;
+  if (skills.error) {
+    const entitlement = parseEntitlementError(skills.error);
+    if (entitlement)
+      return (
+        <main className="noise min-h-[calc(100vh-5rem)] px-5 py-8 sm:px-8 lg:px-10">
+          <div className="mx-auto max-w-5xl space-y-5">
+            <div>
+              <p className="eyebrow">Skills &amp; Weaknesses</p>
+              <h1 className="mt-2 text-3xl font-semibold tracking-[-.045em]">
+                Your interview skill profile
+              </h1>
+            </div>
+            <UpgradeNotice feature={entitlement.feature} />
+          </div>
+        </main>
+      );
+    return <ErrorState onRetry={() => void skills.refetch()} />;
+  }
 
   const profile = skills.data.skills;
   const hasScored = profile.validReportCount > 0;

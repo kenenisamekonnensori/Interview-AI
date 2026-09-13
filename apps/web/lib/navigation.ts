@@ -28,9 +28,8 @@ export type NavigationSection = {
 
 /**
  * Dashboard sidebar information architecture. Routes reuse the existing
- * application pages; Performance, Skills & Weaknesses, Readiness, and Practice
- * Plan are backed by their server-authoritative analytics endpoints, while
- * Subscription remains a placeholder until billing ships.
+ * application pages; Performance, Skills & Weaknesses, Readiness, Practice
+ * Plan, and Subscription are backed by their server-authoritative endpoints.
  */
 export const navigationSections: NavigationSection[] = [
   {

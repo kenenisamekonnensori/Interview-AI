@@ -5,6 +5,11 @@ import type { SkillKey } from "@interviewer-ai/types";
 import type { PrismaClient } from "../../prisma/generated/client.js";
 import { createAiProvider } from "../modules/ai/index.js";
 import { AiProviderError, isRetryableAiError } from "../modules/ai/errors.js";
+import { BillingError } from "../modules/billing/domain/errors.js";
+import { usageReferenceTypes } from "../modules/billing/domain/usage-references.js";
+import { EntitlementService } from "../modules/billing/entitlement-service.js";
+import { BillingRepository } from "../modules/billing/repository.js";
+import { UsageService } from "../modules/billing/usage-service.js";
 import { skillAnalysisOutputSchema } from "../modules/analytics/skill-analysis-schema.js";
 import { AnalyticsRepository } from "../modules/analytics/repository.js";
 import {
@@ -30,6 +35,12 @@ export async function analyzeUserSkills(
   environment: ServerEnvironment,
   userId: string,
 ): Promise<void> {
+  // Defence in depth: this AI interpretation is a paid capability, and a job can
+  // be queued just before a downgrade or cancellation takes effect. Checked
+  // before any AI spend, next to the API-level gate.
+  const repository = new BillingRepository(database);
+  const entitlements = new EntitlementService(repository);
+  if (!(await entitlements.can(userId, "ADVANCED_FEEDBACK"))) return;
   if (!(await claimGeneration(database, userId))) return;
   const aiProvider = createAiProvider(environment);
   try {
@@ -44,6 +55,24 @@ export async function analyzeUserSkills(
     // A single interview cannot establish a pattern; keep the deterministic
     // profile and skip the AI call (no row is created, profile stays honest).
     if (valid.length < 2 || observationCount < 2) return;
+    // Metered AI analysis, keyed by the evidence set so a retry of the same
+    // analysis consumes nothing further. Exceeding the allowance stops before
+    // the provider is called.
+    const usage = new UsageService(repository, entitlements);
+    try {
+      await usage.reserve({
+        userId,
+        resource: "AI_ANALYSIS",
+        referenceType: usageReferenceTypes.AI_ANALYSIS,
+        referenceId: `${userId}:${valid.length}`,
+      });
+    } catch (error) {
+      if (error instanceof BillingError && error.code === "USAGE_LIMIT_REACHED") {
+        await markSkillAnalysisFailed(database, userId, publicFailureReason(error));
+        return;
+      }
+      throw error;
+    }
     const skills = computeSkillProfile(valid);
     const generated = await aiProvider.generateStructured(
       {
@@ -132,6 +161,9 @@ export class SkillAnalysisService {
   ) {}
 
   async enqueueRefresh(userId: string) {
+    // Never schedule paid AI interpretation for a plan that does not include it.
+    const entitlements = new EntitlementService(new BillingRepository(this.database));
+    if (!(await entitlements.can(userId, "ADVANCED_FEEDBACK"))) return;
     const dispatched = this.monolith?.dispatchSkillAnalysis(userId);
     if (!dispatched) await this.queue.enqueue({ kind: "skill-analysis", userId });
   }
@@ -151,6 +183,9 @@ async function claimGeneration(database: PrismaClient, userId: string): Promise<
 }
 
 function publicFailureReason(error: unknown) {
+  if (error instanceof BillingError && error.code === "USAGE_LIMIT_REACHED") {
+    return "You have reached your plan's AI analysis limit for this period.";
+  }
   return error instanceof AiProviderError
     ? "Your skill interpretation could not be generated yet. Your deterministic profile below stays up to date."
     : "Your skill interpretation could not be generated. Please try again later.";

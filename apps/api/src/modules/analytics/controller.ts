@@ -1,5 +1,7 @@
+import type { EntitlementKey } from "@interviewer-ai/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
+import { sendBillingError } from "../billing/controller.js";
 import { AnalyticsService, PerformanceQueryError } from "./service.js";
 import { ReadinessService } from "./readiness-service.js";
 import { analyticsFilterSchema, interviewIdSchema, performanceQuerySchema } from "./schema.js";
@@ -13,8 +15,18 @@ export function registerAnalyticsRoutes(app: FastifyInstance, database: PrismaCl
         userId: string,
         filter: ReturnType<typeof analyticsFilterSchema.parse>,
       ) => Promise<T>,
+      feature?: EntitlementKey,
     ) =>
     async (request: FastifyRequest, reply: FastifyReply) => {
+      // Aggregate performance intelligence is a paid capability. The check lives
+      // here, on the server, so hiding UI is never the security boundary.
+      if (feature) {
+        try {
+          await app.entitlements.requireFeature(request.authContext!.user.id, feature);
+        } catch (error) {
+          return sendBillingError(reply, error);
+        }
+      }
       const filter = analyticsFilterSchema.safeParse(request.query);
       if (!filter.success)
         return reply
@@ -35,7 +47,7 @@ export function registerAnalyticsRoutes(app: FastifyInstance, database: PrismaCl
   app.get(
     "/api/v1/analytics/trends",
     { preHandler: app.requireVerifiedUser },
-    filtered((userId, filter) => service.trends(userId, filter)),
+    filtered((userId, filter) => service.trends(userId, filter), "PERFORMANCE_ANALYTICS"),
   );
   app.get(
     "/api/v1/analytics/summary",
@@ -56,20 +68,42 @@ export function registerAnalyticsRoutes(app: FastifyInstance, database: PrismaCl
       recommendation: await service.nextPracticeRecommendation(request.authContext!.user.id),
     }),
   );
-  app.get("/api/v1/analytics/skills", { preHandler: app.requireVerifiedUser }, async (request) => ({
-    skills: await service.skillProfile(request.authContext!.user.id),
-  }));
+  app.get(
+    "/api/v1/analytics/skills",
+    { preHandler: app.requireVerifiedUser },
+    async (request, reply) => {
+      try {
+        await app.entitlements.requireFeature(request.authContext!.user.id, "SKILL_PROFILE");
+      } catch (error) {
+        return sendBillingError(reply, error);
+      }
+      return { skills: await service.skillProfile(request.authContext!.user.id) };
+    },
+  );
   app.get(
     "/api/v1/analytics/readiness",
     { preHandler: app.requireVerifiedUser },
-    async (request) => ({
-      readiness: await readinessService.assessment(request.authContext!.user.id),
-    }),
+    async (request, reply) => {
+      try {
+        await app.entitlements.requireFeature(request.authContext!.user.id, "READINESS_ASSESSMENT");
+      } catch (error) {
+        return sendBillingError(reply, error);
+      }
+      return { readiness: await readinessService.assessment(request.authContext!.user.id) };
+    },
   );
   app.get(
     "/api/v1/analytics/performance",
     { preHandler: app.requireVerifiedUser },
     async (request, reply) => {
+      try {
+        await app.entitlements.requireFeature(
+          request.authContext!.user.id,
+          "PERFORMANCE_ANALYTICS",
+        );
+      } catch (error) {
+        return sendBillingError(reply, error);
+      }
       const query = performanceQuerySchema.safeParse(request.query);
       if (!query.success)
         return reply

@@ -31,6 +31,13 @@ export const serverEnvironmentSchema = z
     GOOGLE_CLIENT_ID: z.string().min(1),
     GOOGLE_CLIENT_SECRET: z.string().min(1),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    PADDLE_API_KEY: optionalEnvironmentString,
+    PADDLE_CLIENT_TOKEN: optionalEnvironmentString,
+    PADDLE_ENVIRONMENT: z.enum(["sandbox", "production"]).default("sandbox"),
+    PADDLE_PRO_MONTHLY_PRICE_ID: optionalEnvironmentString,
+    PADDLE_PRO_PRODUCT_ID: optionalEnvironmentString,
+    PADDLE_PRO_YEARLY_PRICE_ID: optionalEnvironmentString,
+    PADDLE_WEBHOOK_SECRET: optionalEnvironmentString,
     GEMINI_API_KEY: optionalEnvironmentString,
     GEMINI_MODEL: z.string().min(1).default("gemini-3.5-flash-lite"),
     REDIS_URL: z.preprocess(
@@ -52,6 +59,20 @@ export const serverEnvironmentSchema = z
         code: "custom",
         path: ["WEB_URL"],
         message: "WEB_URL must use HTTPS in production.",
+      });
+    }
+    // Sandbox and production billing credentials must never be mixed. A
+    // production deployment that has Paddle credentials configured must point
+    // at the production environment; sandbox testing runs outside production.
+    if (
+      environment.NODE_ENV === "production" &&
+      environment.PADDLE_API_KEY &&
+      environment.PADDLE_ENVIRONMENT !== "production"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["PADDLE_ENVIRONMENT"],
+        message: 'PADDLE_ENVIRONMENT must be "production" when Paddle is configured in production.',
       });
     }
   });
