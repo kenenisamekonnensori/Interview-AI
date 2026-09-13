@@ -1,4 +1,9 @@
+import { randomUUID } from "node:crypto";
+
 import type { PrismaClient } from "../../../prisma/generated/client.js";
+import type { UsageService } from "../billing/usage-service.js";
+import { usageReferenceTypes } from "../billing/domain/usage-references.js";
+import { observability } from "../../services/observability.js";
 import type { createCareerAnalysisQueue } from "../../services/career-analysis-queue.js";
 import type { createReportQueue } from "../../services/report-queue.js";
 import type { InterviewConfiguration, InterviewStatus } from "@interviewer-ai/types";
@@ -41,6 +46,8 @@ export class InterviewService {
     private readonly reportQueue: ReturnType<typeof createReportQueue>,
     private readonly events: InterviewEventPublisher,
     private readonly monolith?: MonolithExecutionManager,
+    /** Plan usage accounting. Optional so unit tests can construct the service directly. */
+    private readonly usage?: UsageService,
   ) {
     this.repository = new InterviewRepository(database);
   }
@@ -94,24 +101,53 @@ export class InterviewService {
         "CAREER_TARGET_NOT_FOUND",
         "Choose a career target you own.",
       );
-    return this.database.interview.create({
-      data: {
-        userId,
-        interviewType: configuration.interviewType,
-        difficulty: configuration.difficulty,
-        durationMinutes: configuration.durationMinutes,
-        language: configuration.language,
-        targetRole: configuration.targetRole ?? careerTarget?.title ?? profile?.targetRole ?? null,
-        resumeId: resume?.id ?? null,
-        jobDescriptionId: job?.id ?? null,
-        careerTargetId: careerTarget?.id ?? null,
-      },
-      include: {
-        resume: { select: { id: true, fileName: true } },
-        jobDescription: { select: { id: true, title: true, company: true } },
-        careerTarget: { select: { id: true, title: true, company: true } },
-      },
+
+    // Plan usage is reserved against the interview id before the row exists, so
+    // the check and the consumption are race-safe and a retried request cannot
+    // consume twice. A rejected limit throws before anything is created.
+    const interviewId = randomUUID();
+    const reservation = await this.usage?.reserve({
+      userId,
+      resource: "MOCK_INTERVIEW",
+      referenceType: usageReferenceTypes.MOCK_INTERVIEW,
+      referenceId: interviewId,
     });
+    try {
+      return await this.database.interview.create({
+        data: {
+          id: interviewId,
+          userId,
+          interviewType: configuration.interviewType,
+          difficulty: configuration.difficulty,
+          durationMinutes: configuration.durationMinutes,
+          language: configuration.language,
+          targetRole:
+            configuration.targetRole ?? careerTarget?.title ?? profile?.targetRole ?? null,
+          resumeId: resume?.id ?? null,
+          jobDescriptionId: job?.id ?? null,
+          careerTargetId: careerTarget?.id ?? null,
+        },
+        include: {
+          resume: { select: { id: true, fileName: true } },
+          jobDescription: { select: { id: true, title: true, company: true } },
+          careerTarget: { select: { id: true, title: true, company: true } },
+        },
+      });
+    } catch (error) {
+      // Creation failed, so the interview never existed: give the unit back so a
+      // transient failure does not cost the user one of their interviews.
+      if (reservation && !reservation.duplicate) {
+        await this.usage
+          ?.release({
+            userId,
+            resource: "MOCK_INTERVIEW",
+            referenceType: usageReferenceTypes.MOCK_INTERVIEW,
+            referenceId: interviewId,
+          })
+          .catch(() => undefined);
+      }
+      throw error;
+    }
   }
 
   async prepare(id: string, userId: string, correlationId?: string) {
@@ -198,11 +234,28 @@ export class InterviewService {
       });
       return { conversation, started: true };
     });
-    if (result.started)
+    if (result.started) {
       this.events.publish({
         name: "InterviewStarted",
         payload: { interviewId: id, conversation: conversationDto(result.conversation) },
       });
+      // The reserved unit is now genuinely consumed: the session really began.
+      // Accounting failures are logged rather than failing the candidate's start.
+      try {
+        await this.usage?.commit({
+          userId,
+          resource: "MOCK_INTERVIEW",
+          referenceType: usageReferenceTypes.MOCK_INTERVIEW,
+          referenceId: id,
+        });
+      } catch (error) {
+        observability().error(
+          "billing.usage.commit_failed",
+          { userId, resource: "MOCK_INTERVIEW", referenceId: id },
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
+    }
     return result;
   }
 
@@ -387,6 +440,16 @@ export class InterviewService {
         "This interview cannot be cancelled.",
       );
     }
+    // Only interviews that were cancelled before starting reach this point, so
+    // the reserved unit was never used and is returned to the user's allowance.
+    await this.usage
+      ?.release({
+        userId,
+        resource: "MOCK_INTERVIEW",
+        referenceType: usageReferenceTypes.MOCK_INTERVIEW,
+        referenceId: id,
+      })
+      .catch(() => undefined);
     return this.repository.findOwned(id, userId);
   }
 

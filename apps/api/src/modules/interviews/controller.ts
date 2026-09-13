@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 import type { createCareerAnalysisQueue } from "../../services/career-analysis-queue.js";
 import type { createReportQueue } from "../../services/report-queue.js";
+import { BillingError } from "../billing/domain/errors.js";
+import { sendBillingError } from "../billing/controller.js";
 import { createInterviewSchema, interviewIdSchema } from "./schema.js";
 import { InterviewEventPublisher } from "./events.js";
 import { InterviewLifecycleError, InterviewService } from "./service.js";
@@ -119,6 +121,8 @@ export function registerInterviewRoutes(
     reportQueue,
     new InterviewEventPublisher(app.log, eventBus),
     monolith,
+    // Enforces the plan's interview allowance on the server for every creation.
+    app.usageService,
   );
   app.decorate("interviewService", service);
 
@@ -136,6 +140,9 @@ export function registerInterviewRoutes(
           interview: toDto(await service.create(request.authContext!.user.id, input.data)),
         });
       } catch (error) {
+        // A plan limit is a structured billing error with upgrade details, so it
+        // is answered distinctly from interview lifecycle conflicts.
+        if (error instanceof BillingError) return sendBillingError(reply, error);
         return sendLifecycleError(reply, error);
       }
     },

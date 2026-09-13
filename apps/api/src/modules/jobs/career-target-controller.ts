@@ -1,6 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 import { createCareerTargetSchema, updateCareerTargetSchema } from "@interviewer-ai/types";
+import { BillingError } from "../billing/domain/errors.js";
+import { sendBillingError } from "../billing/controller.js";
 import { careerTargetIdSchema } from "./career-target-schema.js";
 import { CareerTargetError, CareerTargetService } from "./career-target-service.js";
 
@@ -28,10 +30,14 @@ export function registerCareerTargetRoutes(app: FastifyInstance, database: Prism
           message: "Provide a title and valid linked documents.",
         });
       try {
-        return reply.status(201).send({
-          careerTarget: await service.create(request.authContext!.user.id, input.data),
-        });
+        const userId = request.authContext!.user.id;
+        // Server-side plan check. It runs before the existing target is archived
+        // so the free plan's single live target cannot be side-stepped by simply
+        // creating another one.
+        await app.entitlements.requireCareerTargetCapacity(userId);
+        return reply.status(201).send({ careerTarget: await service.create(userId, input.data) });
       } catch (error) {
+        if (error instanceof BillingError) return sendBillingError(reply, error);
         return sendTargetError(reply, error);
       }
     },

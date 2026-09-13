@@ -9,10 +9,12 @@ import { registerJobDescriptionRoutes, registerCareerTargetRoutes } from "./modu
 import { registerInterviewRoutes } from "./modules/interviews/index.js";
 import { registerConversationRoutes } from "./modules/conversation/index.js";
 import { createCareerAnalysisQueue } from "./services/career-analysis-queue.js";
+import { createBillingEventQueue } from "./services/billing-event-queue.js";
 import { createReportQueue } from "./services/report-queue.js";
 import { registerReportRoutes } from "./modules/reports/index.js";
 import { registerAnalyticsRoutes } from "./modules/analytics/index.js";
 import { registerPracticePlanRoutes } from "./modules/practice-plan/index.js";
+import { registerBillingRoutes } from "./modules/billing/index.js";
 import { registerUserProfileRoutes } from "./modules/users/index.js";
 import { createRequestRateLimiter } from "./services/request-rate-limit.js";
 import { SkillAnalysisService } from "./services/skill-analysis.service.js";
@@ -68,6 +70,7 @@ export function createApp() {
   );
   const careerAnalysisQueue = createCareerAnalysisQueue(environment.REDIS_URL);
   const reportQueue = createReportQueue(environment.REDIS_URL);
+  const billingQueue = createBillingEventQueue(environment.REDIS_URL);
   const skillAnalysis = new SkillAnalysisService(
     database,
     environment,
@@ -82,6 +85,7 @@ export function createApp() {
   app.addHook("onClose", async () => {
     await careerAnalysisQueue.close();
     await reportQueue.close();
+    await billingQueue.close();
     await rateLimiter.close();
     await eventBus.close();
     await dispose();
@@ -137,6 +141,10 @@ export function createApp() {
   app.route(authIntegration.route);
   app.decorate("requireSession", authIntegration.requireSession);
   app.decorate("requireVerifiedUser", authIntegration.requireVerifiedUser);
+
+  // Billing registers first: it owns the entitlement and usage decorations that
+  // the feature modules authorize against.
+  registerBillingRoutes(app, { database, environment, queue: billingQueue, monolith });
 
   registerResumeRoutes(app, { database, environment, queue: careerAnalysisQueue, monolith });
   registerJobDescriptionRoutes(app, { database, queue: careerAnalysisQueue, monolith });

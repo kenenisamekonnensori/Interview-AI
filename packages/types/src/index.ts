@@ -561,6 +561,166 @@ export const apiErrorSchema = z.object({
 });
 export type ApiErrorShape = z.infer<typeof apiErrorSchema>;
 
+/* ------------------------------------------------------------------------- */
+/* Billing, entitlements, and usage                                           */
+/*                                                                            */
+/* Paddle is the source of truth for the external financial relationship. The  */
+/* application's own subscription state, resolved entitlements, and usage are  */
+/* server-authoritative: nothing here is ever trusted from the client.         */
+/* ------------------------------------------------------------------------- */
+
+/** Internal plans. Paddle products/prices are mapped to these server-side. */
+export const billingPlanIds = ["FREE", "PRO"] as const;
+export const billingPlanSchema = z.enum(billingPlanIds);
+export type BillingPlanId = z.infer<typeof billingPlanSchema>;
+
+/** Paddle's subscription lifecycle states, mirrored locally. */
+export const subscriptionStatuses = [
+  "TRIALING",
+  "ACTIVE",
+  "PAST_DUE",
+  "PAUSED",
+  "CANCELED",
+] as const;
+export const subscriptionStatusSchema = z.enum(subscriptionStatuses);
+export type SubscriptionStatusValue = z.infer<typeof subscriptionStatusSchema>;
+
+export const billingIntervals = ["MONTH", "YEAR"] as const;
+export const billingIntervalSchema = z.enum(billingIntervals);
+export type BillingIntervalValue = z.infer<typeof billingIntervalSchema>;
+
+export const billingProviders = ["PADDLE"] as const;
+export const billingProviderSchema = z.enum(billingProviders);
+export type BillingProviderId = z.infer<typeof billingProviderSchema>;
+
+/** Metered resources. Only resources with real business meaning are metered. */
+export const usageResources = ["MOCK_INTERVIEW", "AI_ANALYSIS"] as const;
+export const usageResourceSchema = z.enum(usageResources);
+export type UsageResourceId = z.infer<typeof usageResourceSchema>;
+
+/** Boolean capabilities resolved from plan + subscription state. */
+export const entitlementKeys = [
+  "PERFORMANCE_ANALYTICS",
+  "SKILL_PROFILE",
+  "PRACTICE_PLAN",
+  "ADVANCED_FEEDBACK",
+  "READINESS_ASSESSMENT",
+] as const;
+export const entitlementKeySchema = z.enum(entitlementKeys);
+export type EntitlementKey = z.infer<typeof entitlementKeySchema>;
+
+/** `null` means unlimited — an explicit value, never a magic large number. */
+export const usageAllowanceSchema = z.number().int().nonnegative().nullable();
+
+export const planEntitlementsSchema = z.object({
+  plan: billingPlanSchema,
+  features: z.record(entitlementKeySchema, z.boolean()),
+  /** Per-period allowance for each metered resource; `null` is unlimited. */
+  limits: z.record(usageResourceSchema, usageAllowanceSchema),
+  /** Count-based allowances that are not consumption-metered. */
+  caps: z.object({
+    activeCareerTargets: z.number().int().positive().nullable(),
+  }),
+});
+export type PlanEntitlements = z.infer<typeof planEntitlementsSchema>;
+
+/** A purchasable option in the server-owned plan catalog. */
+export const billingPlanOptionSchema = z.object({
+  plan: billingPlanSchema,
+  interval: billingIntervalSchema.nullable(),
+  /** Amount charged per billing period, in minor units of `currency`. */
+  amount: z.number().int().nonnegative().nullable(),
+  currency: z.string().length(3),
+  /** Whether the provider price is configured on this deployment. */
+  purchasable: z.boolean(),
+  entitlements: planEntitlementsSchema,
+});
+export type BillingPlanOption = z.infer<typeof billingPlanOptionSchema>;
+
+export const usageStatusSchema = z.object({
+  resource: usageResourceSchema,
+  used: z.number().int().nonnegative(),
+  limit: usageAllowanceSchema,
+  unlimited: z.boolean(),
+  remaining: z.number().int().nonnegative().nullable(),
+  periodStart: z.string().datetime(),
+  periodEnd: z.string().datetime(),
+});
+export type UsageStatus = z.infer<typeof usageStatusSchema>;
+
+export const subscriptionSummarySchema = z.object({
+  provider: billingProviderSchema,
+  plan: billingPlanSchema,
+  status: subscriptionStatusSchema,
+  billingInterval: billingIntervalSchema.nullable(),
+  currentPeriodStart: z.string().datetime().nullable(),
+  currentPeriodEnd: z.string().datetime().nullable(),
+  cancelAtPeriodEnd: z.boolean(),
+  scheduledChangeEffectiveAt: z.string().datetime().nullable(),
+  /** True while paid entitlements are still effective on a canceled plan. */
+  accessUntil: z.string().datetime().nullable(),
+});
+export type SubscriptionSummary = z.infer<typeof subscriptionSummarySchema>;
+
+/**
+ * Server-authoritative billing state for the account: what plan is effective,
+ * what that grants, and how much of each metered resource has been consumed.
+ */
+export const billingOverviewSchema = z.object({
+  generatedAt: z.string().datetime(),
+  plan: billingPlanSchema,
+  /** The plan the user is entitled to right now (after status policy). */
+  entitlements: planEntitlementsSchema,
+  subscription: subscriptionSummarySchema.nullable(),
+  usage: z.array(usageStatusSchema),
+  /** Live count of active career targets against the plan cap. */
+  careerTargets: z.object({
+    active: z.number().int().nonnegative(),
+    limit: z.number().int().positive().nullable(),
+  }),
+  plans: z.array(billingPlanOptionSchema),
+  /** Whether a provider customer exists, so the customer portal can be opened. */
+  canManageBilling: z.boolean(),
+});
+export type BillingOverview = z.infer<typeof billingOverviewSchema>;
+
+export const billingCheckoutRequestSchema = z.object({
+  plan: billingPlanSchema,
+  interval: billingIntervalSchema,
+});
+export type BillingCheckoutRequest = z.infer<typeof billingCheckoutRequestSchema>;
+
+export const billingCheckoutSessionSchema = z.object({
+  /** Hosted checkout URL to redirect to. Never contains credentials. */
+  checkoutUrl: z.string().url(),
+  transactionId: z.string().min(1),
+});
+export type BillingCheckoutSession = z.infer<typeof billingCheckoutSessionSchema>;
+
+export const billingPortalSessionSchema = z.object({
+  url: z.string().url(),
+});
+export type BillingPortalSession = z.infer<typeof billingPortalSessionSchema>;
+
+/** Structured details attached to `USAGE_LIMIT_REACHED` errors. */
+export const usageLimitErrorDetailsSchema = z.object({
+  resource: usageResourceSchema,
+  currentUsage: z.number().int().nonnegative(),
+  limit: z.number().int().nonnegative(),
+  plan: billingPlanSchema,
+  periodEndsAt: z.string().datetime(),
+  upgradeAvailable: z.boolean(),
+});
+export type UsageLimitErrorDetails = z.infer<typeof usageLimitErrorDetailsSchema>;
+
+/** Structured details attached to `ENTITLEMENT_REQUIRED` errors. */
+export const entitlementErrorDetailsSchema = z.object({
+  feature: entitlementKeySchema,
+  plan: billingPlanSchema,
+  upgradeAvailable: z.boolean(),
+});
+export type EntitlementErrorDetails = z.infer<typeof entitlementErrorDetailsSchema>;
+
 /**
  * Structured next-step recommendation. The chosen action and priority are
  * computed deterministically from persisted data (severity, job relevance,

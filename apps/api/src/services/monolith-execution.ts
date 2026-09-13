@@ -1,6 +1,7 @@
 import type { PrismaClient } from "../../prisma/generated/client.js";
 import type { ServerEnvironment } from "@interviewer-ai/config";
 import { observability, withCorrelationId } from "./observability.js";
+import type { BillingEventProcessor } from "../modules/billing/billing-event-processor.js";
 import { analyzeResume, markResumeAnalysisFailed } from "./resume-analysis.service.js";
 import { analyzeJobDescription, markJobAnalysisFailed } from "./job-analysis.service.js";
 import { planInterview, markInterviewPlanFailed } from "./interview-plan.service.js";
@@ -189,6 +190,46 @@ export class MonolithExecutionManager {
             error: error instanceof Error ? error.message : String(error),
           });
           await markSkillAnalysisFailed(this.database, userId);
+        }
+      });
+    });
+
+    return true;
+  }
+
+  /**
+   * Runs webhook event processing off the request path in monolith mode. The
+   * event row is already persisted, so a failure here is recoverable: the row
+   * stays FAILED and reconciliation retries it.
+   */
+  dispatchBillingEvent(
+    processor: BillingEventProcessor,
+    eventId: string,
+    correlationId?: string,
+  ): boolean {
+    if (!isMonolithMode()) return false;
+
+    observability().event("monolith.execution.started", {
+      task: "billing-event",
+      eventId,
+      correlationId,
+    });
+
+    setImmediate(() => {
+      withCorrelationId(correlationId, async () => {
+        try {
+          const result = await processor.process(eventId);
+          observability().event("monolith.execution.completed", {
+            task: "billing-event",
+            eventId,
+            outcome: result.status.toLowerCase(),
+          });
+        } catch (error) {
+          observability().error(
+            "monolith.execution.failed",
+            { task: "billing-event", eventId },
+            error instanceof Error ? error : new Error(String(error)),
+          );
         }
       });
     });
