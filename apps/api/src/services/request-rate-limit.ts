@@ -3,7 +3,13 @@ import Redis from "ioredis";
 import { createRedisConnectionOptions } from "./redis-connection.js";
 
 export type RateLimitPolicy = {
-  name: "authentication" | "resume-upload" | "conversation" | "voice-token";
+  name:
+    | "authentication"
+    | "resume-upload"
+    | "conversation"
+    | "voice-token"
+    | "ai-generation"
+    | "interview-create";
   limit: number;
   windowSeconds: number;
 };
@@ -33,6 +39,19 @@ export function requestRateLimitPolicy(method: string, url: string): RateLimitPo
   }
   if (method === "POST" && /^\/api\/v1\/interviews\/[^/]+\/conversation(?:\/|$)/.test(path)) {
     return { name: "conversation", limit: 40, windowSeconds: 60 };
+  }
+  // Endpoints whose only effect is to spend AI work. Interaction caps already
+  // bound cost, but a scripted caller should not be able to queue an unbounded
+  // number of generations in a burst.
+  if (
+    method === "POST" &&
+    (path === "/api/v1/practice-plan/regenerate" ||
+      /^\/api\/v1\/interviews\/[^/]+\/report\/retry$/.test(path))
+  ) {
+    return { name: "ai-generation", limit: 6, windowSeconds: 10 * 60 };
+  }
+  if (method === "POST" && path === "/api/v1/interviews") {
+    return { name: "interview-create", limit: 20, windowSeconds: 10 * 60 };
   }
   return null;
 }

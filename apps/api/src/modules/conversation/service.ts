@@ -37,6 +37,12 @@ import type {
 } from "./types.js";
 import { observability } from "../../services/observability.js";
 
+/**
+ * The real-time interviewer turn must fail fast: a stalled provider should hand
+ * control back to the client (which can retry) rather than freeze the session.
+ */
+const interviewerTurnTimeoutMs = 20_000;
+
 export class ConversationError extends Error {
   constructor(
     readonly code: string,
@@ -135,6 +141,7 @@ export class ConversationService {
         questionDifficulty: memory?.questionDifficulty ?? conversation.interview.difficulty,
       },
       latestCandidateAnswer: latestUserAnswer,
+      timeoutMs: interviewerTurnTimeoutMs,
     });
     const allowClosing =
       shouldClose ||

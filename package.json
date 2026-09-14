@@ -9,8 +9,8 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev --parallel",
-    "start": "turbo run start --parallel",
+    "dev": "turbo run dev",
+    "start": "turbo run start",
     "lint": "eslint .",
     "test": "turbo run test",
     "format": "prettier --write .",

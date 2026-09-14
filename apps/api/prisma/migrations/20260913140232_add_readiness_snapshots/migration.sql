@@ -1,6 +1,15 @@
 -- CreateEnum
 CREATE TYPE "ReadinessTrigger" AS ENUM ('REPORT_READY', 'MANUAL');
 
+-- DropIndex
+DROP INDEX "interview_userId_careerTargetId_idx";
+
+-- AlterTable
+ALTER TABLE "interview_report" ALTER COLUMN "updatedAt" DROP DEFAULT;
+
+-- AlterTable
+ALTER TABLE "user_profile" ALTER COLUMN "updatedAt" DROP DEFAULT;
+
 -- CreateTable
 CREATE TABLE "readiness_snapshot" (
     "id" TEXT NOT NULL,
@@ -18,13 +27,13 @@ CREATE TABLE "readiness_snapshot" (
 );
 
 -- CreateIndex
+CREATE INDEX "readiness_snapshot_userId_recordedAt_idx" ON "readiness_snapshot"("userId", "recordedAt");
+
+-- CreateIndex
+CREATE INDEX "readiness_snapshot_userId_careerTargetId_recordedAt_idx" ON "readiness_snapshot"("userId", "careerTargetId", "recordedAt");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "readiness_snapshot_userId_careerTargetId_validReportCount_key" ON "readiness_snapshot"("userId", "careerTargetId", "validReportCount");
-
--- CreateIndex
-CREATE INDEX "readiness_snapshot_userId_recordedAt_idx" ON "readiness_snapshot"("userId" "recordedAt" DESC);
-
--- CreateIndex
-CREATE INDEX "readiness_snapshot_userId_careerTargetId_recordedAt_idx" ON "readiness_snapshot"("userId" "careerTargetId" "recordedAt" DESC);
 
 -- AddForeignKey
 ALTER TABLE "readiness_snapshot" ADD CONSTRAINT "readiness_snapshot_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;

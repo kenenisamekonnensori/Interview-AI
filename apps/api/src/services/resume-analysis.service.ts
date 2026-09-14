@@ -1,3 +1,4 @@
+import { safetyPrivacyPrompt, untrustedDocumentGuard } from "@interviewer-ai/prompts";
 import { z } from "zod";
 import type { PrismaClient } from "../../prisma/generated/client.js";
 import type { ServerEnvironment } from "@interviewer-ai/config";
@@ -51,8 +52,7 @@ export async function analyzeResume(
   const aiProvider = createAiProvider(environment);
   const analysis = await aiProvider.generateStructured(
     {
-      instructions:
-        "Extract resume fields as JSON with summary, skills, technologies, experience, education, projects, certifications. Never invent facts.",
+      instructions: `${untrustedDocumentGuard} Extract resume fields as JSON with summary, skills, technologies, experience, education, projects, certifications. Never invent facts. ${safetyPrivacyPrompt}`,
       context: resumeText,
     },
     resumeAnalysisSchema.parse,

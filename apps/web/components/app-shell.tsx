@@ -4,7 +4,7 @@ import { Menu, Mic2, PanelLeftClose } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type PropsWithChildren } from "react";
+import { useEffect, useState, type PropsWithChildren } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { SignOutButton } from "@/features/auth/components/sign-out-button";
@@ -39,6 +39,21 @@ export function AppShell({ children }: PropsWithChildren) {
       .join("")
       .slice(0, 2)
       .toUpperCase() || "YO";
+  // Navigation always dismisses the mobile drawer, so the new page is not left
+  // covered by the overlay.
+  useEffect(() => setOpen(false), [pathname]);
+
+  // Keyboard users must be able to close the drawer without reaching for a
+  // pointer; Escape is the expected affordance.
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
   return (
     <div
       className={cn("min-h-screen bg-background")}

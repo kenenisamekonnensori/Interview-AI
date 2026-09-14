@@ -14,9 +14,11 @@ import {
   Star,
 } from "lucide-react";
 import { useState } from "react";
+import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { isPlanBoundaryError } from "@/features/billing/lib/billing-helpers";
 import { apiClient } from "@/lib/api-client";
 
 const queryKey = ["career-targets"] as const;
@@ -32,6 +34,8 @@ export function TargetJobsManager() {
   const [resumeId, setResumeId] = useState("");
   const [jobDescriptionId, setJobDescriptionId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // The target cap is a plan boundary, so the message gets an upgrade path.
+  const [errorUpgrade, setErrorUpgrade] = useState(false);
 
   const targets = useQuery({
     queryKey,
@@ -108,6 +112,7 @@ export function TargetJobsManager() {
       setError(
         cause instanceof Error && cause.message ? cause.message : "Could not save this target.",
       );
+      setErrorUpgrade(isPlanBoundaryError(cause));
     },
   });
 
@@ -224,7 +229,22 @@ export function TargetJobsManager() {
           <p className="text-xs text-muted-foreground">
             Job descriptions are stored as-is; no AI analysis runs when you save a target.
           </p>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {error ? (
+            <p className="text-sm text-destructive">
+              {error}
+              {errorUpgrade ? (
+                <>
+                  {" "}
+                  <Link
+                    href="/subscription"
+                    className="font-medium text-primary underline underline-offset-4"
+                  >
+                    See plans
+                  </Link>
+                </>
+              ) : null}
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             <Button type="submit" disabled={save.isPending}>
               {save.isPending ? "Saving…" : editing ? "Save changes" : "Add target"}

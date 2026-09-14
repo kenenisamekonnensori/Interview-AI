@@ -7,6 +7,7 @@ import type {
   JobDescriptionDto,
   NextPracticeRecommendation,
   Resume,
+  UsageLimitErrorDetails,
 } from "@interviewer-ai/types";
 import { interviewTypes } from "@interviewer-ai/types";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -24,6 +25,11 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LimitReachedNotice, UpgradeNotice } from "@/features/billing/components/upgrade-notice";
+import {
+  parseEntitlementError,
+  parseUsageLimitError,
+} from "@/features/billing/lib/billing-helpers";
 import { apiClient } from "@/lib/api-client";
 
 type ProfileDefaults = {
@@ -45,6 +51,12 @@ export function InterviewManager() {
   const [jobDescriptionId, setJobDescriptionId] = useState("");
   const [careerTargetId, setCareerTargetId] = useState("");
   const [failure, setFailure] = useState<InterviewStartInput | null>(null);
+  // A plan boundary is not a failure to retry — it is the moment to explain the
+  // allowance with real numbers and offer the upgrade path.
+  const [planBoundary, setPlanBoundary] = useState<{
+    limit: UsageLimitErrorDetails | null;
+    feature: string | null;
+  } | null>(null);
   // Optional ?type= prefill from the practice plan's “Start activity” actions.
   const [presetType, setPresetType] = useState<InterviewConfiguration["interviewType"] | null>(
     null,
@@ -133,8 +145,19 @@ export function InterviewManager() {
       throw new PreparationError(configuration);
     },
     onSuccess: (id) => router.push(`/interviews/${id}`),
-    onError: (cause) =>
-      setFailure(cause instanceof PreparationError ? cause.configuration : fallbackRecommendation),
+    onError: (cause) => {
+      const usageLimit = parseUsageLimitError(cause);
+      if (usageLimit) {
+        setPlanBoundary({ limit: usageLimit, feature: null });
+        return;
+      }
+      const entitlement = parseEntitlementError(cause);
+      if (entitlement) {
+        setPlanBoundary({ limit: null, feature: entitlement.feature });
+        return;
+      }
+      setFailure(cause instanceof PreparationError ? cause.configuration : fallbackRecommendation);
+    },
   });
 
   const customConfiguration = (): InterviewStartInput => ({
@@ -169,6 +192,27 @@ export function InterviewManager() {
         ...(recommendation.careerTargetId ? { careerTargetId: recommendation.careerTargetId } : {}),
       }
     : fallbackRecommendation;
+
+  if (planBoundary)
+    return (
+      <div className="space-y-4">
+        {planBoundary.limit ? (
+          <LimitReachedNotice
+            details={planBoundary.limit}
+            onDismiss={() => setPlanBoundary(null)}
+          />
+        ) : planBoundary.feature ? (
+          <UpgradeNotice feature={planBoundary.feature} />
+        ) : null}
+        <button
+          type="button"
+          onClick={() => setPlanBoundary(null)}
+          className="text-sm font-medium text-muted-foreground underline underline-offset-4"
+        >
+          Back to practice options
+        </button>
+      </div>
+    );
 
   if (failure)
     return (

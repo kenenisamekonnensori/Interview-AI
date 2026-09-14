@@ -33,7 +33,11 @@ class ApplicationAiProvider implements AiProvider {
     const instructions = `${buildInterviewerBehaviorPrompt(input.interviewContext)}\n${buildFollowUpGuidance()}`;
     try {
       return interviewerResponseProposalSchema.parse(
-        await this.adapter.generateJson({ instructions, context: input }),
+        await this.adapter.generateJson({
+          instructions,
+          context: input,
+          ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+        }),
       );
     } catch (error) {
       if (error instanceof AiProviderError) throw error;

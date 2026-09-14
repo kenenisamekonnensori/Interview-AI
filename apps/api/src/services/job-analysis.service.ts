@@ -1,3 +1,4 @@
+import { safetyPrivacyPrompt, untrustedDocumentGuard } from "@interviewer-ai/prompts";
 import { z } from "zod";
 import type { PrismaClient } from "../../prisma/generated/client.js";
 import type { ServerEnvironment } from "@interviewer-ai/config";
@@ -40,8 +41,7 @@ export async function analyzeJobDescription(
   const aiProvider = createAiProvider(environment);
   const analysis = await aiProvider.generateStructured(
     {
-      instructions:
-        "Extract JSON with requiredSkills, preferredSkills, responsibilities, keywords, seniority, technologyStack from this job description. Never infer requirements.",
+      instructions: `${untrustedDocumentGuard} Extract JSON with requiredSkills, preferredSkills, responsibilities, keywords, seniority, technologyStack from this job description. Never infer requirements. ${safetyPrivacyPrompt}`,
       context: job.rawText,
     },
     jobAnalysisSchema.parse,
