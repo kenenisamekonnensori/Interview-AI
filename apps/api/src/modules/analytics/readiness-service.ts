@@ -43,11 +43,17 @@ export class ReadinessService {
   }
 
   /**
-   * Records a readiness snapshot after a report becomes READY. The unique
-   * (userId, careerTargetId, validReportCount) constraint makes snapshotting
-   * idempotent — each newly READY report increments the valid-report count by
-   * exactly one, so retries cannot duplicate history. Failure must never fail
-   * report generation; callers wrap this in try/catch.
+   * Records a readiness snapshot after a report becomes READY. Each newly READY
+   * report increments the valid-report count by exactly one, so retries of the
+   * same report must not append a second point for the same count.
+   *
+   * Idempotency is enforced in two layers: the unique
+   * (userId, careerTargetId, validReportCount) constraint covers targets that
+   * exist, and the explicit guard below also covers the target-less case — in
+   * Postgres, NULLs are distinct in a unique index, so a retried snapshot for a
+   * user with no active target would otherwise be allowed through.
+   *
+   * Failure must never fail report generation; callers wrap this in try/catch.
    */
   async recordSnapshotAfterReport(userId: string): Promise<void> {
     const rows = await this.completedRows(userId);
@@ -66,10 +72,16 @@ export class ReadinessService {
       now: new Date(),
     });
     if (assessment.overall === null) return;
+    const careerTargetId = assessment.careerTarget?.id ?? null;
+    const existing = await this.database.readinessSnapshot.findFirst({
+      where: { userId, careerTargetId, validReportCount: validRows.length },
+      select: { id: true },
+    });
+    if (existing) return;
     await this.database.readinessSnapshot.create({
       data: {
         userId,
-        careerTargetId: assessment.careerTarget?.id ?? null,
+        careerTargetId,
         overall: assessment.overall,
         components: assessment.components,
         formulaVersion: readinessFormulaVersion,

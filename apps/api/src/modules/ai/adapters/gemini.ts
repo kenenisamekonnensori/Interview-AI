@@ -4,20 +4,32 @@ import { withAiRetry } from "../retry.js";
 import type { AiStructuredRequest } from "../types.js";
 import { observability } from "../../../services/observability.js";
 
+/**
+ * Default ceiling for one provider request. Reports and cross-interview
+ * interpretation are long-running, so the ceiling is generous; the real-time
+ * interviewer turn passes a much shorter deadline.
+ */
+export const defaultAiRequestTimeoutMs = 45_000;
+
 export class GeminiAdapter {
   constructor(private readonly environment: ServerEnvironment) {}
 
-  async generateJson({ instructions, context }: AiStructuredRequest): Promise<unknown> {
+  async generateJson({ instructions, context, timeoutMs }: AiStructuredRequest): Promise<unknown> {
     if (!this.environment.GEMINI_API_KEY)
       return this.fail("CONFIGURATION", "The AI provider is not configured.");
+    const deadline = timeoutMs ?? defaultAiRequestTimeoutMs;
     return observability().time(
       "ai.provider.call",
       { provider: "gemini", capability: "structured-json", model: this.environment.GEMINI_MODEL },
-      () => withAiRetry(() => this.requestJson(instructions, context)),
+      () => withAiRetry(() => this.requestJson(instructions, context, deadline)),
     );
   }
 
-  private async requestJson(instructions: string, context: unknown): Promise<unknown> {
+  private async requestJson(
+    instructions: string,
+    context: unknown,
+    timeoutMs: number,
+  ): Promise<unknown> {
     let response: Response;
     try {
       response = await fetch(
@@ -25,6 +37,9 @@ export class GeminiAdapter {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          // Bound the request: a provider that never answers becomes a
+          // retryable transient failure instead of an indefinitely open request.
+          signal: AbortSignal.timeout(timeoutMs),
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: instructions }] },
             contents: [{ role: "user", parts: [{ text: JSON.stringify(context) }] }],
@@ -33,9 +48,13 @@ export class GeminiAdapter {
         },
       );
     } catch (cause) {
-      return this.fail("TRANSIENT", "The AI provider could not be reached.", {
-        transportErrorType: cause instanceof Error ? cause.name : "UnknownError",
-      });
+      const timedOut =
+        cause instanceof Error && (cause.name === "TimeoutError" || cause.name === "AbortError");
+      return this.fail(
+        "TRANSIENT",
+        timedOut ? "The AI provider timed out." : "The AI provider could not be reached.",
+        { transportErrorType: timedOut ? "TimeoutError" : transportErrorName(cause) },
+      );
     }
     if (!response.ok) {
       const category =
@@ -93,4 +112,8 @@ export class GeminiAdapter {
     );
     throw error;
   }
+}
+
+function transportErrorName(cause: unknown): string {
+  return cause instanceof Error ? cause.name : "UnknownError";
 }

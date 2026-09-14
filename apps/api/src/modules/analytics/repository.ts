@@ -1,6 +1,16 @@
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 import type { AnalyticsFilter } from "./schema.js";
 
+/**
+ * Upper bound on how many scored interviews a single analytics computation may
+ * load. Every dashboard read (overview, skills, readiness, performance) derives
+ * its statistics from these rows, so without a cap the payload and CPU grow
+ * without limit for long-lived accounts. The newest rows are always kept, which
+ * is what the trend/severity/recommendation logic actually needs; the cap is
+ * documented as a limitation rather than silently changing older history.
+ */
+export const maxAnalyticsReports = 200;
+
 export class AnalyticsRepository {
   constructor(private readonly database: PrismaClient) {}
 
@@ -37,16 +47,20 @@ export class AnalyticsRepository {
     ]);
   }
 
-  completedWithReports(userId: string, filter: AnalyticsFilter) {
-    return this.database.interview.findMany({
+  async completedWithReports(userId: string, filter: AnalyticsFilter) {
+    const rows = await this.database.interview.findMany({
       where: {
         ...this.where(userId, filter),
         status: "COMPLETED",
         report: { is: { status: "READY" } },
       },
       include: { report: true, jobDescription: { select: { title: true, deletedAt: true } } },
-      orderBy: { completedAt: "asc" },
+      // Newest-first and capped so the read stays bounded; callers expect
+      // oldest-first, so the window is reversed back before use.
+      orderBy: { completedAt: "desc" },
+      take: maxAnalyticsReports,
     });
+    return rows.reverse();
   }
 
   completedCount(userId: string, filter: AnalyticsFilter) {

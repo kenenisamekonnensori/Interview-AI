@@ -4,6 +4,6 @@ export { buildInterviewerBehaviorPrompt, type InterviewerPromptInput } from "./i
 export { buildInterviewPlanPrompt } from "./interview-plan.js";
 export { buildReportPrompt } from "./report.js";
 export { buildSkillAnalysisPrompt } from "./skill-analysis.js";
-export { safetyPrivacyPrompt } from "./safety.js";
+export { safetyPrivacyPrompt, untrustedDocumentGuard } from "./safety.js";
 
 export const promptLibraryVersion = "0.2.0";

@@ -28,6 +28,8 @@ export type GenerateInterviewerResponseInput = {
   interviewContext: AiInterviewContext;
   conversationMemory: AiConversationMemory;
   latestCandidateAnswer: string | null;
+  /** Real-time turns must fail fast instead of stalling the session. */
+  timeoutMs?: number;
 };
 
 export type InterviewerResponseProposal = {
@@ -41,4 +43,9 @@ export type InterviewerResponseProposal = {
     { answerDepth: "SHALLOW" | "ADEQUATE" | "STRONG"; followUpNeeded: boolean } | undefined;
 };
 
-export type AiStructuredRequest = { instructions: string; context: unknown };
+/**
+ * `timeoutMs` bounds how long a single provider request may take. Without it a
+ * hung provider would hold the request open forever; the adapter turns an
+ * expired deadline into a retryable transient failure.
+ */
+export type AiStructuredRequest = { instructions: string; context: unknown; timeoutMs?: number };

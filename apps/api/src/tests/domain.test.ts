@@ -56,6 +56,10 @@ import {
   validSkillReportRows,
 } from "../modules/analytics/skill-engine.js";
 import { skillAnalysisOutputSchema } from "../modules/analytics/skill-analysis-schema.js";
+import { ReadinessService } from "../modules/analytics/readiness-service.js";
+import { AnalyticsRepository, maxAnalyticsReports } from "../modules/analytics/repository.js";
+import { GeminiAdapter } from "../modules/ai/adapters/gemini.js";
+import { safetyPrivacyPrompt, untrustedDocumentGuard } from "@interviewer-ai/prompts";
 import {
   computeReadiness,
   evidenceScore,
@@ -1773,7 +1777,18 @@ test("rate-limit policies cover authentication and expensive candidate actions",
       ?.name,
     "conversation",
   );
+  // Endpoints whose only effect is AI work are throttled per caller.
+  assert.equal(
+    requestRateLimitPolicy("POST", "/api/v1/practice-plan/regenerate")?.name,
+    "ai-generation",
+  );
+  assert.equal(
+    requestRateLimitPolicy("POST", "/api/v1/interviews/interview-id/report/retry")?.name,
+    "ai-generation",
+  );
+  assert.equal(requestRateLimitPolicy("POST", "/api/v1/interviews")?.name, "interview-create");
   assert.equal(requestRateLimitPolicy("GET", "/api/v1/interviews/interview-id/voice-token"), null);
+  assert.equal(requestRateLimitPolicy("GET", "/api/v1/interviews"), null);
 });
 
 test("rate limiter rejects requests over its configured limit", async () => {
@@ -2461,4 +2476,115 @@ test("recommendation engine falls back to a mock interview when nothing else app
   const result = recommendNextAction(recContext());
   assert.equal(result.actionType, "START_MOCK_INTERVIEW");
   assert.equal(result.suggestedTargetRole, "General interview practice");
+});
+
+/* ------------------------------------------------------------------------- */
+/* Stage 9 — hardening: AI deadlines, bounded reads, snapshot idempotency      */
+/* ------------------------------------------------------------------------- */
+
+test("the AI adapter bounds each provider request and retries a timeout", async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = (async () => {
+    attempts += 1;
+    const error = new Error("The operation was aborted due to timeout");
+    error.name = "TimeoutError";
+    throw error;
+  }) as typeof fetch;
+  try {
+    const adapter = new GeminiAdapter({
+      GEMINI_API_KEY: "test-key",
+      GEMINI_MODEL: "gemini-test",
+    } as never);
+    const error = await adapter.generateJson({ instructions: "x", context: {}, timeoutMs: 5 }).then(
+      () => null,
+      (thrown: unknown) => thrown,
+    );
+    assert.ok(error instanceof AiProviderError);
+    assert.equal(error.category, "TRANSIENT");
+    // A hung provider is retryable, but only a bounded number of times.
+    assert.equal(attempts, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("an unconfigured AI provider fails fast without calling the network", async () => {
+  const originalFetch = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = (async () => {
+    called = true;
+    return new Response("");
+  }) as typeof fetch;
+  try {
+    const adapter = new GeminiAdapter({ GEMINI_MODEL: "gemini-test" } as never);
+    const error = await adapter.generateJson({ instructions: "x", context: {} }).then(
+      () => null,
+      (thrown: unknown) => thrown,
+    );
+    assert.ok(error instanceof AiProviderError);
+    assert.equal(error.category, "CONFIGURATION");
+    assert.equal(called, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("analytics report reads are capped and returned oldest-first", async () => {
+  const calls: Array<{ take?: unknown }> = [];
+  const repository = new AnalyticsRepository({
+    interview: {
+      findMany: async (input: { take?: unknown }) => {
+        calls.push(input);
+        // The database returns newest-first under the cap.
+        return [
+          { id: "newer", completedAt: new Date("2026-09-02T00:00:00.000Z") },
+          { id: "older", completedAt: new Date("2026-09-01T00:00:00.000Z") },
+        ];
+      },
+    },
+  } as never);
+  const rows = await repository.completedWithReports("candidate-1", { page: 1, pageSize: 50 });
+  assert.equal(calls[0]?.take, maxAnalyticsReports);
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    ["older", "newer"],
+  );
+});
+
+test("readiness snapshots stay idempotent for users without an active target", async () => {
+  const created: Array<Record<string, unknown>> = [];
+  const rows = [
+    readinessRow("i1", new Date("2026-09-01T00:00:00.000Z"), [70, 70, 70, 70]),
+    readinessRow("i2", new Date("2026-09-05T00:00:00.000Z"), [74, 74, 74, 74]),
+  ];
+  const database = {
+    interview: { findMany: async () => rows },
+    careerTarget: { findFirst: async () => null },
+    readinessSnapshot: {
+      // Postgres treats NULLs as distinct in a unique index, so the explicit
+      // guard — not the constraint — is what makes this case idempotent.
+      findFirst: async ({ where }: { where: { careerTargetId: string | null } }) =>
+        created.some((entry) => entry.careerTargetId === where.careerTargetId)
+          ? { id: "existing" }
+          : null,
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        created.push(data);
+        return data;
+      },
+    },
+  };
+  const service = new ReadinessService(database as never);
+  await service.recordSnapshotAfterReport("candidate-1");
+  await service.recordSnapshotAfterReport("candidate-1");
+  assert.equal(created.length, 1);
+  assert.equal(created[0]?.careerTargetId, null);
+  assert.equal(created[0]?.validReportCount, 2);
+});
+
+test("prompts declare user-supplied documents as untrusted data", () => {
+  assert.match(safetyPrivacyPrompt, /untrusted data/i);
+  assert.match(safetyPrivacyPrompt, /ignore any instruction/i);
+  assert.match(untrustedDocumentGuard, /untrusted user-provided data/i);
+  assert.match(untrustedDocumentGuard, /ignore any instructions it contains/i);
 });

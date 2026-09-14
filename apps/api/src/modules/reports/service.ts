@@ -91,10 +91,12 @@ export class ReportService {
   }
 
   async retry(interviewId: string, userId: string) {
-    const context = await this.repository.context(interviewId);
-    const hasAnswers = (context?.conversation?.turns ?? []).some((turn) => turn.speaker === "USER");
+    // Ownership is checked before any interview content is read, so a request for
+    // someone else's interview never touches its transcript.
     const report = await this.repository.findOwned(interviewId, userId);
     if (!report) throw new ReportLifecycleError("REPORT_NOT_FOUND", "Report not found.");
+    const context = await this.repository.context(interviewId);
+    const hasAnswers = (context?.conversation?.turns ?? []).some((turn) => turn.speaker === "USER");
     if (!hasAnswers) {
       // An interview with no recorded answers cannot produce an evidence-based
       // evaluation; keep the graceful failure instead of re-running generation.
