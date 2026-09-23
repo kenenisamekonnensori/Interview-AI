@@ -89,6 +89,7 @@ const TIE_BREAK: Record<RecommendationActionType, number> = {
   START_MOCK_INTERVIEW: 4,
   REVIEW_PREVIOUS_INTERVIEW: 5,
   UPDATE_RESUME: 6,
+  COMPLETE_PROFILE_SETUP: 7,
 };
 
 function interviewTypeForSkill(skillKey: string): InterviewType {
@@ -232,17 +233,35 @@ export function recommendNextAction(context: RecommendationContext): NextPractic
     });
   }
 
-  // Setup recommendations only apply before any scored history exists.
+  // Setup recommendations only apply before any scored history exists. Until
+  // then, identity-first setup matters most: a mock interview with zero
+  // context is a generic one, so the engine (not the client) recommends
+  // completing the profile when there are no identity signals at all.
   if (!latestReport) {
-    if (target) {
+    if (context.profileTargetRole || context.hasActiveResume) {
+      if (target) {
+        candidates.push({
+          actionType: "PREPARE_TARGET_JOB",
+          priority: 34,
+          interviewType: "MIXED",
+          gapStatement: `You are preparing for ${target.title}${target.company ? ` at ${target.company}` : ""} without scored evidence yet.`,
+          actionLabel: `Run a first mock interview for ${target.title}.`,
+          action: { href: "/interviews/new?type=MIXED", interviewType: "MIXED" },
+          reason: "A first scored interview grounds every later recommendation in real evidence.",
+          focusAreas: [],
+        });
+      }
+    } else {
       candidates.push({
-        actionType: "PREPARE_TARGET_JOB",
-        priority: 34,
+        actionType: "COMPLETE_PROFILE_SETUP",
+        priority: 36,
         interviewType: "MIXED",
-        gapStatement: `You are preparing for ${target.title}${target.company ? ` at ${target.company}` : ""} without scored evidence yet.`,
-        actionLabel: `Run a first mock interview for ${target.title}.`,
-        action: { href: "/interviews/new?type=MIXED", interviewType: "MIXED" },
-        reason: "A first scored interview grounds every later recommendation in real evidence.",
+        gapStatement: "The system does not yet know enough about you to tailor practice.",
+        actionLabel:
+          "Set up your profile: add your role and resume so practice can be personalized.",
+        action: { href: "/profile" },
+        reason:
+          "Recommended practice, question difficulty, and evaluation are built from your target role and active resume — with neither, every session stays generic.",
         focusAreas: [],
       });
     }

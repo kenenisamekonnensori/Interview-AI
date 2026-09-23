@@ -5,12 +5,25 @@
  * supplies `now` and a storage implementation, so the policy is trivially
  * unit-testable and safe to import from server components.
  *
+ * Storage mechanics (guarded localStorage access, cooldown math) live in the
+ * shared `features/nudges` helper; this module keeps the profile-specific
+ * model and re-show *policy*.
+ *
  * Only fields the product actually consumes are tracked. Evidence:
  * - `targetRole` calibrates the live AI interviewer prompt.
  * - `profession`, `seniority`, `yearsOfExperience` ground question depth and
  *   the candidate profile used by evaluation.
  * - `preferredName` personalizes the dashboard and session address.
  */
+
+import {
+  isFiniteTimestamp,
+  isNudgeDismissalExpired,
+  clearStoredNudge,
+  readStoredNudge,
+  writeStoredNudge,
+  type PersistentStorage,
+} from "@/features/nudges/lib/nudge-dismissal";
 
 export type ProfileCompletenessKey =
   "preferredName" | "profession" | "targetRole" | "seniority" | "yearsOfExperience";
@@ -92,8 +105,6 @@ export function profileCompletenessScore(profile: ProfileSnapshot): ProfileCompl
 export const PROFILE_NUDGE_STORAGE_KEY = "interviewer-ai:profile-nudge:v1";
 export const PROFILE_NUDGE_RESHOW_DAYS = 14;
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 export type ProfileNudgeDismissal = {
   /** Sorted missing-field keys this dismissal applies to. */
   key: string;
@@ -114,7 +125,7 @@ export function isDismissalExpired(
   now: number,
   reshowDays: number = PROFILE_NUDGE_RESHOW_DAYS,
 ): boolean {
-  return now - dismissal.dismissedAt >= reshowDays * DAY_MS;
+  return isNudgeDismissalExpired(dismissal.dismissedAt, now, reshowDays);
 }
 
 export type ProfileNudgeVisibilityInput = {
@@ -139,53 +150,33 @@ export function shouldShowProfileNudge({
 
 /**
  * Storage is injected so tests can pass a stub; production passes
- * `window.localStorage`. Every access is guarded — private-mode browsers and
- * storage quota errors must never break the dashboard.
+ * `window.localStorage`. Validation and guarding live in the shared helper.
  */
-export type PersistentStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+export type { PersistentStorage } from "@/features/nudges/lib/nudge-dismissal";
 
 export function readProfileNudgeDismissal(
   storage: PersistentStorage | undefined | null,
 ): ProfileNudgeDismissal | null {
-  if (!storage) return null;
-  try {
-    const raw = storage.getItem(PROFILE_NUDGE_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      typeof (parsed as ProfileNudgeDismissal).key !== "string" ||
-      typeof (parsed as ProfileNudgeDismissal).dismissedAt !== "number" ||
-      !Number.isFinite((parsed as ProfileNudgeDismissal).dismissedAt)
-    ) {
-      return null;
-    }
-    return parsed as ProfileNudgeDismissal;
-  } catch {
-    return null;
-  }
+  return readStoredNudge(storage, PROFILE_NUDGE_STORAGE_KEY, isProfileNudgeDismissal);
 }
 
 export function writeProfileNudgeDismissal(
   storage: PersistentStorage | undefined | null,
   dismissal: ProfileNudgeDismissal,
 ): void {
-  if (!storage) return;
-  try {
-    storage.setItem(PROFILE_NUDGE_STORAGE_KEY, JSON.stringify(dismissal));
-  } catch {
-    // Storage unavailable (private mode, quota) — dismissal lives for the
-    // session only, which is the correct degradation.
-  }
+  writeStoredNudge(storage, PROFILE_NUDGE_STORAGE_KEY, dismissal);
 }
 
 /** Clear the stored dismissal once the profile is complete (tidy state). */
 export function clearProfileNudgeDismissal(storage: PersistentStorage | undefined | null): void {
-  if (!storage) return;
-  try {
-    storage.removeItem(PROFILE_NUDGE_STORAGE_KEY);
-  } catch {
-    // Same degradation as write.
-  }
+  clearStoredNudge(storage, PROFILE_NUDGE_STORAGE_KEY);
+}
+
+function isProfileNudgeDismissal(value: unknown): value is ProfileNudgeDismissal {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as ProfileNudgeDismissal).key === "string" &&
+    isFiniteTimestamp((value as ProfileNudgeDismissal).dismissedAt)
+  );
 }
