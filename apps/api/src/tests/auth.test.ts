@@ -213,8 +213,12 @@ test("requireSession and requireVerifiedUser guard unauthorized access", async (
   const integration = createAuthFastifyIntegration(mockAuth, dummyEnv);
 
   app.decorateRequest("authContext", null);
-  app.get("/test/protected", { preHandler: integration.requireSession }, async () => ({ status: "ok" }));
-  app.get("/test/verified", { preHandler: integration.requireVerifiedUser }, async () => ({ status: "verified" }));
+  app.get("/test/protected", { preHandler: integration.requireSession }, async () => ({
+    status: "ok",
+  }));
+  app.get("/test/verified", { preHandler: integration.requireVerifiedUser }, async () => ({
+    status: "verified",
+  }));
 
   // 1. Unauthenticated request -> 401
   const unauthRes = await app.inject({ method: "GET", url: "/test/protected" });
@@ -227,7 +231,12 @@ test("requireSession and requireVerifiedUser guard unauthorized access", async (
   // 2. Unverified user -> 403 on requireVerifiedUser
   mockSession = {
     session: { id: "sess-1" },
-    user: { id: "user-1", email: "unverified@example.com", emailVerified: false, name: "Unverified" },
+    user: {
+      id: "user-1",
+      email: "unverified@example.com",
+      emailVerified: false,
+      name: "Unverified",
+    },
   };
 
   const unverifiedRes = await app.inject({ method: "GET", url: "/test/verified" });

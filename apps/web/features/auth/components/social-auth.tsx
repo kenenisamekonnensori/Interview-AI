@@ -49,9 +49,7 @@ function GoogleMark() {
 // Currently Google is the active authentication provider.
 // GitHub can be re-enabled here once GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET
 // are provisioned in backend environment configuration.
-const providers: { id: ProviderId; mark: () => ReactNode }[] = [
-  { id: "google", mark: GoogleMark },
-];
+const providers: { id: ProviderId; mark: () => ReactNode }[] = [{ id: "google", mark: GoogleMark }];
 
 export function SocialAuth({ className }: { className?: string }) {
   const [pendingProvider, setPendingProvider] = useState<ProviderId | null>(null);

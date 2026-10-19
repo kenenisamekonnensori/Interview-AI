@@ -7,18 +7,14 @@ import {
   FileUp,
   Gauge,
   MessagesSquare,
-  Mic,
   Play,
   Users,
-  Sparkles,
-  Zap,
 } from "lucide-react";
 import Link from "next/link";
 
 import {
   FadeUp,
   ScaleIn,
-  SlideIn,
   StaggerContainer,
   StaggerItem,
 } from "../features/landing/components/animations";
@@ -35,7 +31,7 @@ import { ComparisonSection } from "../features/landing/components/comparison-sec
 import { CandidateStories } from "../features/landing/components/candidate-stories";
 import { SquareAccent } from "../features/landing/components/grid-background";
 import { SmoothScroll } from "../features/landing/components/smooth-scroll";
-import { ConnectiveSpine, AnimatedConnectionPath } from "../features/landing/components/connective-spine";
+import { ConnectiveSpine } from "../features/landing/components/connective-spine";
 import { TiltCard } from "../features/landing/components/tilt-card";
 import { AsymmetricBentoGrid } from "../features/landing/components/asymmetric-bento-grid";
 
@@ -108,7 +104,10 @@ export default function HomePage() {
         {/* ── Hero ──────────────────────────────────────────────────────── */}
         <section className="landing-hero relative isolate flex min-h-dvh items-center overflow-hidden px-6 pb-20 pt-32">
           {/* Subtle architectural square blueprint grid pattern across entire hero */}
-          <div className="bg-grid-squares pointer-events-none absolute inset-0 opacity-70" aria-hidden="true" />
+          <div
+            className="bg-grid-squares pointer-events-none absolute inset-0 opacity-70"
+            aria-hidden="true"
+          />
 
           {/* Interactive 3D Moon Scene */}
           <MoonSceneLoader />
@@ -142,7 +141,8 @@ export default function HomePage() {
 
               <FadeUp delay={0.28}>
                 <p className="mt-6 max-w-md text-pretty text-lg leading-relaxed text-[var(--ink-text-secondary)]">
-                  Speak with an AI interviewer that listens, questions your trade-offs, and scores your answers in real time — built from your exact resume and target role.
+                  Speak with an AI interviewer that listens, questions your trade-offs, and scores
+                  your answers in real time — built from your exact resume and target role.
                 </p>
               </FadeUp>
 
@@ -238,13 +238,18 @@ export default function HomePage() {
                     <div className="glass-panel relative flex h-full flex-col justify-between rounded-2xl border border-[var(--hairline)] p-6">
                       <SquareAccent className="absolute right-3.5 top-3.5" />
                       <div>
-                        <span className="font-mono text-xs font-bold text-bronze-600" aria-hidden="true">
+                        <span
+                          className="font-mono text-xs font-bold text-bronze-600"
+                          aria-hidden="true"
+                        >
                           {String(index + 1).padStart(2, "0")}
                         </span>
                         <div className="mt-4 grid size-11 place-items-center rounded-xl border border-[var(--hairline)] bg-white text-bronze-600 shadow-sm">
                           <Icon className="size-5" aria-hidden="true" />
                         </div>
-                        <h3 className="mt-5 text-base font-semibold text-[var(--ink-text)]">{title}</h3>
+                        <h3 className="mt-5 text-base font-semibold text-[var(--ink-text)]">
+                          {title}
+                        </h3>
                         <p className="mt-2 text-sm leading-relaxed text-[var(--ink-text-secondary)]">
                           {description}
                         </p>
@@ -257,7 +262,8 @@ export default function HomePage() {
 
             <FadeUp delay={0.2}>
               <p className="mx-auto mt-16 max-w-xl text-center text-sm leading-relaxed text-[var(--ink-text-muted)]">
-                Every session is scored on the same standardized rubric, so after a few runs you can inspect communication and pacing trends — not just feelings.
+                Every session is scored on the same standardized rubric, so after a few runs you can
+                inspect communication and pacing trends — not just feelings.
               </p>
             </FadeUp>
           </div>

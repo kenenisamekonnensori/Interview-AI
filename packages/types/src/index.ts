@@ -172,6 +172,7 @@ export type TranscriptMetadata = z.infer<typeof transcriptMetadataSchema>;
 export const finalizeTranscriptRequestSchema = z.object({
   text: z.string().trim().min(1).max(20_000),
   metadata: transcriptMetadataSchema.optional(),
+  respondImmediately: z.boolean().optional(),
 });
 export type FinalizeTranscriptRequest = z.infer<typeof finalizeTranscriptRequestSchema>;
 

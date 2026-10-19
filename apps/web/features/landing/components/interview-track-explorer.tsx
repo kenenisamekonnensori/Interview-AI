@@ -1,17 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Code2,
-  BrainCircuit,
-  Briefcase,
-  Layers,
-  MessagesSquare,
-  Sparkles,
-  ArrowRight,
-  ShieldAlert,
-  Award,
-} from "lucide-react";
+import { Code2, BrainCircuit, Briefcase, MessagesSquare, Sparkles, Award } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SectionHeading } from "./section-heading";
 import { FadeUp } from "./animations";
@@ -50,7 +40,8 @@ const TRACKS: Track[] = [
       {
         criteria: "CAP Theorem Trade-offs",
         targetScore: "92%",
-        whyItMatters: "Proves candidate understands consistency vs availability in partitioned networks.",
+        whyItMatters:
+          "Proves candidate understands consistency vs availability in partitioned networks.",
       },
       {
         criteria: "Conflict Resolution Protocol",
@@ -295,7 +286,7 @@ export function InterviewTrackExplorer() {
                   </div>
 
                   <div className="mt-6 space-y-4">
-                    {activeTrack.evaluationRubric.map((item, idx) => (
+                    {activeTrack.evaluationRubric.map((item) => (
                       <div
                         key={item.criteria}
                         className="rounded-xl border border-[var(--hairline)] bg-white/70 p-4"
@@ -317,7 +308,8 @@ export function InterviewTrackExplorer() {
                 </div>
 
                 <div className="mt-6 rounded-xl bg-slate-100/70 p-3.5 text-center text-xs text-[var(--ink-text-secondary)]">
-                  Scored automatically against 4,000+ real hiring decisions at top tier technology companies.
+                  Scored automatically against 4,000+ real hiring decisions at top tier technology
+                  companies.
                 </div>
               </div>
             </TiltCard>

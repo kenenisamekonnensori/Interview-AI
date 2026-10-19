@@ -29,8 +29,14 @@ export function TiltCard({
 
   // Smooth spring physics for rotation
   const springConfig = { damping: 25, stiffness: 260 };
-  const rotateX = useSpring(useTransform(mouseY, [-0.5, 0.5], [tiltAngle, -tiltAngle]), springConfig);
-  const rotateY = useSpring(useTransform(mouseX, [-0.5, 0.5], [-tiltAngle, tiltAngle]), springConfig);
+  const rotateX = useSpring(
+    useTransform(mouseY, [-0.5, 0.5], [tiltAngle, -tiltAngle]),
+    springConfig,
+  );
+  const rotateY = useSpring(
+    useTransform(mouseX, [-0.5, 0.5], [-tiltAngle, tiltAngle]),
+    springConfig,
+  );
 
   // Glare position in percentages
   const glareX = useTransform(mouseX, [-0.5, 0.5], ["0%", "100%"]);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Activity, CheckCircle2, Mic, Timer, Award, Sparkles, TrendingUp, ArrowUpRight } from "lucide-react";
+import { Activity, CheckCircle2, Mic, Timer, TrendingUp } from "lucide-react";
 import { motion } from "framer-motion";
 import { TiltCard } from "./tilt-card";
 
@@ -50,12 +50,23 @@ export function FeedbackPreview() {
 
   return (
     <TiltCard tiltAngle={4} glareOpacity={0.1}>
-      <div ref={ref} className="glass-panel relative overflow-hidden rounded-3xl border border-[var(--hairline)] p-7 sm:p-9 shadow-xl">
+      <div
+        ref={ref}
+        className="glass-panel relative overflow-hidden rounded-3xl border border-[var(--hairline)] p-7 sm:p-9 shadow-xl"
+      >
         {/* Architectural corner tick marks */}
-        <span className="absolute left-3.5 top-3.5 font-mono text-[9px] text-bronze-600/60 select-none">┌</span>
-        <span className="absolute right-3.5 top-3.5 font-mono text-[9px] text-bronze-600/60 select-none">┐</span>
-        <span className="absolute left-3.5 bottom-3.5 font-mono text-[9px] text-bronze-600/60 select-none">└</span>
-        <span className="absolute right-3.5 bottom-3.5 font-mono text-[9px] text-bronze-600/60 select-none">┘</span>
+        <span className="absolute left-3.5 top-3.5 font-mono text-[9px] text-bronze-600/60 select-none">
+          ┌
+        </span>
+        <span className="absolute right-3.5 top-3.5 font-mono text-[9px] text-bronze-600/60 select-none">
+          ┐
+        </span>
+        <span className="absolute left-3.5 bottom-3.5 font-mono text-[9px] text-bronze-600/60 select-none">
+          └
+        </span>
+        <span className="absolute right-3.5 bottom-3.5 font-mono text-[9px] text-bronze-600/60 select-none">
+          ┘
+        </span>
 
         {/* Ambient warm champagne glow */}
         <div className="pointer-events-none absolute -right-20 -top-24 h-56 w-56 rounded-full bg-bronze-500/12 blur-3xl" />
@@ -97,12 +108,16 @@ export function FeedbackPreview() {
                   className="rounded-2xl border border-[var(--hairline)] bg-white/80 p-4.5 shadow-sm transition-all hover:border-bronze-500/30"
                 >
                   <div className="flex items-center justify-between text-[var(--ink-text-muted)]">
-                    <span className="text-[11px] font-mono font-semibold uppercase tracking-wide">{label}</span>
+                    <span className="text-[11px] font-mono font-semibold uppercase tracking-wide">
+                      {label}
+                    </span>
                     <Icon className="size-3.5 text-bronze-600" aria-hidden="true" />
                   </div>
                   <p className="mt-3 font-mono text-3xl font-bold tracking-tight text-[var(--ink-text)]">
                     {inView ? value : 0}
-                    <span className="text-sm font-normal text-[var(--ink-text-muted)]">{suffix}</span>
+                    <span className="text-sm font-normal text-[var(--ink-text-muted)]">
+                      {suffix}
+                    </span>
                   </p>
                   <div className="mt-2 flex items-center gap-1 text-[11px] font-medium text-emerald-700">
                     <TrendingUp className="size-3" />
@@ -160,7 +175,10 @@ export function FeedbackPreview() {
                 Strengths & Competitive Highlights
               </p>
               <ul className="mt-3 space-y-2 text-xs leading-relaxed text-[var(--ink-text-secondary)]">
-                <li>Demonstrated immediate poise when asked to defend DynamoDB vs PostgreSQL partitioning</li>
+                <li>
+                  Demonstrated immediate poise when asked to defend DynamoDB vs PostgreSQL
+                  partitioning
+                </li>
                 <li>Articulated second-order operational costs and replication lag cleanly</li>
                 <li>Zero filler words recorded in the final 90 seconds of answer delivery</li>
               </ul>
@@ -171,9 +189,13 @@ export function FeedbackPreview() {
                 Target Drills Before Your Onsite
               </p>
               <ul className="mt-3 space-y-2 text-xs leading-relaxed text-[var(--ink-text-secondary)]">
-                <li>Trim setup context by ~12 seconds: jump directly into the technical constraint</li>
+                <li>
+                  Trim setup context by ~12 seconds: jump directly into the technical constraint
+                </li>
                 <li>When asked about failure modes, state blast radius boundaries explicitly</li>
-                <li>Practice drill #4: Multi-region failover under strict read-after-write consistency</li>
+                <li>
+                  Practice drill #4: Multi-region failover under strict read-after-write consistency
+                </li>
               </ul>
             </div>
           </div>
@@ -200,7 +222,9 @@ function ScoreRing({ value }: { value: number }) {
         aria-hidden="true"
       />
       <div className="relative text-center">
-        <p className="font-mono text-3xl font-bold tracking-tight text-[var(--ink-text)]">{display}%</p>
+        <p className="font-mono text-3xl font-bold tracking-tight text-[var(--ink-text)]">
+          {display}%
+        </p>
         <p className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-bronze-700">
           Onsite Ready
         </p>

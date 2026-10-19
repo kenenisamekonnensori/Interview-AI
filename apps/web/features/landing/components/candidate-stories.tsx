@@ -1,6 +1,6 @@
 "use client";
 
-import { Star, TrendingUp, Quote, CheckCircle } from "lucide-react";
+import { Star, CheckCircle } from "lucide-react";
 import { SectionHeading } from "./section-heading";
 import { FadeUp, StaggerContainer, StaggerItem } from "./animations";
 import { TiltCard } from "./tilt-card";
@@ -82,7 +82,9 @@ export function CandidateStories() {
                   </div>
 
                   <div>
-                    <h4 className="text-sm font-semibold text-[var(--ink-text)]">{story.candidate}</h4>
+                    <h4 className="text-sm font-semibold text-[var(--ink-text)]">
+                      {story.candidate}
+                    </h4>
                     <p className="text-xs text-[var(--ink-text-secondary)]">{story.role}</p>
                     <p className="mt-1 flex items-center gap-1.5 text-[11px] font-medium text-emerald-700">
                       <CheckCircle className="size-3" />

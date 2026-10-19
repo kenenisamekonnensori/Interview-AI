@@ -220,7 +220,10 @@ function Editor({
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5 sm:col-span-2">
-          <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" htmlFor="profile-preferred-name">
+          <label
+            className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+            htmlFor="profile-preferred-name"
+          >
             Preferred Name
           </label>
           <Input
@@ -232,11 +235,15 @@ function Editor({
             onChange={(event) => update("preferredName", event.target.value || null)}
           />
           <p className="text-xs text-muted-foreground">
-            Defaulted from your account sign-in name. You can customize your preferred name anytime for how interviewers and the dashboard address you.
+            Defaulted from your account sign-in name. You can customize your preferred name anytime
+            for how interviewers and the dashboard address you.
           </p>
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" htmlFor="profile-profession">
+          <label
+            className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+            htmlFor="profile-profession"
+          >
             Professional Identity
           </label>
           <Input
@@ -249,7 +256,10 @@ function Editor({
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" htmlFor="profile-target-role">
+          <label
+            className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+            htmlFor="profile-target-role"
+          >
             Target Role
           </label>
           <Input
@@ -262,7 +272,10 @@ function Editor({
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" htmlFor="profile-seniority">
+          <label
+            className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+            htmlFor="profile-seniority"
+          >
             Seniority
           </label>
           <Input
@@ -275,7 +288,10 @@ function Editor({
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" htmlFor="profile-yoe">
+          <label
+            className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+            htmlFor="profile-yoe"
+          >
             Years of Experience
           </label>
           <Input

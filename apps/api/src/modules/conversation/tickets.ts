@@ -48,7 +48,7 @@ export class VoiceTicketService {
           TICKET_TTL_SECONDS,
         );
         return ticket;
-      } catch (err) {
+      } catch {
         // Fallback to memory on transient Redis error
       }
     }

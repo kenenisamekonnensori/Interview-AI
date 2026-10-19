@@ -58,8 +58,8 @@ export default function ResumesPage() {
               Resume & Jobs
             </h1>
             <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-              Define target positions, upload your latest resume, and save job descriptions to ground
-              your AI practice interviews in real-world expectations.
+              Define target positions, upload your latest resume, and save job descriptions to
+              ground your AI practice interviews in real-world expectations.
             </p>
           </div>
 
@@ -94,7 +94,9 @@ export default function ResumesPage() {
                 <CheckCircle2 className="size-3" /> Ready for interviews
               </span>
             ) : (
-              <p className="mt-2 text-[11px] text-muted-foreground">Add a target role to track progress</p>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Add a target role to track progress
+              </p>
             )}
           </div>
 
@@ -117,7 +119,9 @@ export default function ResumesPage() {
                 <Sparkles className="size-3" /> Grounding AI questions
               </span>
             ) : (
-              <p className="mt-2 text-[11px] text-muted-foreground">Upload a resume to personalize</p>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Upload a resume to personalize
+              </p>
             )}
           </div>
 
@@ -136,7 +140,9 @@ export default function ResumesPage() {
               </div>
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">
-              {jdCount > 0 ? "Tailors questions to exact postings" : "Add job postings to compare skills"}
+              {jdCount > 0
+                ? "Tailors questions to exact postings"
+                : "Add job postings to compare skills"}
             </p>
           </div>
         </div>

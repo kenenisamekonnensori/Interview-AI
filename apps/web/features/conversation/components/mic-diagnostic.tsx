@@ -226,7 +226,10 @@ export function MicDiagnostic({ onComplete, onSkipToText }: MicDiagnosticProps) 
             </Button>
 
             {onSkipToText && (
-              <Button className="flex-1 bg-indigo-600 hover:bg-indigo-500" onClick={handleSkipToText}>
+              <Button
+                className="flex-1 bg-indigo-600 hover:bg-indigo-500"
+                onClick={handleSkipToText}
+              >
                 Continue by Typing
               </Button>
             )}

@@ -114,7 +114,7 @@ export async function createDeepgramLiveStream(
     punctuate: "true",
     interim_results: "true",
     smart_format: "true",
-    endpointing: "1500",
+    endpointing: "500",
   });
 }
 

@@ -11,7 +11,6 @@ import {
   RotateCw,
   Volume2,
   MessageSquare,
-  Sparkles,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -426,12 +425,7 @@ export function InterviewMicrophone({
   }
 
   function recorderOptions(): MediaRecorderOptions | undefined {
-    const types = [
-      "audio/webm;codecs=opus",
-      "audio/webm",
-      "audio/ogg;codecs=opus",
-      "audio/mp4",
-    ];
+    const types = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
     const mimeType = types.find(
       (type) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type),
     );
@@ -491,7 +485,9 @@ export function InterviewMicrophone({
       console.log("[Voice Pipeline] Microphone stream ready.");
 
       // 2. Fetch conversation start and voice connection token in parallel
-      console.log("[Voice Pipeline] Starting conversation and preparing voice transport in parallel...");
+      console.log(
+        "[Voice Pipeline] Starting conversation and preparing voice transport in parallel...",
+      );
       const conversationPromise = apiClient<ConversationStartResponse>(
         `/api/v1/interviews/${interviewId}/conversation/start`,
         { method: "POST" },
@@ -640,7 +636,7 @@ export function InterviewMicrophone({
           punctuate: "true",
           interim_results: "true",
           smart_format: "true",
-          endpointing: "1500",
+          endpointing: "500",
         })) as unknown as LiveConnection;
         connection.connect?.();
         await connection.waitForOpen?.();
@@ -763,13 +759,13 @@ export function InterviewMicrophone({
       currentSpeechBufferRef.current = merged;
       setActiveSpeechBuffer(merged);
 
-      // Debounce natural speech pause (1800ms) before committing turn
+      // Debounce natural speech pause (700ms) before committing turn
       if (silenceDebounceTimerRef.current !== null) {
         window.clearTimeout(silenceDebounceTimerRef.current);
       }
       silenceDebounceTimerRef.current = window.setTimeout(() => {
         void commitVoiceAnswer(session);
-      }, 1800);
+      }, 700);
     } catch (cause) {
       console.error("[Voice Pipeline] Error handling transcript:", cause);
     }
@@ -822,11 +818,22 @@ export function InterviewMicrophone({
   }
 
   async function submitAnswer(text: string, session: number) {
-    await apiClient(`/api/v1/interviews/${interviewId}/conversation/transcripts`, {
-      method: "POST",
-      body: { text } satisfies FinalizeTranscriptRequest,
-    });
-    await requestPendingResponse(session);
+    const result = await apiClient<TranscriptResponse & { nextResponse?: GeneratedTurn }>(
+      `/api/v1/interviews/${interviewId}/conversation/transcripts`,
+      {
+        method: "POST",
+        body: { text, respondImmediately: true } satisfies FinalizeTranscriptRequest,
+      },
+    );
+    if (session !== sessionRef.current) return;
+    if (result.nextResponse) {
+      updateRecovery(null);
+      appendAiTranscript(result.nextResponse.turn);
+      onResponseRecovered?.();
+      await playAiTurn(result.nextResponse.turn.id, session);
+    } else {
+      await requestPendingResponse(session);
+    }
   }
 
   function bufferPendingAnswer(text: string) {
@@ -855,16 +862,26 @@ export function InterviewMicrophone({
     }
     flushInFlightRef.current = true;
     try {
-      await apiClient<TranscriptResponse>(
+      const result = await apiClient<TranscriptResponse & { nextResponse?: GeneratedTurn }>(
         `/api/v1/interviews/${interviewId}/conversation/transcripts`,
-        { method: "POST", body: { text } satisfies FinalizeTranscriptRequest },
+        {
+          method: "POST",
+          body: { text, respondImmediately: true } satisfies FinalizeTranscriptRequest,
+        },
       );
       clearPendingAnswer();
       // Append to the live transcript only once persisted so the local ordering
       // matches the server transcript (the pending question comes first).
       setTranscript((turns) => [...turns, `You: ${text}`]);
-      updateState("THINKING");
-      await requestPendingResponse(sessionRef.current);
+      if (result.nextResponse) {
+        updateRecovery(null);
+        appendAiTranscript(result.nextResponse.turn);
+        onResponseRecovered?.();
+        await playAiTurn(result.nextResponse.turn.id, sessionRef.current);
+      } else {
+        updateState("THINKING");
+        await requestPendingResponse(sessionRef.current);
+      }
     } catch {
       // Any failure (state conflict, invalid state, transient network) is retried
       // on the next tick or the playback end hook; give up gracefully after a
@@ -923,11 +940,22 @@ export function InterviewMicrophone({
     setTranscript((turns) => [...turns, `You: ${text}`]);
     updateState("THINKING");
     try {
-      await apiClient(`/api/v1/interviews/${interviewId}/conversation/transcripts`, {
-        method: "POST",
-        body: { text } satisfies FinalizeTranscriptRequest,
-      });
-      await requestPendingResponse(sessionRef.current, true);
+      const result = await apiClient<TranscriptResponse & { nextResponse?: GeneratedTurn }>(
+        `/api/v1/interviews/${interviewId}/conversation/transcripts`,
+        {
+          method: "POST",
+          body: { text, respondImmediately: true } satisfies FinalizeTranscriptRequest,
+        },
+      );
+      if (result.nextResponse) {
+        updateRecovery(null);
+        appendAiTranscript(result.nextResponse.turn);
+        onResponseRecovered?.();
+        await acknowledgeTextTurn(result.nextResponse.turn.id);
+        setTypingMode(true);
+      } else {
+        await requestPendingResponse(sessionRef.current, true);
+      }
     } catch (cause) {
       const nextRecovery = getAiResponseRecovery(cause);
       if (nextRecovery) {
@@ -954,7 +982,10 @@ export function InterviewMicrophone({
       interviewId,
       turnId,
       onPlay: () => {
-        if (session === sessionRef.current) updateState("SPEAKING");
+        if (session === sessionRef.current) {
+          speakingNotifiedRef.current = false;
+          updateState("SPEAKING");
+        }
       },
       onEnded: (ackState) => {
         if (session !== sessionRef.current) return;
@@ -966,7 +997,8 @@ export function InterviewMicrophone({
         updateState("LISTENING");
         void flushPendingAnswer();
       },
-      onError: () => {
+      onError: (err) => {
+        console.warn(`[Voice Pipeline] Audio playback failed for turn ${turnId}:`, err);
         if (session === sessionRef.current) showPlaybackFallback(turnId);
       },
     });
@@ -1081,7 +1113,8 @@ export function InterviewMicrophone({
             </p>
             <p className="mt-1 text-sm text-emerald-100">“{activeSpeechBuffer}”</p>
             <p className="mt-2 text-[11px] text-emerald-400/80">
-              Take your time. Pause for 1.8s or click &ldquo;Done Speaking&rdquo; below when you are finished.
+              Take your time. Pause for 1.8s or click &ldquo;Done Speaking&rdquo; below when you are
+              finished.
             </p>
           </div>
         ) : null}

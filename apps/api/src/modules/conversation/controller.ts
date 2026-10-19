@@ -123,7 +123,7 @@ export function registerConversationRoutes(
         if (isClosed) return;
         try {
           if (isBinary || Buffer.isBuffer(data)) {
-            const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data as any);
+            const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
             if (forwardToDeepgram) {
               forwardToDeepgram(buffer);
             } else if (earlyChunks.length < 50) {
@@ -312,15 +312,33 @@ export function registerConversationRoutes(
           .status(400)
           .send({ code: "VALIDATION_ERROR", message: "Invalid finalized transcript." });
       try {
-        return reply
-          .status(201)
-          .send(
-            await service.persistFinalTranscript(
+        const transcriptResult = await service.persistFinalTranscript(
+          params.data.id,
+          request.authContext!.user.id,
+          input.data,
+        );
+        const query = request.query as { respondImmediately?: string } | undefined;
+        const bodyObj = request.body as { respondImmediately?: boolean } | undefined;
+        const shouldRespond =
+          query?.respondImmediately === "true" || bodyObj?.respondImmediately === true;
+
+        if (shouldRespond) {
+          try {
+            const aiResponse = await service.generateResponse(
               params.data.id,
               request.authContext!.user.id,
-              input.data,
-            ),
-          );
+            );
+            return reply.status(201).send({
+              ...transcriptResult,
+              nextResponse: aiResponse,
+            });
+          } catch (aiError) {
+            request.log.warn({ aiError }, "Auto-generate response after transcript failed");
+            return reply.status(201).send(transcriptResult);
+          }
+        }
+
+        return reply.status(201).send(transcriptResult);
       } catch (error) {
         return sendConversationError(reply, error);
       }

@@ -12,7 +12,7 @@ interface SpineNode {
 
 const SPINE_NODES: SpineNode[] = [
   { id: "hero", label: "01", progress: 0.05, title: "Live Audio Input" },
-  { id: "differentiators", label: "02", progress: 0.20, title: "Duplex Latency" },
+  { id: "differentiators", label: "02", progress: 0.2, title: "Duplex Latency" },
   { id: "voice-engine", label: "03", progress: 0.38, title: "Neural Synthesis" },
   { id: "tracks", label: "04", progress: 0.52, title: "Rubric Engine" },
   { id: "how-it-works", label: "05", progress: 0.68, title: "Adaptive Probe" },
@@ -73,29 +73,14 @@ export function ConnectiveSpine() {
 
         {/* Section Waypoint Nodes */}
         {SPINE_NODES.map((node) => {
-          return (
-            <SpineWaypoint
-              key={node.id}
-              node={node}
-              scrollProgress={smoothProgress}
-            />
-          );
+          return <SpineWaypoint key={node.id} node={node} />;
         })}
       </div>
     </div>
   );
 }
 
-function SpineWaypoint({
-  node,
-  scrollProgress,
-}: {
-  node: SpineNode;
-  scrollProgress: ReturnType<typeof useSpring>;
-}) {
-  // Check active state when scroll passes node threshold
-  const isActive = useTransform(scrollProgress, (val) => val >= node.progress);
-
+function SpineWaypoint({ node }: { node: SpineNode }) {
   return (
     <div
       style={{ top: `${node.progress * 88 + 8}%` }}
@@ -114,9 +99,7 @@ function SpineWaypoint({
 
       {/* Center node pip */}
       <div className="relative flex size-6 items-center justify-center rounded-full border border-bronze-500/40 bg-[var(--ink-canvas)] shadow-sm transition-all duration-300 group-hover:scale-125 group-hover:border-bronze-500 group-hover:shadow-[0_0_10px_rgba(203,162,95,0.5)]">
-        <span className="font-mono text-[9px] font-bold text-bronze-700">
-          {node.label}
-        </span>
+        <span className="font-mono text-[9px] font-bold text-bronze-700">{node.label}</span>
       </div>
 
       {/* Floating telemetry tooltip on hover */}

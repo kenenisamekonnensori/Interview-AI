@@ -125,12 +125,7 @@ type SlideInProps = {
   className?: string;
 };
 
-export function SlideIn({
-  children,
-  direction = "left",
-  delay = 0,
-  className,
-}: SlideInProps) {
+export function SlideIn({ children, direction = "left", delay = 0, className }: SlideInProps) {
   const ref = useRef<HTMLDivElement>(null);
   const isInView = useInView(ref, { once: true, margin: "-60px" });
   const xOffset = direction === "left" ? -40 : 40;
@@ -151,4 +146,3 @@ export function SlideIn({
     </motion.div>
   );
 }
-

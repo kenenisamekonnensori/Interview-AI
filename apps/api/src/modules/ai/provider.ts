@@ -36,6 +36,7 @@ class ApplicationAiProvider implements AiProvider {
         await this.adapter.generateJson({
           instructions,
           context: input,
+          maxOutputTokens: 350,
           ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
         }),
       );

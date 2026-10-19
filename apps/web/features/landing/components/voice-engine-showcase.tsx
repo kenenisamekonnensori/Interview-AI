@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Mic, Zap, Cpu, Volume2, ShieldCheck, CheckCircle2, ArrowRight, Activity, Terminal } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { Mic, Zap, Cpu, Volume2, Terminal } from "lucide-react";
+import { motion } from "framer-motion";
 import { SectionHeading } from "./section-heading";
 import { FadeUp, StaggerContainer, StaggerItem } from "./animations";
 import { TiltCard } from "./tilt-card";
@@ -16,7 +16,8 @@ const PIPELINE_STEPS = [
     icon: Mic,
     desc: "Browser-direct WebSocket captures vocal cadence, pauses, and inflection with 98.4% transcription precision.",
     highlight: "Zero typed lag",
-    payloadPreview: "WS_FRAME: { type: 'audio_stream', codec: 'opus', sample_rate: 48000, interim_results: true }",
+    payloadPreview:
+      "WS_FRAME: { type: 'audio_stream', codec: 'opus', sample_rate: 48000, interim_results: true }",
   },
   {
     step: "02",
@@ -26,7 +27,8 @@ const PIPELINE_STEPS = [
     icon: Cpu,
     desc: "Cross-references your target role and resume in real-time. Detects hand-waving and formulates unscripted follow-up probes.",
     highlight: "Non-scripted dialogue",
-    payloadPreview: "PROBE_TRIGGER: { flag: 'vague_tradeoff', topic: 'cache_invalidation', action: 'probe_failure_mode' }",
+    payloadPreview:
+      "PROBE_TRIGGER: { flag: 'vague_tradeoff', topic: 'cache_invalidation', action: 'probe_failure_mode' }",
   },
   {
     step: "03",
@@ -36,7 +38,8 @@ const PIPELINE_STEPS = [
     icon: Zap,
     desc: "Just like a seasoned hiring manager, the AI can interject if an answer goes off-track or asks for immediate architectural clarification.",
     highlight: "Natural turn-taking",
-    payloadPreview: "DUPLEX_SIGNAL: { vad_threshold: 0.85, barge_in: true, mute_synthesizer: true, preserve_context: true }",
+    payloadPreview:
+      "DUPLEX_SIGNAL: { vad_threshold: 0.85, barge_in: true, mute_synthesizer: true, preserve_context: true }",
   },
   {
     step: "04",
@@ -46,7 +49,8 @@ const PIPELINE_STEPS = [
     icon: Volume2,
     desc: "Synthesizes human-cadenced conversational speech so practice feels genuine, spontaneous, and conversational.",
     highlight: "Human conversational flow",
-    payloadPreview: "AUDIO_OUT: { stream: 'chunked_pcm', duration_ms: 1840, natural_breathing_pause: true }",
+    payloadPreview:
+      "AUDIO_OUT: { stream: 'chunked_pcm', duration_ms: 1840, natural_breathing_pause: true }",
   },
 ];
 
@@ -83,8 +87,7 @@ export function VoiceEngineShowcase() {
 
           <div className="flex items-center gap-6 font-mono text-xs text-[var(--ink-text-secondary)]">
             <span>
-              End-to-End Latency:{" "}
-              <strong className="font-semibold text-bronze-700">~285ms</strong>
+              End-to-End Latency: <strong className="font-semibold text-bronze-700">~285ms</strong>
             </span>
             <span className="hidden sm:inline text-slate-300" aria-hidden="true">
               ·
@@ -190,7 +193,9 @@ export function VoiceEngineShowcase() {
           <div className="flex items-center justify-between border-b border-[var(--hairline)] pb-3">
             <span className="flex items-center gap-2 text-bronze-800 font-semibold">
               <Terminal className="size-3.5" />
-              <span>STAGE INSPECTOR // STEP {currentStep.step}: {currentStep.title.toUpperCase()}</span>
+              <span>
+                STAGE INSPECTOR // STEP {currentStep.step}: {currentStep.title.toUpperCase()}
+              </span>
             </span>
             <span className="text-[10px] text-[var(--ink-text-muted)]">
               STATE: STREAMING ACTIVE

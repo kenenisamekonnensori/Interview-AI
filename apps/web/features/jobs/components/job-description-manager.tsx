@@ -150,12 +150,12 @@ export function JobDescriptionManager() {
 
           <div>
             <div className="mb-1.5 flex items-center justify-between text-xs">
-              <label className="font-medium text-muted-foreground">
-                Job description paste
-              </label>
+              <label className="font-medium text-muted-foreground">Job description paste</label>
               <span
                 className={`font-mono text-xs transition-colors ${
-                  textValid ? "font-semibold text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"
+                  textValid
+                    ? "font-semibold text-emerald-600 dark:text-emerald-400"
+                    : "text-muted-foreground"
                 }`}
               >
                 {rawText.length} / 100 characters {textValid ? "✓ ready" : "minimum"}
@@ -212,7 +212,8 @@ export function JobDescriptionManager() {
             <BriefcaseBusiness className="mx-auto mb-2 size-6 text-muted-foreground/60" />
             <p className="font-medium text-foreground">No job descriptions added yet</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Add a real target role description to get questions tailored to exact company expectations.
+              Add a real target role description to get questions tailored to exact company
+              expectations.
             </p>
           </div>
         ) : null}
@@ -267,7 +268,9 @@ export function JobDescriptionManager() {
                       ) : (
                         <span className="text-xs text-muted-foreground">Ready to analyze</span>
                       )}
-                      <span className="text-xs text-muted-foreground/60">• Click to view details</span>
+                      <span className="text-xs text-muted-foreground/60">
+                        • Click to view details
+                      </span>
                     </div>
                   </div>
                   <ChevronDown
@@ -419,7 +422,9 @@ function AnalysisView({
             Generate customized interview questions matching {jobTitle}.
           </p>
         </div>
-        <Link href={`/interviews/new?jobDescriptionId=${jobId}&targetRole=${encodeURIComponent(jobTitle)}`}>
+        <Link
+          href={`/interviews/new?jobDescriptionId=${jobId}&targetRole=${encodeURIComponent(jobTitle)}`}
+        >
           <Button size="sm" className="gap-1.5 shadow-sm text-xs">
             <Play className="size-3 fill-primary-foreground" />
             Launch Practice Session
@@ -441,7 +446,9 @@ function AnalysisList({
 }) {
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {title}
+      </p>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {values.length ? (
           values.map((value) => (

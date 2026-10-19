@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Mic, Play, RotateCcw, Sparkles, Square, Volume2, Cpu, CheckCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowRight, Mic, Play, RotateCcw, Volume2, Cpu, CheckCircle } from "lucide-react";
 import Link from "next/link";
-import { cn } from "@/lib/utils";
 import { TiltCard } from "./tilt-card";
 
 /* ─── Types ────────────────────────────────────────────────────────────── */
@@ -25,9 +24,12 @@ const QUESTION_STREAM: Question[] = [
   {
     role: "Senior Frontend Engineer",
     badge: "L5/Senior",
-    question: "Tell me about a time you had to balance shipping speed against long-term maintainability.",
-    candidateAnswer: "We cut our end-to-end integration test coverage to hit the Q3 payment launch deadline two weeks early...",
-    followUp: "You mentioned cutting test coverage to hit the deadline — what was the first failure mode in production, and how did you explain that trade-off to stakeholders?",
+    question:
+      "Tell me about a time you had to balance shipping speed against long-term maintainability.",
+    candidateAnswer:
+      "We cut our end-to-end integration test coverage to hit the Q3 payment launch deadline two weeks early...",
+    followUp:
+      "You mentioned cutting test coverage to hit the deadline — what was the first failure mode in production, and how did you explain that trade-off to stakeholders?",
     notes: [
       "STAR structure: 92% (succinct context, clear first-person ownership)",
       "Technical Depth: Identified second-order failure boundaries accurately",
@@ -37,9 +39,12 @@ const QUESTION_STREAM: Question[] = [
   {
     role: "Staff Backend Engineer",
     badge: "L6/Staff",
-    question: "Design an API rate limiter that must handle 200,000 requests/sec with multi-region consistency.",
-    candidateAnswer: "I chose a token bucket algorithm stored in Redis clusters with asynchronous replication...",
-    followUp: "When Redis replica lag reaches 400ms during cross-region network partitions, how do you prevent paying users from being throttled incorrectly?",
+    question:
+      "Design an API rate limiter that must handle 200,000 requests/sec with multi-region consistency.",
+    candidateAnswer:
+      "I chose a token bucket algorithm stored in Redis clusters with asynchronous replication...",
+    followUp:
+      "When Redis replica lag reaches 400ms during cross-region network partitions, how do you prevent paying users from being throttled incorrectly?",
     notes: [
       "Distributed rigor: Addressed partition tolerance and blast radius",
       "Quantified trade-offs: Token bucket vs sliding window log evaluated cleanly",
@@ -49,9 +54,12 @@ const QUESTION_STREAM: Question[] = [
   {
     role: "Lead Product Manager",
     badge: "Group PM",
-    question: "Weekly user retention dropped 14% after your onboarding redesign. Walk me through your first 48 hours.",
-    candidateAnswer: "I segmented the funnel drop-off by acquisition channel, hypothesized friction at the team-invite step...",
-    followUp: "If the data confirms the invite step caused the drop, do you roll back entirely or ship an emergency unblocking patch in 24 hours? Walk me through that decision.",
+    question:
+      "Weekly user retention dropped 14% after your onboarding redesign. Walk me through your first 48 hours.",
+    candidateAnswer:
+      "I segmented the funnel drop-off by acquisition channel, hypothesized friction at the team-invite step...",
+    followUp:
+      "If the data confirms the invite step caused the drop, do you roll back entirely or ship an emergency unblocking patch in 24 hours? Walk me through that decision.",
     notes: [
       "Executive communication: Led with metric hypothesis within 30 seconds",
       "Prioritization: Balanced user trust against engineering velocity",
@@ -71,7 +79,7 @@ export function MockInterviewDemo() {
 
   // Audio waveform levels generator
   const [waveLevels, setWaveLevels] = useState<number[]>(() =>
-    Array.from({ length: 24 }, () => Math.random() * 0.5 + 0.1)
+    Array.from({ length: 24 }, () => Math.random() * 0.5 + 0.1),
   );
 
   useEffect(() => {
@@ -140,10 +148,18 @@ export function MockInterviewDemo() {
     <TiltCard tiltAngle={4} glareOpacity={0.12}>
       <div className="glass-panel group relative overflow-hidden rounded-3xl border border-[var(--hairline)] p-6 sm:p-7 shadow-2xl">
         {/* Precision architectural corner ticks */}
-        <span className="absolute left-3.5 top-3.5 font-mono text-[9px] text-bronze-600/60 select-none">┌</span>
-        <span className="absolute right-3.5 top-3.5 font-mono text-[9px] text-bronze-600/60 select-none">┐</span>
-        <span className="absolute left-3.5 bottom-3.5 font-mono text-[9px] text-bronze-600/60 select-none">└</span>
-        <span className="absolute right-3.5 bottom-3.5 font-mono text-[9px] text-bronze-600/60 select-none">┘</span>
+        <span className="absolute left-3.5 top-3.5 font-mono text-[9px] text-bronze-600/60 select-none">
+          ┌
+        </span>
+        <span className="absolute right-3.5 top-3.5 font-mono text-[9px] text-bronze-600/60 select-none">
+          ┐
+        </span>
+        <span className="absolute left-3.5 bottom-3.5 font-mono text-[9px] text-bronze-600/60 select-none">
+          └
+        </span>
+        <span className="absolute right-3.5 bottom-3.5 font-mono text-[9px] text-bronze-600/60 select-none">
+          ┘
+        </span>
 
         {/* Studio Deck Header Strip */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--hairline)] pb-4">
@@ -194,7 +210,8 @@ export function MockInterviewDemo() {
                   Live voice interview simulator
                 </h4>
                 <p className="mt-1.5 max-w-sm text-xs leading-relaxed text-[var(--ink-text-secondary)]">
-                  The AI asks questions, listens to your verbal trade-offs, and interrupts when claims are vague.
+                  The AI asks questions, listens to your verbal trade-offs, and interrupts when
+                  claims are vague.
                 </p>
                 <button
                   type="button"
@@ -223,7 +240,9 @@ export function MockInterviewDemo() {
                 <div className="my-5 rounded-xl border border-[var(--hairline)] bg-[var(--ink-canvas)]/60 p-4">
                   <div className="flex items-center justify-between text-[11px] font-mono text-[var(--ink-text-muted)]">
                     <span>MICROPHONE INPUT (SIMULATED)</span>
-                    <span className="font-semibold text-teal-700">LIVE AUDIO BUFFER: 98.4% CLARITY</span>
+                    <span className="font-semibold text-teal-700">
+                      LIVE AUDIO BUFFER: 98.4% CLARITY
+                    </span>
                   </div>
 
                   {/* 24-Bar Frequency Equalizer */}
@@ -272,13 +291,27 @@ export function MockInterviewDemo() {
                 </p>
 
                 <div className="mt-3 space-y-1.5 font-mono text-xs text-[var(--ink-text-secondary)]">
-                  <p className={thinkingStep >= 0 ? "text-emerald-700 font-medium" : "text-slate-400"}>
+                  <p
+                    className={
+                      thinkingStep >= 0 ? "text-emerald-700 font-medium" : "text-slate-400"
+                    }
+                  >
                     ✓ Transcribed speech buffer (Nova-2 48kHz)
                   </p>
-                  <p className={thinkingStep >= 1 ? "text-emerald-700 font-medium" : "text-slate-400"}>
+                  <p
+                    className={
+                      thinkingStep >= 1 ? "text-emerald-700 font-medium" : "text-slate-400"
+                    }
+                  >
                     ✓ Identified trade-off: cut test coverage without risk bounds
                   </p>
-                  <p className={thinkingStep >= 2 ? "text-bronze-700 font-bold animate-pulse" : "text-slate-400"}>
+                  <p
+                    className={
+                      thinkingStep >= 2
+                        ? "text-bronze-700 font-bold animate-pulse"
+                        : "text-slate-400"
+                    }
+                  >
                     → Formulating unscripted follow-up probe...
                   </p>
                 </div>

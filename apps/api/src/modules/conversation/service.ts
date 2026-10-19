@@ -13,7 +13,6 @@ import { InterviewTools } from "../interviews/tools.js";
 import { ConversationEventPublisher } from "./events.js";
 import {
   bufferAudioStream,
-  grantDeepgramAccessToken,
   isSupportedVoiceLanguage,
   synthesizeSpeech,
   tryGrantDeepgramAccessToken,
@@ -27,7 +26,6 @@ import {
   awaitPreWarm,
   getCachedAudio,
   isPreWarmInFlight,
-  isVoiceActive,
   markVoiceActive,
   registerPreWarm,
   setCachedAudio,
@@ -222,9 +220,9 @@ export class ConversationService {
       name: "AIResponseGenerated",
       payload: { interviewId, conversationId: conversation.id, turn: asTurnDto(turn) },
     });
-    // When the candidate is using voice, start synthesizing the reply now so the
-    // subsequent audio fetch is served from cache instead of waiting for TTS.
-    if (isVoiceActive(interviewId) && !isPreWarmInFlight(turn.id)) {
+    // Always pre-warm TTS synthesis for AI turns immediately in the background
+    // so subsequent audio fetch is served from cache with near-zero latency.
+    if (!isPreWarmInFlight(turn.id)) {
       this.preWarmTurnAudio(turn, conversation.interview.language);
     }
     return result;

@@ -304,7 +304,11 @@ function AcousticOrbGroup() {
     group.position.y = THREE.MathUtils.lerp(group.position.y, targetY, 0.035);
     group.position.z = THREE.MathUtils.lerp(group.position.z, targetZ, 0.035);
 
-    group.rotation.x = THREE.MathUtils.lerp(group.rotation.x, -y * 0.15 + scrollFactor * 0.3, 0.035);
+    group.rotation.x = THREE.MathUtils.lerp(
+      group.rotation.x,
+      -y * 0.15 + scrollFactor * 0.3,
+      0.035,
+    );
     group.rotation.y = THREE.MathUtils.lerp(group.rotation.y, x * 0.2 + scrollFactor * 0.6, 0.035);
   });
 

@@ -402,7 +402,11 @@ export function ResumeManager() {
                     disabled={analyze.isPending || isAnalyzing}
                   >
                     <Sparkles className="size-3" />
-                    {isAnalyzing ? "Analyzing…" : resume.status === "ANALYZED" ? "Re-analyze" : "Analyze"}
+                    {isAnalyzing
+                      ? "Analyzing…"
+                      : resume.status === "ANALYZED"
+                        ? "Re-analyze"
+                        : "Analyze"}
                   </Button>
 
                   {!resume.isActive ? (
@@ -486,7 +490,8 @@ function ResumeAnalysisSection({ resumeId }: { resumeId: string }) {
         {analysis.skills?.length ? (
           <div>
             <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <Sparkles className="size-3.5 text-primary" /> Core Competencies ({analysis.skills.length})
+              <Sparkles className="size-3.5 text-primary" /> Core Competencies (
+              {analysis.skills.length})
             </h4>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {analysis.skills.map((skill) => (
@@ -504,7 +509,8 @@ function ResumeAnalysisSection({ resumeId }: { resumeId: string }) {
         {analysis.technologies?.length ? (
           <div>
             <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <Code2 className="size-3.5 text-primary" /> Technology Stack ({analysis.technologies.length})
+              <Code2 className="size-3.5 text-primary" /> Technology Stack (
+              {analysis.technologies.length})
             </h4>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {analysis.technologies.map((tech) => (
@@ -524,7 +530,8 @@ function ResumeAnalysisSection({ resumeId }: { resumeId: string }) {
       {analysis.experience?.length ? (
         <div>
           <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            <Briefcase className="size-3.5 text-primary" /> Experience Milestones ({analysis.experience.length})
+            <Briefcase className="size-3.5 text-primary" /> Experience Milestones (
+            {analysis.experience.length})
           </h4>
           <div className="mt-2 space-y-2.5">
             {analysis.experience.slice(0, 4).map((exp, index) => (
@@ -552,7 +559,7 @@ function ResumeAnalysisSection({ resumeId }: { resumeId: string }) {
       ) : null}
 
       {/* Projects & Education */}
-      {(analysis.projects?.length || analysis.education?.length) ? (
+      {analysis.projects?.length || analysis.education?.length ? (
         <div className="grid gap-3 sm:grid-cols-2 text-xs">
           {analysis.projects?.length ? (
             <div>
@@ -574,9 +581,7 @@ function ResumeAnalysisSection({ resumeId }: { resumeId: string }) {
               <h5 className="flex items-center gap-1 font-semibold text-muted-foreground">
                 <GraduationCap className="size-3 text-primary" /> Education
               </h5>
-              <p className="mt-1 text-muted-foreground">
-                {analysis.education.join(" · ")}
-              </p>
+              <p className="mt-1 text-muted-foreground">{analysis.education.join(" · ")}</p>
             </div>
           ) : null}
         </div>

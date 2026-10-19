@@ -1,8 +1,8 @@
 "use client";
 
-import { Check, X, Sparkles, Mic, Clock, Brain, DollarSign } from "lucide-react";
+import { Check, X, Sparkles } from "lucide-react";
 import { SectionHeading } from "./section-heading";
-import { FadeUp, StaggerContainer, StaggerItem } from "./animations";
+import { FadeUp } from "./animations";
 
 const COMPARISON_ITEMS = [
   {
@@ -85,10 +85,7 @@ export function ComparisonSection() {
             </thead>
             <tbody className="divide-y divide-[var(--hairline)] text-sm">
               {COMPARISON_ITEMS.map((item) => (
-                <tr
-                  key={item.feature}
-                  className="transition-colors hover:bg-slate-50/50"
-                >
+                <tr key={item.feature} className="transition-colors hover:bg-slate-50/50">
                   <td className="p-5">
                     <p className="font-medium text-[var(--ink-text)]">{item.feature}</p>
                     <p className="mt-0.5 text-xs text-[var(--ink-text-secondary)]">
