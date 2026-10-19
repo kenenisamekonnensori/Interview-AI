@@ -39,7 +39,7 @@ export async function analyzeUserSkills(
   // be queued just before a downgrade or cancellation takes effect. Checked
   // before any AI spend, next to the API-level gate.
   const repository = new BillingRepository(database);
-  const entitlements = new EntitlementService(repository);
+  const entitlements = new EntitlementService(repository, environment.OWNER_EMAILS);
   if (!(await entitlements.can(userId, "ADVANCED_FEEDBACK"))) return;
   if (!(await claimGeneration(database, userId))) return;
   const aiProvider = createAiProvider(environment);
@@ -162,7 +162,10 @@ export class SkillAnalysisService {
 
   async enqueueRefresh(userId: string) {
     // Never schedule paid AI interpretation for a plan that does not include it.
-    const entitlements = new EntitlementService(new BillingRepository(this.database));
+    const entitlements = new EntitlementService(
+      new BillingRepository(this.database),
+      this.environment?.OWNER_EMAILS,
+    );
     if (!(await entitlements.can(userId, "ADVANCED_FEEDBACK"))) return;
     const dispatched = this.monolith?.dispatchSkillAnalysis(userId);
     if (!dispatched) await this.queue.enqueue({ kind: "skill-analysis", userId });

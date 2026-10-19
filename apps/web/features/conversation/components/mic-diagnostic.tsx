@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { CheckCircle2, Mic, MicOff, RefreshCw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VoiceVisualizer } from "./voice-visualizer";
 
 interface MicDiagnosticProps {
-  onComplete: () => void;
+  onComplete: (stream?: MediaStream) => void;
   onSkipToText?: () => void;
 }
 
@@ -15,9 +15,22 @@ export function MicDiagnostic({ onComplete, onSkipToText }: MicDiagnosticProps) 
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [heardText, setHeardText] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const handedOffRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (!handedOffRef.current && stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [stream]);
 
   const startTest = async () => {
     try {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+        setStream(null);
+      }
       setErrorMessage(null);
       setHeardText("");
       setStep("TESTING");
@@ -26,7 +39,13 @@ export function MicDiagnostic({ onComplete, onSkipToText }: MicDiagnosticProps) 
         throw new Error("Your browser does not support microphone capture.");
       }
 
-      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       setStream(audioStream);
 
       // Real Audio Context & Analyser Node to detect actual microphone voice input
@@ -72,17 +91,44 @@ export function MicDiagnostic({ onComplete, onSkipToText }: MicDiagnosticProps) 
       }, 5000);
     } catch (err) {
       setStep("ERROR");
-      setErrorMessage(
-        err instanceof Error ? err.message : "Microphone permission denied or unavailable.",
-      );
+      if (err instanceof DOMException) {
+        switch (err.name) {
+          case "NotAllowedError":
+          case "PermissionDeniedError":
+            setErrorMessage(
+              "Microphone permission was denied. Please allow microphone access in your browser settings to continue.",
+            );
+            break;
+          case "NotFoundError":
+          case "DevicesNotFoundError":
+            setErrorMessage("No microphone detected. Please plug in or enable a microphone.");
+            break;
+          case "NotReadableError":
+          case "TrackStartError":
+            setErrorMessage("Your microphone is busy or locked by another application.");
+            break;
+          default:
+            setErrorMessage(err.message || "Microphone access failed.");
+        }
+      } else {
+        setErrorMessage(
+          err instanceof Error ? err.message : "Microphone permission denied or unavailable.",
+        );
+      }
     }
   };
 
   const handleFinishDiagnostic = () => {
+    handedOffRef.current = true;
+    onComplete(stream ?? undefined);
+  };
+
+  const handleSkipToText = () => {
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
+      setStream(null);
     }
-    onComplete();
+    onSkipToText?.();
   };
 
   return (
@@ -119,7 +165,7 @@ export function MicDiagnostic({ onComplete, onSkipToText }: MicDiagnosticProps) 
               <Mic className="size-4" /> Start Microphone Test
             </Button>
             {onSkipToText && (
-              <Button variant="outline" onClick={onSkipToText}>
+              <Button variant="outline" onClick={handleSkipToText}>
                 Use Text Mode Instead
               </Button>
             )}
@@ -180,7 +226,7 @@ export function MicDiagnostic({ onComplete, onSkipToText }: MicDiagnosticProps) 
             </Button>
 
             {onSkipToText && (
-              <Button className="flex-1 bg-indigo-600 hover:bg-indigo-500" onClick={onSkipToText}>
+              <Button className="flex-1 bg-indigo-600 hover:bg-indigo-500" onClick={handleSkipToText}>
                 Continue by Typing
               </Button>
             )}

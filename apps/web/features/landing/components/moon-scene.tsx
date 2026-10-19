@@ -2,83 +2,99 @@
 
 import { useRef, useMemo } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Sphere, Stars } from "@react-three/drei";
+import { Sphere } from "@react-three/drei";
 import * as THREE from "three";
 
 /**
- * Warm-lit moon: a bronze key light from the upper right (like a lamp in a
- * dim interview room) instead of the previous indigo fill.
+ * Acoustic Voice Orb Palette:
+ * Calibrated specifically for the warm travertine/limestone architectural canvas (#e6e0d5).
+ * Translucent frosted alabaster glass, glowing internal champagne/gold core,
+ * and a delicate specular fresnel rim with subtle live acoustic resonance.
  */
-const MOON_COLORS = {
-  deep: "#221607", // shadow craters — warm near-black
-  mid: "#5c4322", // mid-tone regolith
-  high: "#b08a4d", // lit highlands
-  rim: "#e8c98a", // fresnel rim light
-  glow: "#cba25f", // atmospheric halo
-  particle: "#dcbd7e", // ambient dust
+const ORB_COLORS = {
+  core: "#dfc185", // glowing internal voice core (warm champagne amber)
+  subsurface: "#ded2be", // frosted translucent alabaster mid-tone
+  highlight: "#fdfbf7", // lit crest / pristine ivory silk
+  rim: "#fff5de", // specular fresnel grazing radiance
+  halo: "#f0dcb2", // soft ambient acoustic halo
+  beacon: "#ffffff", // active audio sampling pulse
+  beaconGlow: "#e8c98a",
+  ring: "#cba25f", // precision acoustic frequency ribbon
 } as const;
 
-/* Shared simplex noise — identical implementation for vertex + fragment stages. */
-const SIMPLEX_GLSL = /* glsl */ `
-  vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-  vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-  vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
-  vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+/**
+ * 3D procedural acoustic standing wave shader.
+ * Displaces surface vertices in rhythmic vocal harmonics (speech resonances)
+ * rather than dark astronomical craters.
+ */
+const ACOUSTIC_SHADER = {
+  vertexShader: /* glsl */ `
+    uniform float uTime;
+    varying vec2 vUv;
+    varying vec3 vNormal;
+    varying vec3 vPosition;
 
-  float snoise(vec3 v) {
-    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
-    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
-    vec3 i  = floor(v + dot(v, C.yyy));
-    vec3 x0 = v - i + dot(i, C.xxx);
-    vec3 g = step(x0.yzx, x0.xyz);
-    vec3 l = 1.0 - g;
-    vec3 i1 = min(g.xyz, l.zxy);
-    vec3 i2 = max(g.xyz, l.zxy);
-    vec3 x1 = x0 - i1 + C.xxx;
-    vec3 x2 = x0 - i2 + C.yyy;
-    vec3 x3 = x0 - D.yyy;
-    i = mod289(i);
-    vec4 p = permute(permute(permute(
-        i.z + vec4(0.0, i1.z, i2.z, 1.0))
-      + i.y + vec4(0.0, i1.y, i2.y, 1.0))
-      + i.x + vec4(0.0, i1.x, i2.x, 1.0));
-    float n_ = 0.142857142857;
-    vec3 ns = n_ * D.wyz - D.xzx;
-    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
-    vec4 x_ = floor(j * ns.z);
-    vec4 y_ = floor(j - 7.0 * x_);
-    vec4 x = x_ * ns.x + ns.yyyy;
-    vec4 y = y_ * ns.x + ns.yyyy;
-    vec4 h = 1.0 - abs(x) - abs(y);
-    vec4 b0 = vec4(x.xy, y.xy);
-    vec4 b1 = vec4(x.zw, y.zw);
-    vec4 s0 = floor(b0)*2.0 + 1.0;
-    vec4 s1 = floor(b1)*2.0 + 1.0;
-    vec4 sh = -step(h, vec4(0.0));
-    vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
-    vec4 a1 = b1.xzyw + s1.zzww*sh.zzww;
-    vec3 p0 = vec3(a0.xy, h.x);
-    vec3 p1 = vec3(a0.zw, h.y);
-    vec3 p2 = vec3(a1.xy, h.z);
-    vec3 p3 = vec3(a1.zw, h.w);
-    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
-    p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
-    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-    m = m * m;
-    return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
-  }
-`;
+    void main() {
+      vUv = uv;
+      vNormal = normalize(normalMatrix * normal);
+      vPosition = position;
 
-function Moon() {
+      // Harmonic standing sound waves (simulating vocal resonance)
+      float wave1 = sin(position.y * 3.8 + uTime * 1.3) * 0.026;
+      float wave2 = cos(position.x * 3.2 - uTime * 0.9) * 0.022;
+      float wave3 = sin(position.z * 4.2 + uTime * 1.1) * 0.018;
+      float voiceRipple = sin(length(position.xy) * 5.5 - uTime * 2.2) * 0.015;
+
+      vec3 displaced = position + normal * (wave1 + wave2 + wave3 + voiceRipple);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
+    }
+  `,
+
+  fragmentShader: /* glsl */ `
+    uniform float uTime;
+    uniform vec3 uCoreColor;
+    uniform vec3 uSubsurfaceColor;
+    uniform vec3 uHighlightColor;
+    uniform vec3 uRimColor;
+    varying vec2 vUv;
+    varying vec3 vNormal;
+    varying vec3 vPosition;
+
+    void main() {
+      // Fluid acoustic surface modulation
+      float ripple = sin(vPosition.y * 3.5 + uTime * 1.2) * 0.5 + 0.5;
+      float ripple2 = cos(vPosition.x * 3.0 - uTime * 0.8) * 0.5 + 0.5;
+      float acousticTexture = mix(ripple, ripple2, 0.5);
+
+      // Translucent frosted alabaster to warm champagne core gradient
+      vec3 surfaceColor = mix(uSubsurfaceColor, uHighlightColor, smoothstep(0.2, 0.85, acousticTexture));
+      vec3 innerCoreGlow = mix(uCoreColor, surfaceColor, 0.55);
+
+      // Specular Fresnel rim lighting (translucent glass effect)
+      vec3 viewDir = normalize(cameraPosition - vPosition);
+      float fresnel = pow(1.0 - max(dot(vNormal, viewDir), 0.0), 2.4);
+      vec3 rimGlow = uRimColor * fresnel * 1.45;
+
+      // Gentle vocal breath pulse
+      float breath = sin(uTime * 0.75) * 0.06 + 0.94;
+
+      // Delicate acoustic horizon rim
+      vec3 finalColor = innerCoreGlow + rimGlow * breath;
+      gl_FragColor = vec4(finalColor, 1.0);
+    }
+  `,
+};
+
+function AcousticOrb() {
   const meshRef = useRef<THREE.Mesh>(null);
 
   const uniforms = useMemo(
     () => ({
       uTime: { value: 0 },
-      uColor1: { value: new THREE.Color(MOON_COLORS.deep) },
-      uColor2: { value: new THREE.Color(MOON_COLORS.mid) },
-      uColor3: { value: new THREE.Color(MOON_COLORS.high) },
-      uGlowColor: { value: new THREE.Color(MOON_COLORS.rim) },
+      uCoreColor: { value: new THREE.Color(ORB_COLORS.core) },
+      uSubsurfaceColor: { value: new THREE.Color(ORB_COLORS.subsurface) },
+      uHighlightColor: { value: new THREE.Color(ORB_COLORS.highlight) },
+      uRimColor: { value: new THREE.Color(ORB_COLORS.rim) },
     }),
     [],
   );
@@ -87,74 +103,32 @@ function Moon() {
     const t = state.clock.getElapsedTime();
     uniforms.uTime.value = t;
     if (meshRef.current) {
-      meshRef.current.rotation.y = t * 0.05;
-      meshRef.current.rotation.x = Math.sin(t * 0.03) * 0.1;
+      meshRef.current.rotation.y = t * 0.04;
+      meshRef.current.rotation.x = Math.sin(t * 0.02) * 0.05;
     }
   });
 
   return (
-    <Sphere ref={meshRef} args={[2, 64, 64]}>
+    // Sized to a refined, balanced 1.22 radius (instead of the previous bulky 2.0)
+    <Sphere ref={meshRef} args={[1.22, 64, 64]}>
       <shaderMaterial
-        vertexShader={
-          /* glsl */ `
-          varying vec2 vUv;
-          varying vec3 vNormal;
-          varying vec3 vPosition;
-          ${SIMPLEX_GLSL}
-          void main() {
-            vUv = uv;
-            vNormal = normalize(normalMatrix * normal);
-            vPosition = position;
-            // Displace vertices for crater-like surface
-            float noise = snoise(position * 2.0) * 0.08;
-            float craters = snoise(position * 5.0) * 0.03;
-            vec3 displaced = position + normal * (noise + craters);
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
-          }
-        `
-        }
-        fragmentShader={
-          /* glsl */ `
-          uniform float uTime;
-          uniform vec3 uColor1;
-          uniform vec3 uColor2;
-          uniform vec3 uColor3;
-          uniform vec3 uGlowColor;
-          varying vec2 vUv;
-          varying vec3 vNormal;
-          varying vec3 vPosition;
-          ${SIMPLEX_GLSL}
-          void main() {
-            // Multi-octave procedural surface
-            float n1 = snoise(vPosition * 1.5) * 0.5 + 0.5;
-            float n2 = snoise(vPosition * 3.0) * 0.5 + 0.5;
-            float n3 = snoise(vPosition * 6.0) * 0.5 + 0.5;
-            float n4 = snoise(vPosition * 12.0 + uTime * 0.02) * 0.5 + 0.5;
-            float surface = n1 * 0.5 + n2 * 0.25 + n3 * 0.15 + n4 * 0.1;
-
-            vec3 color = mix(uColor1, uColor2, smoothstep(0.3, 0.6, surface));
-            color = mix(color, uColor3, smoothstep(0.6, 0.9, surface));
-
-            // Fresnel rim glow
-            vec3 viewDir = normalize(cameraPosition - vPosition);
-            float fresnel = pow(1.0 - max(dot(vNormal, viewDir), 0.0), 3.0);
-            vec3 rimColor = mix(uGlowColor, uColor3, 0.3) * fresnel * 1.5;
-
-            float pulse = sin(uTime * 0.5) * 0.1 + 0.9;
-            gl_FragColor = vec4(color + rimColor * pulse, 1.0);
-          }
-        `
-        }
+        vertexShader={ACOUSTIC_SHADER.vertexShader}
+        fragmentShader={ACOUSTIC_SHADER.fragmentShader}
         uniforms={uniforms}
       />
     </Sphere>
   );
 }
 
-function AtmosphericGlow() {
+/**
+ * Atmospheric Acoustic Halo:
+ * Casts a warm, gentle ambient glow into the surrounding blueprint grid,
+ * creating depth without visual weight.
+ */
+function AcousticHalo() {
   const uniforms = useMemo(
     () => ({
-      uGlowColor: { value: new THREE.Color(MOON_COLORS.glow) },
+      uGlowColor: { value: new THREE.Color(ORB_COLORS.halo) },
       uTime: { value: 0 },
     }),
     [],
@@ -165,7 +139,7 @@ function AtmosphericGlow() {
   });
 
   return (
-    <Sphere args={[2.6, 32, 32]}>
+    <Sphere args={[1.55, 32, 32]}>
       <shaderMaterial
         transparent
         depthWrite={false}
@@ -186,10 +160,10 @@ function AtmosphericGlow() {
           uniform float uTime;
           varying vec3 vNormal;
           void main() {
-            float intensity = pow(0.65 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.5);
-            float pulse = sin(uTime * 0.4) * 0.15 + 0.85;
-            vec3 glow = uGlowColor * intensity * pulse * 1.2;
-            float alpha = intensity * pulse * 0.55;
+            float intensity = pow(0.65 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.8);
+            float pulse = sin(uTime * 0.5) * 0.08 + 0.92;
+            vec3 glow = uGlowColor * intensity * pulse * 1.1;
+            float alpha = intensity * pulse * 0.35;
             gl_FragColor = vec4(glow, alpha);
           }
         `
@@ -199,72 +173,146 @@ function AtmosphericGlow() {
   );
 }
 
-function Particles() {
-  const particlesRef = useRef<THREE.Points>(null);
-  const count = 800;
-
-  const [positions, sizes] = useMemo(() => {
-    const pos = new Float32Array(count * 3);
-    const sz = new Float32Array(count);
-    for (let i = 0; i < count; i++) {
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-      const r = 4 + Math.random() * 12;
-      pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-      pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-      pos[i * 3 + 2] = r * Math.cos(phi);
-      sz[i] = Math.random() * 2 + 0.5;
-    }
-    return [pos, sz];
-  }, []);
+/**
+ * Acoustic Soundwave Rings:
+ * Expanding planar soundwaves that pulse outwards rhythmically,
+ * visually demonstrating voice turn-taking and auditory processing.
+ */
+function AcousticPulseRipples() {
+  const ripple1 = useRef<THREE.Mesh>(null);
+  const ripple2 = useRef<THREE.Mesh>(null);
 
   useFrame((state) => {
-    if (particlesRef.current) {
-      particlesRef.current.rotation.y = state.clock.getElapsedTime() * 0.01;
-      particlesRef.current.rotation.x = Math.sin(state.clock.getElapsedTime() * 0.005) * 0.05;
+    const t = state.clock.getElapsedTime();
+    if (ripple1.current) {
+      const p1 = (t * 0.35) % 1;
+      const s1 = 1.25 + p1 * 0.9;
+      ripple1.current.scale.set(s1, s1, s1);
+      const mat = ripple1.current.material as THREE.MeshBasicMaterial;
+      mat.opacity = Math.max(0, 0.22 * (1 - p1));
+    }
+    if (ripple2.current) {
+      const p2 = (t * 0.35 + 0.5) % 1;
+      const s2 = 1.25 + p2 * 0.9;
+      ripple2.current.scale.set(s2, s2, s2);
+      const mat = ripple2.current.material as THREE.MeshBasicMaterial;
+      mat.opacity = Math.max(0, 0.22 * (1 - p2));
     }
   });
 
   return (
-    <points ref={particlesRef}>
-      <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          args={[positions, 3]}
-          count={count}
-          itemSize={3}
-        />
-        <bufferAttribute attach="attributes-size" args={[sizes, 1]} count={count} itemSize={1} />
-      </bufferGeometry>
-      <pointsMaterial
-        size={0.04}
-        color={MOON_COLORS.particle}
-        transparent
-        opacity={0.5}
-        sizeAttenuation
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-      />
-    </points>
+    <>
+      <mesh ref={ripple1}>
+        <ringGeometry args={[1.0, 1.012, 64]} />
+        <meshBasicMaterial color="#dfc185" transparent opacity={0.2} side={THREE.DoubleSide} />
+      </mesh>
+      <mesh ref={ripple2} rotation={[0.3, 0.2, 0]}>
+        <ringGeometry args={[1.0, 1.012, 64]} />
+        <meshBasicMaterial color="#cba25f" transparent opacity={0.2} side={THREE.DoubleSide} />
+      </mesh>
+    </>
   );
 }
 
-/** Offsets the moon so the hero copy owns the center; adds gentle pointer parallax. */
-function MoonGroup() {
+/**
+ * Slender Harmonic Resonance Ribbons:
+ * Precision wire loops representing voice frequencies and real-time turn-taking.
+ */
+function HarmonicRibbons() {
+  const ring1Ref = useRef<THREE.Group>(null);
+  const ring2Ref = useRef<THREE.Group>(null);
+  const beaconRef = useRef<THREE.Mesh>(null);
+  const beaconPulseRef = useRef<THREE.Mesh>(null);
+
+  useFrame((state) => {
+    const t = state.clock.getElapsedTime();
+    if (ring1Ref.current) {
+      ring1Ref.current.rotation.z = t * 0.08;
+      ring1Ref.current.rotation.x = 0.45 + Math.sin(t * 0.05) * 0.06;
+    }
+    if (ring2Ref.current) {
+      ring2Ref.current.rotation.z = -t * 0.06;
+      ring2Ref.current.rotation.y = 0.3 + Math.cos(t * 0.04) * 0.08;
+    }
+
+    if (beaconRef.current) {
+      const angle = t * 0.5;
+      beaconRef.current.position.x = Math.cos(angle) * 1.72;
+      beaconRef.current.position.y = Math.sin(angle) * 1.72;
+    }
+    if (beaconPulseRef.current) {
+      const scale = 1 + Math.sin(t * 3.5) * 0.28;
+      beaconPulseRef.current.scale.set(scale, scale, scale);
+    }
+  });
+
+  return (
+    <>
+      <AcousticPulseRipples />
+
+      {/* Ring 1 — Slender harmonic carrier ring */}
+      <group ref={ring1Ref} rotation={[0.4, 0.2, 0]}>
+        <mesh>
+          <torusGeometry args={[1.48, 0.007, 16, 100]} />
+          <meshBasicMaterial color={ORB_COLORS.ring} transparent opacity={0.4} />
+        </mesh>
+      </group>
+
+      {/* Ring 2 — Audio sampling orbit with glowing micro-beacon */}
+      <group ref={ring2Ref} rotation={[-0.25, 0.3, 0]}>
+        <mesh>
+          <torusGeometry args={[1.72, 0.009, 16, 120]} />
+          <meshBasicMaterial color="#b78a44" transparent opacity={0.5} />
+        </mesh>
+        {/* Audio sampling needle beacon */}
+        <mesh ref={beaconRef}>
+          <sphereGeometry args={[0.045, 16, 16]} />
+          <meshBasicMaterial color={ORB_COLORS.beacon} />
+          <mesh ref={beaconPulseRef}>
+            <sphereGeometry args={[0.09, 16, 16]} />
+            <meshBasicMaterial color={ORB_COLORS.beaconGlow} transparent opacity={0.45} />
+          </mesh>
+        </mesh>
+      </group>
+    </>
+  );
+}
+
+/**
+ * Staging Group:
+ * Positions the Acoustic Voice Orb in the upper-right ambient quadrant,
+ * hovering behind and slightly above the Mock Interview Console.
+ * Gracefully recedes with scroll and gently responds to pointer parallax.
+ */
+function AcousticOrbGroup() {
   const groupRef = useRef<THREE.Group>(null);
 
   useFrame((state) => {
     const group = groupRef.current;
     if (!group) return;
     const { x, y } = state.pointer;
-    group.position.x = THREE.MathUtils.lerp(group.position.x, 2.4 + x * 0.25, 0.03);
-    group.position.y = THREE.MathUtils.lerp(group.position.y, 1.1 + y * 0.15, 0.03);
+    const scrollY = typeof window !== "undefined" ? window.scrollY : 0;
+    const scrollFactor = Math.min(scrollY / 1200, 1.2);
+
+    // Elegant positioning:
+    // Floating at x=2.35, y=0.9, z=-0.3. Refined scale that frames the console.
+    const targetX = 2.35 + x * 0.25 + scrollFactor * 0.3;
+    const targetY = 0.9 + y * 0.18 - scrollFactor * 1.5;
+    const targetZ = -0.3 - scrollFactor * 2.0;
+
+    group.position.x = THREE.MathUtils.lerp(group.position.x, targetX, 0.035);
+    group.position.y = THREE.MathUtils.lerp(group.position.y, targetY, 0.035);
+    group.position.z = THREE.MathUtils.lerp(group.position.z, targetZ, 0.035);
+
+    group.rotation.x = THREE.MathUtils.lerp(group.rotation.x, -y * 0.15 + scrollFactor * 0.3, 0.035);
+    group.rotation.y = THREE.MathUtils.lerp(group.rotation.y, x * 0.2 + scrollFactor * 0.6, 0.035);
   });
 
   return (
-    <group ref={groupRef} position={[2.4, 1.1, 0]}>
-      <Moon />
-      <AtmosphericGlow />
+    <group ref={groupRef} position={[2.35, 0.9, -0.3]}>
+      <AcousticOrb />
+      <AcousticHalo />
+      <HarmonicRibbons />
     </group>
   );
 }
@@ -272,24 +320,26 @@ function MoonGroup() {
 function Scene() {
   return (
     <>
-      <ambientLight intensity={0.1} />
-      {/* Warm key light + faint teal counter-light for depth */}
-      <pointLight position={[5, 3, 5]} intensity={0.8} color="#e8c98a" />
-      <pointLight position={[-5, -2, 3]} intensity={0.25} color="#2dd4bf" />
+      <ambientLight intensity={0.45} />
+      {/* Warm key light matching the travertine studio atmosphere */}
+      <pointLight position={[4.5, 3.0, 4.0]} intensity={1.2} color="#fff6e5" />
+      <pointLight position={[-3.0, -1.5, 2.5]} intensity={0.3} color="#dfc185" />
 
-      <MoonGroup />
-      <Particles />
-
-      <Stars radius={50} depth={50} count={2000} factor={3} saturation={0} fade speed={0.5} />
+      <AcousticOrbGroup />
     </>
   );
 }
 
+/**
+ * Reimagined 3D Acoustic Voice Centerpiece:
+ * Clean, luminous, and purposeful. Visualizes conversational voice intelligence
+ * without overwhelming the hero or cluttering the interface.
+ */
 export function MoonScene() {
   return (
     <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
       <Canvas
-        camera={{ position: [0, 0, 6], fov: 45 }}
+        camera={{ position: [0, 0, 6.0], fov: 42 }}
         dpr={[1, 1.5]}
         gl={{ antialias: true, alpha: true }}
         style={{ background: "transparent" }}

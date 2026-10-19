@@ -7,6 +7,7 @@ import {
   DeepgramAudioUnavailableError,
   DeepgramConfigurationError,
   DeepgramTokenGrantError,
+  createDeepgramLiveStream,
 } from "./deepgram.js";
 import { ConversationEventPublisher } from "./events.js";
 import {
@@ -101,11 +102,147 @@ export function registerConversationRoutes(
         });
         return token;
       } catch (error) {
-        if (error instanceof DeepgramConfigurationError || error instanceof DeepgramTokenGrantError)
+        if (error instanceof DeepgramConfigurationError)
           return reply
             .status(503)
             .send({ code: "VOICE_UNAVAILABLE", message: "Voice is not configured." });
         return sendConversationError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v1/interviews/:id/conversation/voice-stream",
+    { websocket: true },
+    async (socket, request) => {
+      let isClosed = false;
+      let forwardToDeepgram: ((buffer: Buffer) => void) | null = null;
+      const earlyChunks: Buffer[] = [];
+
+      socket.on("message", (data: unknown, isBinary: boolean) => {
+        if (isClosed) return;
+        try {
+          if (isBinary || Buffer.isBuffer(data)) {
+            const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data as any);
+            if (forwardToDeepgram) {
+              forwardToDeepgram(buffer);
+            } else if (earlyChunks.length < 50) {
+              earlyChunks.push(buffer);
+            }
+          }
+        } catch (sendErr) {
+          app.log.warn({ sendErr }, "Failed to process early audio chunk");
+        }
+      });
+
+      socket.on("close", () => {
+        isClosed = true;
+      });
+
+      const params = conversationInterviewIdSchema.safeParse(request.params);
+      if (!params.success) {
+        socket.close(1008, "Invalid interview ID");
+        return;
+      }
+      const interviewId = params.data.id;
+      const query = request.query as { ticket?: string } | undefined;
+      const ticket = query?.ticket;
+
+      let userId: string | null = null;
+      if (ticket) {
+        const consumed = await service.ticketService.consumeTicket(ticket, interviewId);
+        if (consumed) {
+          userId = consumed.userId;
+        }
+      }
+
+      if (!userId && request.authContext?.user?.id) {
+        userId = request.authContext.user.id;
+      }
+
+      if (!userId) {
+        socket.close(1008, "Unauthorized voice session");
+        return;
+      }
+
+      const interview = await service.repository.findOwnedInterview(interviewId, userId);
+      if (!interview || !["READY", "IN_PROGRESS"].includes(interview.status)) {
+        socket.close(1008, "Interview is not active or owned");
+        return;
+      }
+
+      if (isClosed) return;
+
+      try {
+        const liveStream = await createDeepgramLiveStream(environment, interview.language);
+        let isLiveStreamOpen = false;
+        const pendingAudioChunks: Buffer[] = [...earlyChunks];
+        earlyChunks.length = 0;
+
+        const flushChunks = () => {
+          while (pendingAudioChunks.length > 0) {
+            const chunk = pendingAudioChunks.shift();
+            if (chunk) {
+              try {
+                liveStream.sendMedia(chunk);
+              } catch (sendErr) {
+                app.log.warn({ sendErr }, "Failed to send buffered audio chunk to Deepgram");
+              }
+            }
+          }
+        };
+
+        liveStream.on("open", () => {
+          isLiveStreamOpen = true;
+          if (socket.readyState === socket.OPEN) {
+            socket.send(JSON.stringify({ type: "connected", interviewId }));
+          }
+          flushChunks();
+        });
+
+        liveStream.on("message", (msg: unknown) => {
+          if (socket.readyState === socket.OPEN) {
+            socket.send(typeof msg === "string" ? msg : JSON.stringify(msg));
+          }
+        });
+
+        liveStream.on("error", (err: unknown) => {
+          app.log.error({ err }, "Deepgram live stream error");
+          if (socket.readyState === socket.OPEN) {
+            socket.send(JSON.stringify({ type: "error", message: "Transcription error" }));
+          }
+        });
+
+        liveStream.on("close", () => {
+          isLiveStreamOpen = false;
+          if (socket.readyState === socket.OPEN) {
+            socket.close(1000, "Transcription stream closed");
+          }
+        });
+
+        liveStream.connect();
+
+        forwardToDeepgram = (buffer: Buffer) => {
+          if (isLiveStreamOpen) {
+            liveStream.sendMedia(buffer);
+          } else if (pendingAudioChunks.length < 50) {
+            pendingAudioChunks.push(buffer);
+          }
+        };
+
+        socket.on("close", () => {
+          isLiveStreamOpen = false;
+          forwardToDeepgram = null;
+          pendingAudioChunks.length = 0;
+          try {
+            liveStream.close();
+          } catch {
+            // ignore
+          }
+        });
+      } catch (err) {
+        app.log.error({ err }, "Failed to initialize Deepgram live stream");
+        socket.close(1011, "Voice transcription initialization failed");
       }
     },
   );

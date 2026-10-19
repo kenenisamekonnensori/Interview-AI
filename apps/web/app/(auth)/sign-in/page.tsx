@@ -1,4 +1,4 @@
-import { CheckCircle2 } from "lucide-react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -10,15 +10,15 @@ export const metadata: Metadata = { title: "Sign in | Interviewer AI" };
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ signedOut?: string }>;
+  searchParams: Promise<{ signedOut?: string; error?: string }>;
 }) {
-  const { signedOut } = await searchParams;
+  const { signedOut, error } = await searchParams;
 
   return (
     <AuthCard
       eyebrow="Welcome back"
       title="Sign in to Interviewer AI"
-      subtitle="Continue with Google or GitHub. Your account is created automatically — no passwords, no forms."
+      subtitle="Continue with Google. Your account is created automatically — no passwords, no forms."
     >
       {signedOut === "1" && (
         <p
@@ -27,6 +27,15 @@ export default async function SignInPage({
         >
           <CheckCircle2 className="size-4" aria-hidden="true" />
           You’ve been signed out.
+        </p>
+      )}
+      {error && (
+        <p
+          aria-live="polite"
+          className="mb-4 flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive"
+        >
+          <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+          Sign-in could not be completed. Please try again.
         </p>
       )}
       <SocialAuth />

@@ -107,18 +107,20 @@ export default function SubscriptionPage() {
               </p>
               <p className="mt-2 text-sm text-muted-foreground">
                 {subscription
-                  ? [
-                      subscription.billingInterval
-                        ? subscription.billingInterval === "YEAR"
-                          ? "Billed yearly"
-                          : "Billed monthly"
-                        : null,
-                      subscription.currentPeriodEnd
-                        ? `Current period ends ${formatPeriod(subscription.currentPeriodEnd)}`
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")
+                  ? (!subscription.currentPeriodEnd && billing.plan === "PRO"
+                      ? "Owner account · Lifetime Pro access"
+                      : [
+                          subscription.billingInterval
+                            ? subscription.billingInterval === "YEAR"
+                              ? "Billed yearly"
+                              : "Billed monthly"
+                            : null,
+                          subscription.currentPeriodEnd
+                            ? `Current period ends ${formatPeriod(subscription.currentPeriodEnd)}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · "))
                   : "Free plan — no payment method on file."}
               </p>
               {subscription?.cancelAtPeriodEnd && subscription.accessUntil ? (

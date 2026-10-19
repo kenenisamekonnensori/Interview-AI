@@ -14,12 +14,22 @@ export function OAuthCallback() {
   const providerError = searchParams.get("error");
 
   useEffect(() => {
-    if (!session) return;
-    router.replace("/dashboard");
-    router.refresh();
-  }, [router, session]);
+    if (session) {
+      router.replace("/dashboard");
+      router.refresh();
+      return;
+    }
 
-  if (providerError || (!isPending && !session)) {
+    if (!isPending && !session && !providerError) {
+      // If session check finished without a session, route back to sign-in smoothly.
+      const timer = setTimeout(() => {
+        router.replace("/sign-in");
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isPending, providerError, router, session]);
+
+  if (providerError) {
     return (
       <div className="text-center">
         <AlertCircle className="mx-auto size-10 text-destructive" aria-hidden="true" />

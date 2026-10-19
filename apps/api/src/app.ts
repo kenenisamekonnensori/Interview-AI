@@ -1,4 +1,5 @@
 import cors from "@fastify/cors";
+import fastifyWebsocket from "@fastify/websocket";
 import { serverEnvironmentSchema } from "@interviewer-ai/config";
 import Fastify from "fastify";
 
@@ -34,6 +35,8 @@ import {
 
 import { MonolithExecutionManager, isMonolithMode } from "./services/monolith-execution.js";
 import { RealtimeEventBus } from "./services/realtime-events.js";
+import Redis from "ioredis";
+import { createRedisConnectionOptions } from "./services/redis-connection.js";
 
 export function createApp() {
   const environment = serverEnvironmentSchema.parse(process.env);
@@ -63,10 +66,15 @@ export function createApp() {
     app.log.info("Running in worker mode: background tasks will be enqueued to Redis queues");
   }
 
+  const authRedis = environment.REDIS_URL
+    ? new Redis(createRedisConnectionOptions(environment.REDIS_URL))
+    : undefined;
+
   const { auth, database, monolith, dispose } = createAuth(
     environment,
     app.log,
     (db) => new MonolithExecutionManager(db, environment),
+    authRedis,
   );
   const careerAnalysisQueue = createCareerAnalysisQueue(environment.REDIS_URL);
   const reportQueue = createReportQueue(environment.REDIS_URL);
@@ -88,6 +96,9 @@ export function createApp() {
     await billingQueue.close();
     await rateLimiter.close();
     await eventBus.close();
+    if (authRedis) {
+      await authRedis.quit();
+    }
     await dispose();
   });
 
@@ -137,6 +148,8 @@ export function createApp() {
     methods: allowedCorsMethods,
   });
 
+  app.register(fastifyWebsocket);
+
   const authIntegration = createAuthFastifyIntegration(auth, environment);
   app.route(authIntegration.route);
   app.decorate("requireSession", authIntegration.requireSession);
@@ -171,7 +184,9 @@ export function createApp() {
   registerAnalyticsRoutes(app, database);
   registerPracticePlanRoutes(app, database);
   registerUserProfileRoutes(app, database);
-  registerConversationRoutes(app, database, environment, interviewService, eventBus);
+  app.register(async (conversationApp) => {
+    registerConversationRoutes(conversationApp, database, environment, interviewService, eventBus);
+  });
 
   app.get("/health", async () => ({ status: "ok" }));
   app.get("/ready", async (request, reply) => {

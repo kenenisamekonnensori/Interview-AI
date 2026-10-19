@@ -16,8 +16,10 @@ import {
   grantDeepgramAccessToken,
   isSupportedVoiceLanguage,
   synthesizeSpeech,
+  tryGrantDeepgramAccessToken,
   ttsModelFor,
 } from "./deepgram.js";
+import { VoiceTicketService } from "./tickets.js";
 import { ConversationRepository } from "./repository.js";
 import { recoveryForAiResponseFailure, replayGeneratedResponse } from "./recovery.js";
 import { assertConversationTransition } from "./state-machine.js";
@@ -55,6 +57,7 @@ export class ConversationError extends Error {
 
 export class ConversationService {
   readonly repository: ConversationRepository;
+  readonly ticketService: VoiceTicketService;
   private readonly interviewTools: InterviewTools;
   private readonly aiProvider: AiProvider;
 
@@ -65,6 +68,7 @@ export class ConversationService {
     private readonly events: ConversationEventPublisher,
   ) {
     this.repository = new ConversationRepository(database);
+    this.ticketService = new VoiceTicketService();
     this.interviewTools = new InterviewTools(database, interviewService);
     this.aiProvider = createAiProvider(environment);
   }
@@ -396,7 +400,15 @@ export class ConversationService {
         `Voice interviews are not available in ${interview.language}. You can continue by typing.`,
       );
     markVoiceActive(interviewId);
-    return { accessToken: await grantDeepgramAccessToken(this.environment), expiresInSeconds: 30 };
+    const ticket = await this.ticketService.createTicket(interviewId, userId);
+    const directToken = await tryGrantDeepgramAccessToken(this.environment);
+    return {
+      accessToken: directToken ?? undefined,
+      streamTicket: ticket,
+      streamPath: `/api/v1/interviews/${interviewId}/conversation/voice-stream?ticket=${ticket}`,
+      language: interview.language,
+      expiresInSeconds: 60,
+    };
   }
 
   private async requireActiveConversation(interviewId: string, userId: string) {

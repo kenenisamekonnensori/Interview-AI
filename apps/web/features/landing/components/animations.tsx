@@ -117,3 +117,38 @@ export function ScaleIn({ children, delay = 0, className }: ScaleInProps) {
     </motion.div>
   );
 }
+
+type SlideInProps = {
+  children: ReactNode;
+  direction?: "left" | "right";
+  delay?: number;
+  className?: string;
+};
+
+export function SlideIn({
+  children,
+  direction = "left",
+  delay = 0,
+  className,
+}: SlideInProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { once: true, margin: "-60px" });
+  const xOffset = direction === "left" ? -40 : 40;
+
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, x: xOffset }}
+      animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: xOffset }}
+      transition={{
+        duration: 0.65,
+        delay,
+        ease: [0.22, 1, 0.36, 1],
+      }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
+

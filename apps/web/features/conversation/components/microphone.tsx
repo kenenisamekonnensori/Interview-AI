@@ -1,7 +1,18 @@
 "use client";
 
 import { DeepgramClient } from "@deepgram/sdk";
-import { LoaderCircle, Mic, MicOff, RotateCw, Volume2, MessageSquare } from "lucide-react";
+import {
+  Camera,
+  CameraOff,
+  CheckCircle2,
+  LoaderCircle,
+  Mic,
+  MicOff,
+  RotateCw,
+  Volume2,
+  MessageSquare,
+  Sparkles,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   aiResponseRecoverySchema,
@@ -13,6 +24,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { ApiError, apiClient } from "@/lib/api-client";
+import { webEnvironment } from "@/lib/env";
 import { canSubmitTypedAnswer } from "@/features/conversation/typed-mode";
 import {
   isSupportedVoiceLanguage,
@@ -41,11 +53,138 @@ type DeepgramResult = {
 
 type LiveConnection = {
   close: () => void;
-  connect: () => void;
-  waitForOpen: () => Promise<unknown>;
-  socket: { send: (data: Blob) => void };
+  connect?: () => void;
+  waitForOpen?: () => Promise<unknown>;
+  sendMedia?: (data: Blob) => void;
+  socket?: { send: (data: Blob) => void };
   on: (event: string, callback: (value?: unknown) => void) => void;
 };
+
+function resolveWebSocketUrl(path: string): string {
+  if (path.startsWith("ws://") || path.startsWith("wss://")) {
+    return path;
+  }
+  if (path.startsWith("http://") || path.startsWith("https://")) {
+    return path.replace(/^http/, "ws");
+  }
+  const base =
+    webEnvironment.NEXT_PUBLIC_API_URL ||
+    (typeof window !== "undefined" ? window.location.origin : "http://localhost:4000");
+  const wsBase = base.replace(/^http/, "ws");
+  const cleanBase = wsBase.endsWith("/") ? wsBase.slice(0, -1) : wsBase;
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  return `${cleanBase}${cleanPath}`;
+}
+
+function formatMediaError(error: unknown): string {
+  if (error instanceof DOMException) {
+    switch (error.name) {
+      case "NotAllowedError":
+      case "PermissionDeniedError":
+        return "Microphone permission was denied. Please allow microphone access in your browser settings to continue.";
+      case "NotFoundError":
+      case "DevicesNotFoundError":
+        return "No microphone was detected on your device. Please plug in a microphone or switch to text mode.";
+      case "NotReadableError":
+      case "TrackStartError":
+        return "Your microphone is busy or locked by another application. Please close other apps using the mic and try again.";
+      case "OverconstrainedError":
+        return "Your microphone does not support the required audio settings.";
+      case "SecurityError":
+        return "Microphone access is blocked by your browser security policy.";
+      default:
+        return error.message || "Could not access your microphone.";
+    }
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Could not connect to microphone or voice service.";
+}
+
+function createBackendVoiceSocket(streamPath: string): LiveConnection {
+  const wsUrl = resolveWebSocketUrl(streamPath);
+  console.log(`[Voice Pipeline] Connecting backend voice WebSocket: ${wsUrl}`);
+  const ws = new WebSocket(wsUrl);
+  const handlers: Record<string, Array<(val?: unknown) => void>> = {};
+
+  ws.onopen = () => {
+    handlers["open"]?.forEach((fn) => fn());
+  };
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      handlers["message"]?.forEach((fn) => fn(data));
+    } catch {
+      // ignore non-json messages
+    }
+  };
+  ws.onerror = (err) => {
+    handlers["error"]?.forEach((fn) => fn(err));
+  };
+  ws.onclose = (event) => {
+    handlers["close"]?.forEach((fn) => fn(event));
+  };
+
+  return {
+    close: () => {
+      try {
+        ws.close();
+      } catch {
+        // ignore
+      }
+    },
+    connect: () => {},
+    waitForOpen: () =>
+      new Promise((resolve, reject) => {
+        if (ws.readyState === WebSocket.OPEN) return resolve(true);
+
+        const timeout = setTimeout(() => {
+          reject(new Error("Voice connection timed out waiting for backend server response."));
+        }, 10000);
+
+        const onOpen = () => {
+          clearTimeout(timeout);
+          ws.removeEventListener("close", onClose);
+          resolve(true);
+        };
+        const onError = () => {
+          clearTimeout(timeout);
+          ws.removeEventListener("open", onOpen);
+          reject(new Error("Voice server WebSocket connection failed."));
+        };
+        const onClose = (e: CloseEvent) => {
+          clearTimeout(timeout);
+          ws.removeEventListener("open", onOpen);
+          reject(
+            new Error(
+              `Voice server connection closed (${e.code}${e.reason ? `: ${e.reason}` : ""}).`,
+            ),
+          );
+        };
+
+        ws.addEventListener("open", onOpen, { once: true });
+        ws.addEventListener("error", onError, { once: true });
+        ws.addEventListener("close", onClose, { once: true });
+      }),
+    sendMedia: (blob: Blob) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(blob);
+      }
+    },
+    socket: {
+      send: (blob: Blob) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(blob);
+        }
+      },
+    },
+    on: (event: string, callback: (value?: unknown) => void) => {
+      if (!handlers[event]) handlers[event] = [];
+      handlers[event].push(callback);
+    },
+  };
+}
 
 type GeneratedTurn = { turn: { id: string; text: string } };
 type ConversationStartResponse = {
@@ -101,6 +240,13 @@ export function InterviewMicrophone({
   const [pendingAnswer, setPendingAnswer] = useState<string | null>(null);
   const [pendingFlushError, setPendingFlushError] = useState<string | null>(null);
   const [showDiagnostic, setShowDiagnostic] = useState<boolean>(true);
+  const [activeSpeechBuffer, setActiveSpeechBuffer] = useState<string>("");
+  const [cameraActive, setCameraActive] = useState<boolean>(false);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const videoStreamRef = useRef<MediaStream | null>(null);
+  const currentSpeechBufferRef = useRef<string>("");
+  const silenceDebounceTimerRef = useRef<number | null>(null);
 
   const connectionRef = useRef<LiveConnection | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -193,10 +339,49 @@ export function InterviewMicrophone({
     }
   }, [restoredConversation]);
 
+  useEffect(() => {
+    if (cameraActive) {
+      navigator.mediaDevices
+        ?.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+        })
+        .then((stream) => {
+          videoStreamRef.current = stream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+        })
+        .catch((err) => {
+          console.warn("Camera preview not permitted or unavailable:", err);
+          setCameraActive(false);
+        });
+    } else {
+      videoStreamRef.current?.getTracks().forEach((track) => track.stop());
+      videoStreamRef.current = null;
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    }
+    return () => {
+      videoStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, [cameraActive]);
+
   function cleanupSession() {
     sessionRef.current += 1;
     if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
     reconnectTimerRef.current = null;
+    if (silenceDebounceTimerRef.current !== null) {
+      window.clearTimeout(silenceDebounceTimerRef.current);
+      silenceDebounceTimerRef.current = null;
+    }
+    currentSpeechBufferRef.current = "";
+    setActiveSpeechBuffer("");
+    videoStreamRef.current?.getTracks().forEach((track) => track.stop());
+    videoStreamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     audioQueue.cancelAll();
     recorderRef.current?.stop();
     recorderRef.current = null;
@@ -241,12 +426,48 @@ export function InterviewMicrophone({
   }
 
   function recorderOptions(): MediaRecorderOptions | undefined {
-    const types = ["audio/webm;codecs=opus", "audio/webm"];
-    const mimeType = types.find((type) => MediaRecorder.isTypeSupported(type));
+    const types = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/mp4",
+    ];
+    const mimeType = types.find(
+      (type) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type),
+    );
     return mimeType ? { mimeType } : undefined;
   }
 
-  async function startVoice() {
+  async function acquireMicrophoneStream(existingStream?: MediaStream): Promise<MediaStream> {
+    if (
+      existingStream &&
+      existingStream.active &&
+      existingStream.getAudioTracks().some((track) => track.readyState === "live")
+    ) {
+      console.log("[Voice Pipeline] Reusing verified diagnostic microphone stream.");
+      return existingStream;
+    }
+
+    if (
+      streamRef.current &&
+      streamRef.current.active &&
+      streamRef.current.getAudioTracks().some((track) => track.readyState === "live")
+    ) {
+      console.log("[Voice Pipeline] Reusing active microphone stream.");
+      return streamRef.current;
+    }
+
+    console.log("[Voice Pipeline] Requesting microphone permission and stream...");
+    return await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+  }
+
+  async function startVoice(existingStream?: MediaStream) {
     if ((active && mode === "VOICE") || disabled) return;
     try {
       assertBrowserSupport();
@@ -264,21 +485,37 @@ export function InterviewMicrophone({
       setRestoredSpeakingTurnId(null);
       updateState("CONNECTING");
 
-      console.log("[Voice Pipeline] Initializing conversation session...");
-      const conversation = await apiClient<ConversationStartResponse>(
+      // 1. Acquire microphone stream immediately (or reuse diagnostic stream)
+      const stream = await acquireMicrophoneStream(existingStream);
+      streamRef.current = stream;
+      console.log("[Voice Pipeline] Microphone stream ready.");
+
+      // 2. Fetch conversation start and voice connection token in parallel
+      console.log("[Voice Pipeline] Starting conversation and preparing voice transport in parallel...");
+      const conversationPromise = apiClient<ConversationStartResponse>(
         `/api/v1/interviews/${interviewId}/conversation/start`,
         { method: "POST" },
       );
+      const voiceTokenPromise = apiClient<{
+        accessToken?: string;
+        streamPath?: string;
+      }>(`/api/v1/interviews/${interviewId}/voice-token`, { method: "POST" });
+
+      const [conversation, voiceData] = await Promise.all([conversationPromise, voiceTokenPromise]);
       onStarted?.();
 
-      const greeting = await resolvePendingAiTurn(conversation);
-      if (greeting) appendAiTranscript(greeting.turn);
+      if (session !== sessionRef.current) return;
 
-      streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-      console.log("[Voice Pipeline] Microphone stream acquired successfully.");
+      const greetingPromise = resolvePendingAiTurn(conversation);
 
-      await connectVoice(session);
+      // 3. Connect voice transport concurrently with greeting synthesis/resolution
+      await connectVoiceWithData(voiceData, session);
+
+      const greeting = await greetingPromise;
+      if (session !== sessionRef.current) return;
+
       if (greeting) {
+        appendAiTranscript(greeting.turn);
         await playAiTurn(greeting.turn.id, session);
       } else {
         updateState("LISTENING");
@@ -286,7 +523,9 @@ export function InterviewMicrophone({
       }
     } catch (cause) {
       stopVoiceTransport();
-      setError(cause instanceof Error ? cause.message : "Could not start the microphone.");
+      const message = formatMediaError(cause);
+      console.error("[Voice Pipeline] Voice startup failed:", cause);
+      setError(message);
       setVoiceFallback("Voice is unavailable. You can continue by typing.");
       updateState("ERROR");
     }
@@ -373,35 +612,70 @@ export function InterviewMicrophone({
   }
 
   async function connectVoice(session: number) {
-    console.log("[Voice Pipeline] Requesting short-lived voice token...");
-    const { accessToken } = await apiClient<{ accessToken: string }>(
-      `/api/v1/interviews/${interviewId}/voice-token`,
-      { method: "POST" },
-    );
+    console.log("[Voice Pipeline] Requesting voice connection credentials...");
+    const voiceData = await apiClient<{
+      accessToken?: string;
+      streamPath?: string;
+    }>(`/api/v1/interviews/${interviewId}/voice-token`, { method: "POST" });
+    await connectVoiceWithData(voiceData, session);
+  }
+
+  async function connectVoiceWithData(
+    voiceData: {
+      accessToken?: string;
+      streamPath?: string;
+    },
+    session: number,
+  ) {
     if (session !== sessionRef.current) return;
     connectionRef.current?.close();
 
-    const client = new DeepgramClient({ apiKey: accessToken });
-    const connection = (await client.listen.v1.connect({
-      model: "nova-3",
-      language: interviewLanguage,
-      punctuate: "true",
-      interim_results: "true",
-      smart_format: "true",
-    })) as unknown as LiveConnection;
+    let connection: LiveConnection;
+    if (voiceData.accessToken) {
+      try {
+        const client = new DeepgramClient({ apiKey: voiceData.accessToken });
+        connection = (await client.listen.v1.connect({
+          model: "nova-3",
+          language: interviewLanguage,
+          punctuate: "true",
+          interim_results: "true",
+          smart_format: "true",
+          endpointing: "1500",
+        })) as unknown as LiveConnection;
+        connection.connect?.();
+        await connection.waitForOpen?.();
+        console.log("[Voice Pipeline] Connected directly to Deepgram WebSocket.");
+      } catch (directErr) {
+        console.warn(
+          "[Voice Pipeline] Direct Deepgram connect failed, falling back to backend bridge:",
+          directErr,
+        );
+        if (voiceData.streamPath) {
+          connection = createBackendVoiceSocket(voiceData.streamPath);
+          await connection.waitForOpen?.();
+          console.log("[Voice Pipeline] Connected via backend WebSocket bridge.");
+        } else {
+          throw directErr;
+        }
+      }
+    } else if (voiceData.streamPath) {
+      console.log("[Voice Pipeline] Connecting via backend voice WebSocket bridge...");
+      connection = createBackendVoiceSocket(voiceData.streamPath);
+      await connection.waitForOpen?.();
+      console.log("[Voice Pipeline] Backend voice WebSocket bridge connected successfully.");
+    } else {
+      throw new Error("Voice configuration is not available.");
+    }
 
     connection.on("message", (message) => void handleTranscript(message, session));
     connection.on("error", () => scheduleReconnect(session));
     connection.on("close", () => scheduleReconnect(session));
-    connection.connect();
-    await connection.waitForOpen();
 
     if (session !== sessionRef.current) {
       connection.close();
       return;
     }
     connectionRef.current = connection;
-    console.log("[Voice Pipeline] Deepgram WebSocket connected successfully.");
 
     if (!recorderRef.current && streamRef.current) {
       const recorder = new MediaRecorder(streamRef.current, recorderOptions());
@@ -466,42 +740,66 @@ export function InterviewMicrophone({
         setPartialTranscript(text);
         return;
       }
-      if (finalizingRef.current) {
-        // A previous answer is still being submitted (POST + AI generation).
-        // Capture this continuation instead of dropping it; the flush path
-        // submits it once the interviewer is listening again.
-        if (stateRef.current !== "CLOSING") {
-          speakingNotifiedRef.current = false;
-          setPartialTranscript("");
-          bufferPendingAnswer(text);
-        }
-        return;
-      }
-      finalizingRef.current = true;
-      speakingNotifiedRef.current = false;
       setPartialTranscript("");
 
       const currentState = stateRef.current;
       if (currentState === "CLOSING") {
-        // The interviewer is closing; late words are not part of the transcript.
-        finalizingRef.current = false;
         return;
       }
       if (
         currentState === "SPEAKING" ||
         currentState === "THINKING" ||
-        currentState === "TRANSCRIBING"
+        currentState === "TRANSCRIBING" ||
+        finalizingRef.current
       ) {
-        // The interviewer is still speaking or thinking. Buffer the words so the
-        // answer is never lost, and submit them once the interviewer is listening.
+        // Buffer speech while the interviewer is busy so words are never lost
         bufferPendingAnswer(text);
-        finalizingRef.current = false;
         return;
       }
-      setTranscript((turns) => [...turns, `You: ${text}`]);
-      updateState("TRANSCRIBING");
-      updateState("THINKING");
-      await submitAnswer(text, session);
+
+      // Append finalized fragment to continuous answer buffer
+      const prev = currentSpeechBufferRef.current;
+      const merged = prev ? `${prev} ${text}`.trim() : text;
+      currentSpeechBufferRef.current = merged;
+      setActiveSpeechBuffer(merged);
+
+      // Debounce natural speech pause (1800ms) before committing turn
+      if (silenceDebounceTimerRef.current !== null) {
+        window.clearTimeout(silenceDebounceTimerRef.current);
+      }
+      silenceDebounceTimerRef.current = window.setTimeout(() => {
+        void commitVoiceAnswer(session);
+      }, 1800);
+    } catch (cause) {
+      console.error("[Voice Pipeline] Error handling transcript:", cause);
+    }
+  }
+
+  /**
+   * Commits the buffered voice answer after natural pause or when user clicks "Done Speaking".
+   */
+  async function commitVoiceAnswer(session: number) {
+    if (silenceDebounceTimerRef.current !== null) {
+      window.clearTimeout(silenceDebounceTimerRef.current);
+      silenceDebounceTimerRef.current = null;
+    }
+    const fullText = currentSpeechBufferRef.current.trim();
+    if (!fullText) return;
+    currentSpeechBufferRef.current = "";
+    setActiveSpeechBuffer("");
+    setPartialTranscript("");
+
+    if (finalizingRef.current || stateRef.current === "CLOSING") {
+      bufferPendingAnswer(fullText);
+      return;
+    }
+    finalizingRef.current = true;
+    speakingNotifiedRef.current = false;
+    setTranscript((turns) => [...turns, `You: ${fullText}`]);
+    updateState("TRANSCRIBING");
+    updateState("THINKING");
+    try {
+      await submitAnswer(fullText, session);
     } catch (cause) {
       if (session === sessionRef.current) {
         const nextRecovery = getAiResponseRecovery(cause);
@@ -700,9 +998,9 @@ export function InterviewMicrophone({
   if (showDiagnostic && !restoredConversation) {
     return (
       <MicDiagnostic
-        onComplete={() => {
+        onComplete={(diagnosticStream) => {
           setShowDiagnostic(false);
-          void startVoice();
+          void startVoice(diagnosticStream);
         }}
         onSkipToText={() => {
           setShowDiagnostic(false);
@@ -750,16 +1048,57 @@ export function InterviewMicrophone({
 
       {/* High-Impact Voice Visualizer Stage */}
       <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-6 shadow-2xl backdrop-blur-xl">
+        {/* Optional Candidate Camera Preview for realistic studio practice */}
+        {cameraActive ? (
+          <div className="relative mb-6 overflow-hidden rounded-2xl border border-white/10 bg-slate-900 shadow-inner">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="h-48 w-full object-cover scale-x-[-1] sm:h-56"
+            />
+            <div className="absolute bottom-2.5 left-3 flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1 text-[11px] font-medium text-white backdrop-blur-md">
+              <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
+              Candidate Studio Camera Preview
+            </div>
+          </div>
+        ) : null}
+
         <VoiceVisualizer
           stream={streamRef.current}
           state={state}
           errorMessage={error}
-          partialTranscript={partialTranscript}
+          partialTranscript={partialTranscript || activeSpeechBuffer}
           onRetry={() => void startVoice()}
         />
 
+        {/* Live Ongoing Speech Buffer Feedback */}
+        {activeSpeechBuffer ? (
+          <div className="mt-4 rounded-2xl border border-emerald-500/30 bg-emerald-950/20 p-4 text-center backdrop-blur-md animate-fadeIn">
+            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
+              Your ongoing response
+            </p>
+            <p className="mt-1 text-sm text-emerald-100">“{activeSpeechBuffer}”</p>
+            <p className="mt-2 text-[11px] text-emerald-400/80">
+              Take your time. Pause for 1.8s or click &ldquo;Done Speaking&rdquo; below when you are finished.
+            </p>
+          </div>
+        ) : null}
+
         {/* Toolbar Controls */}
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-3 border-t border-white/10 pt-5">
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-3 border-t border-white/10 pt-5">
+          {state === "LISTENING" && (activeSpeechBuffer || partialTranscript) ? (
+            <Button
+              size="lg"
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-lg shadow-emerald-900/40 animate-pulse"
+              onClick={() => void commitVoiceAnswer(sessionRef.current)}
+            >
+              <CheckCircle2 className="size-4" />
+              Done Speaking (Submit Answer)
+            </Button>
+          ) : null}
+
           <Button
             size="lg"
             className={`font-semibold transition-all ${
@@ -782,6 +1121,20 @@ export function InterviewMicrophone({
               : mode === "VOICE" && active
                 ? "Turn Off Microphone"
                 : "Start Voice Session"}
+          </Button>
+
+          <Button
+            size="lg"
+            variant="outline"
+            className="border-slate-700 bg-slate-900/60 text-slate-200 hover:bg-slate-800"
+            onClick={() => setCameraActive((prev) => !prev)}
+          >
+            {cameraActive ? (
+              <CameraOff className="size-4 text-rose-400" />
+            ) : (
+              <Camera className="size-4 text-indigo-400" />
+            )}
+            {cameraActive ? "Hide Camera" : "Preview Camera"}
           </Button>
 
           <Button

@@ -233,35 +233,17 @@ export function recommendNextAction(context: RecommendationContext): NextPractic
     });
   }
 
-  // Setup recommendations only apply before any scored history exists. Until
-  // then, identity-first setup matters most: a mock interview with zero
-  // context is a generic one, so the engine (not the client) recommends
-  // completing the profile when there are no identity signals at all.
+  // Setup recommendations only apply before any scored history exists.
   if (!latestReport) {
-    if (context.profileTargetRole || context.hasActiveResume) {
-      if (target) {
-        candidates.push({
-          actionType: "PREPARE_TARGET_JOB",
-          priority: 34,
-          interviewType: "MIXED",
-          gapStatement: `You are preparing for ${target.title}${target.company ? ` at ${target.company}` : ""} without scored evidence yet.`,
-          actionLabel: `Run a first mock interview for ${target.title}.`,
-          action: { href: "/interviews/new?type=MIXED", interviewType: "MIXED" },
-          reason: "A first scored interview grounds every later recommendation in real evidence.",
-          focusAreas: [],
-        });
-      }
-    } else {
+    if (target) {
       candidates.push({
-        actionType: "COMPLETE_PROFILE_SETUP",
-        priority: 36,
+        actionType: "PREPARE_TARGET_JOB",
+        priority: 34,
         interviewType: "MIXED",
-        gapStatement: "The system does not yet know enough about you to tailor practice.",
-        actionLabel:
-          "Set up your profile: add your role and resume so practice can be personalized.",
-        action: { href: "/profile" },
-        reason:
-          "Recommended practice, question difficulty, and evaluation are built from your target role and active resume — with neither, every session stays generic.",
+        gapStatement: `You are preparing for ${target.title}${target.company ? ` at ${target.company}` : ""} without scored evidence yet.`,
+        actionLabel: `Run a first mock interview for ${target.title}.`,
+        action: { href: "/interviews/new?type=MIXED", interviewType: "MIXED" },
+        reason: "A first scored interview grounds every later recommendation in real evidence.",
         focusAreas: [],
       });
     }

@@ -1443,3 +1443,18 @@ test("errors: internal provider detail never leaks into client payloads", () => 
     assert.equal(/pri_|ctm_|sk_|api_key|secret/i.test(serialized), false);
   }
 });
+
+test("entitlements: owner emails automatically receive Pro plan and entitlements without subscription", async () => {
+  const fake = createFakeRepository();
+  const entitlements = new EntitlementService(fake.repository, ["user@example.com"]);
+  const { access, subscription } = await entitlements.accessFor(USER, NOW);
+
+  assert.equal(access.plan, "PRO");
+  assert.equal(access.entitlements.features.PERFORMANCE_ANALYTICS, true);
+  assert.equal(access.entitlements.features.ADVANCED_FEEDBACK, true);
+  assert.equal(access.entitlements.caps.activeCareerTargets, null);
+  assert.equal(subscription, null);
+  assert.equal(await entitlements.can(USER, "PERFORMANCE_ANALYTICS", NOW), true);
+  const capacity = await entitlements.requireCareerTargetCapacity(USER, NOW);
+  assert.equal(capacity.limit, null);
+});

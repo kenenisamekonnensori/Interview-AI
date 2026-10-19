@@ -105,8 +105,12 @@ function ProfileEditor({
             <Input
               value={value.preferredName ?? ""}
               maxLength={160}
+              placeholder="e.g. Alex"
               onChange={(event) => update("preferredName", event.target.value || null)}
             />
+            <span className="text-[11px] font-normal text-muted-foreground">
+              Defaulted from your account sign-in name. You can customize this anytime.
+            </span>
           </Field>
           <Field label="Profession">
             <Input

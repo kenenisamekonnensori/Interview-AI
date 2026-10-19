@@ -67,7 +67,7 @@ function sendUnauthorized(reply: FastifyReply) {
 export function createAuthFastifyIntegration(auth: Auth, environment: ServerEnvironment) {
   return {
     route: {
-      method: ["GET", "POST"],
+      method: ["GET", "POST", "PUT", "PATCH", "DELETE"],
       url: "/api/auth/*",
       handler: async (request, reply) => {
         try {

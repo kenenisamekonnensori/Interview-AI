@@ -5,6 +5,7 @@ import { createRedisConnectionOptions } from "./redis-connection.js";
 export type RateLimitPolicy = {
   name:
     | "authentication"
+    | "auth-session"
     | "resume-upload"
     | "conversation"
     | "voice-token"
@@ -28,8 +29,13 @@ return { count, redis.call("TTL", KEYS[1]) }
 
 export function requestRateLimitPolicy(method: string, url: string): RateLimitPolicy | null {
   const path = url.split("?")[0] ?? "";
-  if (method === "POST" && path.startsWith("/api/auth/")) {
+  // Login/OAuth initiation rate limiting: exclude sign-out so legitimate users are not locked out on log out
+  if (method === "POST" && path.startsWith("/api/auth/") && path !== "/api/auth/sign-out") {
     return { name: "authentication", limit: 10, windowSeconds: 10 * 60 };
+  }
+  // Shield session verification against automated connection pool exhaustion attacks
+  if (method === "GET" && path === "/api/auth/get-session") {
+    return { name: "auth-session", limit: 120, windowSeconds: 60 };
   }
   if (method === "POST" && path === "/api/v1/resumes/uploads") {
     return { name: "resume-upload", limit: 5, windowSeconds: 15 * 60 };

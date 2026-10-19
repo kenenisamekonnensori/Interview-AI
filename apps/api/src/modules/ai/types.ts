@@ -34,7 +34,7 @@ export type GenerateInterviewerResponseInput = {
 
 export type InterviewerResponseProposal = {
   responseText: string;
-  responseType: "QUESTION" | "FOLLOW_UP" | "CLARIFICATION" | "CLOSING";
+  responseType: "GREETING" | "QUESTION" | "FOLLOW_UP" | "CLARIFICATION" | "CLOSING";
   recommendedAction: "ASK_QUESTION" | "ASK_FOLLOW_UP" | "REQUEST_CLARIFICATION" | "CLOSE_INTERVIEW";
   topicReference?: string | undefined;
   objectiveReference?: string | undefined;

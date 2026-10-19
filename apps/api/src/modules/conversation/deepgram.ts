@@ -84,6 +84,40 @@ export async function grantDeepgramAccessTokenWithClient(client: DeepgramClient)
   }
 }
 
+/**
+ * Attempts to grant a direct client token, returning null if the API key
+ * lacks manage/token-grant permissions rather than failing the request.
+ */
+export async function tryGrantDeepgramAccessToken(
+  environment: ServerEnvironment,
+): Promise<string | null> {
+  try {
+    return await grantDeepgramAccessToken(environment);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Creates an authoritative server-to-Deepgram live transcription stream
+ * using the server's API key. This bypasses client-side token grant restrictions.
+ */
+export async function createDeepgramLiveStream(
+  environment: ServerEnvironment,
+  language: string = "en",
+) {
+  if (!environment.DEEPGRAM_API_KEY) throw new DeepgramConfigurationError();
+  const client = new DeepgramClient({ apiKey: environment.DEEPGRAM_API_KEY });
+  return client.listen.v1.connect({
+    model: "nova-3",
+    language,
+    punctuate: "true",
+    interim_results: "true",
+    smart_format: "true",
+    endpointing: "1500",
+  });
+}
+
 export async function synthesizeSpeech(
   environment: ServerEnvironment,
   text: string,
