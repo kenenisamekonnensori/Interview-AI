@@ -1689,6 +1689,77 @@ test("profile updates are atomically persisted for the authenticated user withou
   });
 });
 
+test("profile get defaults preferredName from user name when profile does not exist", async () => {
+  let createdData: unknown;
+  const repository = new UserProfileRepository({
+    userProfile: {
+      findUnique: async () => null,
+      create: async ({ data }: { data: unknown }) => {
+        createdData = data;
+        return { userId: "candidate-new", ...(data as object) };
+      },
+    },
+    user: {
+      findUnique: async () => ({ name: "Kenenisa Mekonnen" }),
+    },
+  } as never);
+
+  const profile = await repository.get("candidate-new");
+  assert.equal(profile.preferredName, "Kenenisa Mekonnen");
+  assert.deepEqual(createdData, {
+    userId: "candidate-new",
+    preferredName: "Kenenisa Mekonnen",
+  });
+});
+
+test("profile get defaults preferredName from user name when profile exists without preferredName", async () => {
+  let updatedData: unknown;
+  const repository = new UserProfileRepository({
+    userProfile: {
+      findUnique: async () => ({
+        id: "prof-1",
+        userId: "candidate-existing",
+        preferredName: null,
+      }),
+      update: async ({ data }: { data: unknown }) => {
+        updatedData = data;
+        return { id: "prof-1", userId: "candidate-existing", ...(data as object) };
+      },
+    },
+    user: {
+      findUnique: async () => ({ name: "Ada Lovelace" }),
+    },
+  } as never);
+
+  const profile = await repository.get("candidate-existing");
+  assert.equal(profile.preferredName, "Ada Lovelace");
+  assert.deepEqual(updatedData, { preferredName: "Ada Lovelace" });
+});
+
+test("profile get preserves existing custom preferredName and does not overwrite it", async () => {
+  let updateCalled = false;
+  const repository = new UserProfileRepository({
+    userProfile: {
+      findUnique: async () => ({
+        id: "prof-2",
+        userId: "candidate-custom",
+        preferredName: "Custom Nickname",
+      }),
+      update: async () => {
+        updateCalled = true;
+        return {};
+      },
+    },
+    user: {
+      findUnique: async () => ({ name: "Full Legal Name" }),
+    },
+  } as never);
+
+  const profile = await repository.get("candidate-custom");
+  assert.equal(profile.preferredName, "Custom Nickname");
+  assert.equal(updateCalled, false);
+});
+
 test("AI interviewer proposals reject inconsistent actions and extra fields", () => {
   const valid = {
     responseText: "Tell me about a time you handled a production incident.",
@@ -1766,6 +1837,12 @@ test("rate-limit policies cover authentication and expensive candidate actions",
     name: "authentication",
     limit: 10,
     windowSeconds: 600,
+  });
+  assert.equal(requestRateLimitPolicy("POST", "/api/auth/sign-out"), null);
+  assert.deepEqual(requestRateLimitPolicy("GET", "/api/auth/get-session"), {
+    name: "auth-session",
+    limit: 120,
+    windowSeconds: 60,
   });
   assert.equal(requestRateLimitPolicy("POST", "/api/v1/resumes/uploads")?.name, "resume-upload");
   assert.equal(

@@ -13,11 +13,12 @@ import { InterviewTools } from "../interviews/tools.js";
 import { ConversationEventPublisher } from "./events.js";
 import {
   bufferAudioStream,
-  grantDeepgramAccessToken,
   isSupportedVoiceLanguage,
   synthesizeSpeech,
+  tryGrantDeepgramAccessToken,
   ttsModelFor,
 } from "./deepgram.js";
+import { VoiceTicketService } from "./tickets.js";
 import { ConversationRepository } from "./repository.js";
 import { recoveryForAiResponseFailure, replayGeneratedResponse } from "./recovery.js";
 import { assertConversationTransition } from "./state-machine.js";
@@ -25,7 +26,6 @@ import {
   awaitPreWarm,
   getCachedAudio,
   isPreWarmInFlight,
-  isVoiceActive,
   markVoiceActive,
   registerPreWarm,
   setCachedAudio,
@@ -55,6 +55,7 @@ export class ConversationError extends Error {
 
 export class ConversationService {
   readonly repository: ConversationRepository;
+  readonly ticketService: VoiceTicketService;
   private readonly interviewTools: InterviewTools;
   private readonly aiProvider: AiProvider;
 
@@ -65,6 +66,7 @@ export class ConversationService {
     private readonly events: ConversationEventPublisher,
   ) {
     this.repository = new ConversationRepository(database);
+    this.ticketService = new VoiceTicketService();
     this.interviewTools = new InterviewTools(database, interviewService);
     this.aiProvider = createAiProvider(environment);
   }
@@ -218,9 +220,9 @@ export class ConversationService {
       name: "AIResponseGenerated",
       payload: { interviewId, conversationId: conversation.id, turn: asTurnDto(turn) },
     });
-    // When the candidate is using voice, start synthesizing the reply now so the
-    // subsequent audio fetch is served from cache instead of waiting for TTS.
-    if (isVoiceActive(interviewId) && !isPreWarmInFlight(turn.id)) {
+    // Always pre-warm TTS synthesis for AI turns immediately in the background
+    // so subsequent audio fetch is served from cache with near-zero latency.
+    if (!isPreWarmInFlight(turn.id)) {
       this.preWarmTurnAudio(turn, conversation.interview.language);
     }
     return result;
@@ -396,7 +398,15 @@ export class ConversationService {
         `Voice interviews are not available in ${interview.language}. You can continue by typing.`,
       );
     markVoiceActive(interviewId);
-    return { accessToken: await grantDeepgramAccessToken(this.environment), expiresInSeconds: 30 };
+    const ticket = await this.ticketService.createTicket(interviewId, userId);
+    const directToken = await tryGrantDeepgramAccessToken(this.environment);
+    return {
+      accessToken: directToken ?? undefined,
+      streamTicket: ticket,
+      streamPath: `/api/v1/interviews/${interviewId}/conversation/voice-stream?ticket=${ticket}`,
+      language: interview.language,
+      expiresInSeconds: 60,
+    };
   }
 
   private async requireActiveConversation(interviewId: string, userId: string) {

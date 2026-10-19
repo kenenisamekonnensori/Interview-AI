@@ -2,6 +2,7 @@ import type { EntitlementKey } from "@interviewer-ai/types";
 
 import { careerTargetLimitError, entitlementError } from "./domain/errors.js";
 import { hasEntitlement, resolveAccess, type ResolvedAccess } from "./domain/entitlements.js";
+import { planEntitlements } from "./domain/plans.js";
 import type { BillingRepository, SubscriptionRow } from "./repository.js";
 
 export type UserAccess = {
@@ -15,11 +16,33 @@ export type UserAccess = {
  * Feature and cap checks resolve from locally persisted subscription state, so
  * authorization never depends on a live billing-provider call and a provider
  * outage cannot take unrelated features down with it.
+ *
+ * Owner emails (configured via OWNER_EMAILS) are automatically granted permanent
+ * Pro access across all environments.
  */
 export class EntitlementService {
-  constructor(private readonly repository: BillingRepository) {}
+  constructor(
+    private readonly repository: BillingRepository,
+    private readonly ownerEmails: readonly string[] = [],
+  ) {}
+
+  async isOwner(userId: string): Promise<boolean> {
+    if (this.ownerEmails.length === 0) return false;
+    const user = await this.repository.findUserForBilling(userId);
+    return Boolean(user?.email && this.ownerEmails.includes(user.email.toLowerCase()));
+  }
 
   async accessFor(userId: string, now: Date = new Date()): Promise<UserAccess> {
+    if (await this.isOwner(userId)) {
+      return {
+        access: {
+          plan: "PRO",
+          entitlements: planEntitlements.PRO,
+          accessUntil: null,
+        },
+        subscription: null,
+      };
+    }
     const subscription = await this.repository.findSubscriptionForUser(userId);
     return { access: resolveAccess(subscription, now), subscription };
   }

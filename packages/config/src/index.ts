@@ -18,6 +18,14 @@ const environmentBoolean = z.preprocess(
   z.boolean(),
 );
 
+const commaSeparatedEmails = z.preprocess(
+  (value) =>
+    typeof value === "string" && value.trim().length > 0
+      ? value.split(",").map((item) => item.trim().toLowerCase())
+      : [],
+  z.array(z.string().email()),
+);
+
 export const serverEnvironmentSchema = z
   .object({
     API_PORT: z.coerce.number().int().positive().default(4000),
@@ -31,6 +39,7 @@ export const serverEnvironmentSchema = z
     GOOGLE_CLIENT_ID: z.string().min(1),
     GOOGLE_CLIENT_SECRET: z.string().min(1),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    OWNER_EMAILS: commaSeparatedEmails.default([]),
     PADDLE_API_KEY: optionalEnvironmentString,
     PADDLE_CLIENT_TOKEN: optionalEnvironmentString,
     PADDLE_ENVIRONMENT: z.enum(["sandbox", "production"]).default("sandbox"),

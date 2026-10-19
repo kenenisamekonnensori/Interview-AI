@@ -14,14 +14,19 @@ export const defaultAiRequestTimeoutMs = 45_000;
 export class GeminiAdapter {
   constructor(private readonly environment: ServerEnvironment) {}
 
-  async generateJson({ instructions, context, timeoutMs }: AiStructuredRequest): Promise<unknown> {
+  async generateJson({
+    instructions,
+    context,
+    timeoutMs,
+    maxOutputTokens,
+  }: AiStructuredRequest): Promise<unknown> {
     if (!this.environment.GEMINI_API_KEY)
       return this.fail("CONFIGURATION", "The AI provider is not configured.");
     const deadline = timeoutMs ?? defaultAiRequestTimeoutMs;
     return observability().time(
       "ai.provider.call",
       { provider: "gemini", capability: "structured-json", model: this.environment.GEMINI_MODEL },
-      () => withAiRetry(() => this.requestJson(instructions, context, deadline)),
+      () => withAiRetry(() => this.requestJson(instructions, context, deadline, maxOutputTokens)),
     );
   }
 
@@ -29,6 +34,7 @@ export class GeminiAdapter {
     instructions: string,
     context: unknown,
     timeoutMs: number,
+    maxOutputTokens?: number,
   ): Promise<unknown> {
     let response: Response;
     try {
@@ -43,7 +49,10 @@ export class GeminiAdapter {
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: instructions }] },
             contents: [{ role: "user", parts: [{ text: JSON.stringify(context) }] }],
-            generationConfig: { responseMimeType: "application/json" },
+            generationConfig: {
+              responseMimeType: "application/json",
+              ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
+            },
           }),
         },
       );

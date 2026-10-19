@@ -46,7 +46,21 @@ export class BillingService {
       generatedAt: now.toISOString(),
       plan: access.plan,
       entitlements: access.entitlements,
-      subscription: subscription ? summarizeSubscription(subscription, access) : null,
+      subscription: subscription
+        ? summarizeSubscription(subscription, access)
+        : access.plan === "PRO"
+          ? {
+              provider: "PADDLE" as const,
+              plan: "PRO" as const,
+              status: "ACTIVE" as const,
+              billingInterval: null,
+              currentPeriodStart: null,
+              currentPeriodEnd: null,
+              cancelAtPeriodEnd: false,
+              scheduledChangeEffectiveAt: null,
+              accessUntil: null,
+            }
+          : null,
       usage,
       careerTargets: {
         active: activeTargets,

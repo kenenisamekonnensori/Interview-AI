@@ -172,6 +172,7 @@ export type TranscriptMetadata = z.infer<typeof transcriptMetadataSchema>;
 export const finalizeTranscriptRequestSchema = z.object({
   text: z.string().trim().min(1).max(20_000),
   metadata: transcriptMetadataSchema.optional(),
+  respondImmediately: z.boolean().optional(),
 });
 export type FinalizeTranscriptRequest = z.infer<typeof finalizeTranscriptRequestSchema>;
 
@@ -734,6 +735,8 @@ export const recommendationActionTypes = [
   "CONTINUE_PRACTICE_PLAN",
   "PREPARE_TARGET_JOB",
   "UPDATE_RESUME",
+  /** No identity signals (role/resume) and no history: profile comes first. */
+  "COMPLETE_PROFILE_SETUP",
 ] as const;
 export const recommendationActionTypeSchema = z.enum(recommendationActionTypes);
 export type RecommendationActionType = z.infer<typeof recommendationActionTypeSchema>;

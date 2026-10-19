@@ -11,6 +11,7 @@ import {
   MapPin,
   Pencil,
   Plus,
+  Sparkles,
   Star,
 } from "lucide-react";
 import { useState } from "react";
@@ -327,7 +328,15 @@ export function TargetJobsManager() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {!isCurrent ? (
+                  {isCurrent ? (
+                    <Link
+                      href={`/interviews/new?type=MIXED&targetRole=${encodeURIComponent(target.title)}${target.resumeId ? `&resumeId=${target.resumeId}` : ""}${target.jobDescriptionId ? `&jobDescriptionId=${target.jobDescriptionId}` : ""}`}
+                    >
+                      <Button size="sm" className="gap-1.5 shadow-sm">
+                        <Sparkles className="size-3.5" /> Practice
+                      </Button>
+                    </Link>
+                  ) : (
                     <Button
                       size="sm"
                       variant="outline"
@@ -337,7 +346,7 @@ export function TargetJobsManager() {
                       <CheckCircle2 className="size-3" />
                       Set as current
                     </Button>
-                  ) : null}
+                  )}
                   <Button size="sm" variant="ghost" onClick={() => startEdit(target)}>
                     <Pencil className="size-4" />
                     <span className="sr-only">Edit {target.title}</span>

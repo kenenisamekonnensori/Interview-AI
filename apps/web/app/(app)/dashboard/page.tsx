@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { PlanUsageCard } from "@/features/billing/components/plan-usage-card";
 import { PreparationState } from "@/features/dashboard/components/preparation-state";
+import { SetupNudges } from "@/features/nudges/components/setup-nudges";
 import { apiClient } from "@/lib/api-client";
 import { greetingForHour } from "@/lib/greeting";
 
@@ -99,6 +100,8 @@ export default function DashboardPage() {
           recommendation={data.recommendation}
           stats={data.stats}
         />
+
+        <SetupNudges />
 
         <section aria-label="Quick statistics" className="grid gap-4 sm:grid-cols-3">
           <StatCard

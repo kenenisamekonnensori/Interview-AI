@@ -212,54 +212,107 @@ function Editor({
     setValue((current) => ({ ...current, [key]: next }));
   return (
     <form
-      className="mt-6 grid gap-3 border-t border-border pt-5 sm:grid-cols-2"
+      className="mt-6 space-y-4 border-t border-border pt-5"
       onSubmit={(event) => {
         event.preventDefault();
         onSave(value);
       }}
     >
-      <Input
-        aria-label="Preferred name"
-        maxLength={160}
-        value={value.preferredName ?? ""}
-        placeholder="Preferred name"
-        onChange={(event) => update("preferredName", event.target.value || null)}
-      />
-      <Input
-        aria-label="Professional identity"
-        maxLength={160}
-        value={value.profession ?? ""}
-        placeholder="Professional identity"
-        onChange={(event) => update("profession", event.target.value || null)}
-      />
-      <Input
-        aria-label="Target role"
-        maxLength={160}
-        value={value.targetRole ?? ""}
-        placeholder="Target role"
-        onChange={(event) => update("targetRole", event.target.value || null)}
-      />
-      <Input
-        aria-label="Seniority"
-        maxLength={160}
-        value={value.seniority ?? ""}
-        placeholder="Seniority"
-        onChange={(event) => update("seniority", event.target.value || null)}
-      />
-      <Input
-        aria-label="Years of experience"
-        type="number"
-        max={80}
-        min={0}
-        value={value.yearsOfExperience ?? ""}
-        placeholder="Years of experience"
-        onChange={(event) =>
-          update("yearsOfExperience", event.target.value ? Number(event.target.value) : null)
-        }
-      />
-      <Button disabled={saving} type="submit">
-        Save profile
-      </Button>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5 sm:col-span-2">
+          <label
+            className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+            htmlFor="profile-preferred-name"
+          >
+            Preferred Name
+          </label>
+          <Input
+            id="profile-preferred-name"
+            aria-label="Preferred name"
+            maxLength={160}
+            value={value.preferredName ?? ""}
+            placeholder="e.g. Alex"
+            onChange={(event) => update("preferredName", event.target.value || null)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Defaulted from your account sign-in name. You can customize your preferred name anytime
+            for how interviewers and the dashboard address you.
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <label
+            className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+            htmlFor="profile-profession"
+          >
+            Professional Identity
+          </label>
+          <Input
+            id="profile-profession"
+            aria-label="Professional identity"
+            maxLength={160}
+            value={value.profession ?? ""}
+            placeholder="e.g. Fullstack Software Engineer"
+            onChange={(event) => update("profession", event.target.value || null)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label
+            className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+            htmlFor="profile-target-role"
+          >
+            Target Role
+          </label>
+          <Input
+            id="profile-target-role"
+            aria-label="Target role"
+            maxLength={160}
+            value={value.targetRole ?? ""}
+            placeholder="e.g. Senior Backend Engineer"
+            onChange={(event) => update("targetRole", event.target.value || null)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label
+            className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+            htmlFor="profile-seniority"
+          >
+            Seniority
+          </label>
+          <Input
+            id="profile-seniority"
+            aria-label="Seniority"
+            maxLength={160}
+            value={value.seniority ?? ""}
+            placeholder="e.g. Mid-level, Senior, Staff"
+            onChange={(event) => update("seniority", event.target.value || null)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label
+            className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+            htmlFor="profile-yoe"
+          >
+            Years of Experience
+          </label>
+          <Input
+            id="profile-yoe"
+            aria-label="Years of experience"
+            type="number"
+            max={80}
+            min={0}
+            value={value.yearsOfExperience ?? ""}
+            placeholder="e.g. 5"
+            onChange={(event) =>
+              update("yearsOfExperience", event.target.value ? Number(event.target.value) : null)
+            }
+          />
+        </div>
+      </div>
+      <div className="flex justify-end pt-2">
+        <Button disabled={saving} type="submit">
+          {saving ? "Saving…" : "Save profile"}
+        </Button>
+      </div>
     </form>
   );
 }

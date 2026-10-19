@@ -11,7 +11,7 @@ export default function SignUpPage() {
     <AuthCard
       eyebrow="Get started"
       title="Create your account"
-      subtitle="Use your Google or GitHub account — it takes seconds and there’s no password to remember."
+      subtitle="Use your Google account — it takes seconds and there’s no password to remember."
     >
       <SocialAuth />
       <p className="mt-6 text-center text-sm text-muted-foreground">

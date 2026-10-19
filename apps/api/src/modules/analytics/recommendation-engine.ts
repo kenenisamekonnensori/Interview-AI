@@ -89,6 +89,7 @@ const TIE_BREAK: Record<RecommendationActionType, number> = {
   START_MOCK_INTERVIEW: 4,
   REVIEW_PREVIOUS_INTERVIEW: 5,
   UPDATE_RESUME: 6,
+  COMPLETE_PROFILE_SETUP: 7,
 };
 
 function interviewTypeForSkill(skillKey: string): InterviewType {

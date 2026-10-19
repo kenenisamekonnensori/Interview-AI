@@ -3,7 +3,44 @@ import type { UserProfileUpdate } from "./schema.js";
 
 export class UserProfileRepository {
   constructor(private readonly database: PrismaClient) {}
-  get(userId: string) {
+  async get(userId: string) {
+    if (this.database.userProfile?.findUnique) {
+      const existing = await this.database.userProfile.findUnique({ where: { userId } });
+      if (existing) {
+        if (!existing.preferredName && this.database.user?.findUnique) {
+          const user = await this.database.user.findUnique({
+            where: { id: userId },
+            select: { name: true },
+          });
+          const defaultName = user?.name?.trim() || null;
+          if (defaultName && this.database.userProfile.update) {
+            return this.database.userProfile.update({
+              where: { userId },
+              data: { preferredName: defaultName },
+            });
+          }
+        }
+        return existing;
+      }
+
+      let defaultName: string | null = null;
+      if (this.database.user?.findUnique) {
+        const user = await this.database.user.findUnique({
+          where: { id: userId },
+          select: { name: true },
+        });
+        defaultName = user?.name?.trim() || null;
+      }
+      if (this.database.userProfile.create) {
+        return this.database.userProfile.create({
+          data: {
+            userId,
+            preferredName: defaultName,
+          },
+        });
+      }
+    }
+
     return this.database.userProfile.upsert({ where: { userId }, create: { userId }, update: {} });
   }
   update(userId: string, input: UserProfileUpdate) {

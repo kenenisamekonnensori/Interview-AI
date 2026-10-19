@@ -63,9 +63,35 @@ export function InterviewManager() {
   );
 
   useEffect(() => {
-    const type = new URLSearchParams(window.location.search).get("type");
+    const params = new URLSearchParams(window.location.search);
+    const type = params.get("type");
+    const paramRole = params.get("targetRole");
+    const paramResumeId = params.get("resumeId");
+    const paramJobId = params.get("jobDescriptionId");
+    const paramTargetId = params.get("careerTargetId");
+
+    let shouldOpenCustom = false;
     if (type && (interviewTypes as readonly string[]).includes(type)) {
       setPresetType(type as InterviewConfiguration["interviewType"]);
+      shouldOpenCustom = true;
+    }
+    if (paramRole) {
+      setRole(paramRole);
+      shouldOpenCustom = true;
+    }
+    if (paramResumeId) {
+      setResumeId(paramResumeId);
+      shouldOpenCustom = true;
+    }
+    if (paramJobId) {
+      setJobDescriptionId(paramJobId);
+      shouldOpenCustom = true;
+    }
+    if (paramTargetId) {
+      setCareerTargetId(paramTargetId);
+      shouldOpenCustom = true;
+    }
+    if (shouldOpenCustom) {
       setCustomOpen(true);
     }
   }, []);

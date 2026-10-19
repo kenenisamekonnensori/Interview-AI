@@ -44,7 +44,7 @@ export type BillingDependencies = {
 export function registerBillingRoutes(app: FastifyInstance, dependencies: BillingDependencies) {
   const { database, environment } = dependencies;
   const repository = new BillingRepository(database);
-  const entitlements = new EntitlementService(repository);
+  const entitlements = new EntitlementService(repository, environment.OWNER_EMAILS);
   const usage = new UsageService(repository, entitlements);
   const processor = new BillingEventProcessor(environment, repository);
   const billing = new BillingService(environment, repository, entitlements, usage);

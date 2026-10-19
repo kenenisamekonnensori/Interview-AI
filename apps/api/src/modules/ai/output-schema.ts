@@ -3,7 +3,7 @@ import { z } from "zod";
 export const interviewerResponseProposalSchema = z
   .object({
     responseText: z.string().trim().min(1).max(4_000),
-    responseType: z.enum(["QUESTION", "FOLLOW_UP", "CLARIFICATION", "CLOSING"]),
+    responseType: z.enum(["GREETING", "QUESTION", "FOLLOW_UP", "CLARIFICATION", "CLOSING"]),
     recommendedAction: z.enum([
       "ASK_QUESTION",
       "ASK_FOLLOW_UP",
@@ -24,6 +24,7 @@ export const interviewerResponseProposalSchema = z
   .strict()
   .superRefine((proposal, context) => {
     const expectedAction = {
+      GREETING: "ASK_QUESTION",
       QUESTION: "ASK_QUESTION",
       FOLLOW_UP: "ASK_FOLLOW_UP",
       CLARIFICATION: "REQUEST_CLARIFICATION",
