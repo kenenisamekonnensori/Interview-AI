@@ -13,11 +13,20 @@ import { interviewTypes } from "@interviewer-ai/types";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
+  Briefcase,
+  CheckCircle2,
   CircleAlert,
-  Info,
+  Clock,
+  Code2,
+  Cpu,
+  FileText,
   LoaderCircle,
+  Plus,
   SlidersHorizontal,
   Sparkles,
+  Target,
+  UserCheck,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -30,37 +39,50 @@ import {
   parseEntitlementError,
   parseUsageLimitError,
 } from "@/features/billing/lib/billing-helpers";
+import { ResumeUploadDropzone } from "@/features/resumes/components/resume-upload-dropzone";
+import { resumeAnalysisGuidance } from "@/features/resumes/lib/resume-analysis-guidance";
 import { apiClient } from "@/lib/api-client";
 
 type ProfileDefaults = {
   targetRole: string | null;
+  profession: string | null;
   preferredLanguage: string;
   defaultInterviewDuration: number;
   defaultDifficulty: InterviewConfiguration["difficulty"];
 };
-type InterviewHistory = { items: Array<{ status: string; reportStatus: string | null }> };
+
 type InterviewStartInput = Pick<InterviewConfiguration, "interviewType"> &
   Partial<Omit<InterviewConfiguration, "interviewType">>;
 
 export function InterviewManager() {
   const router = useRouter();
   const [customOpen, setCustomOpen] = useState(false);
-  const [role, setRole] = useState("");
-  const [difficulty, setDifficulty] = useState<InterviewConfiguration["difficulty"] | "">("");
-  const [resumeId, setResumeId] = useState("");
-  const [jobDescriptionId, setJobDescriptionId] = useState("");
-  const [careerTargetId, setCareerTargetId] = useState("");
   const [failure, setFailure] = useState<InterviewStartInput | null>(null);
-  // A plan boundary is not a failure to retry — it is the moment to explain the
-  // allowance with real numbers and offer the upgrade path.
+  const [resumeGuidance, setResumeGuidance] = useState<string | null>(null);
   const [planBoundary, setPlanBoundary] = useState<{
     limit: UsageLimitErrorDetails | null;
     feature: string | null;
   } | null>(null);
-  // Optional ?type= prefill from the practice plan's “Start activity” actions.
-  const [presetType, setPresetType] = useState<InterviewConfiguration["interviewType"] | null>(
-    null,
-  );
+
+  // Custom setup states
+  const [selectedType, setSelectedType] =
+    useState<InterviewConfiguration["interviewType"]>("MIXED");
+  const [role, setRole] = useState("");
+  const [difficulty, setDifficulty] = useState<InterviewConfiguration["difficulty"] | "">("");
+  const [duration, setDuration] = useState<number>(30);
+
+  // Resume selection mode: "active" | "upload" | "saved" | "none"
+  const [resumeMode, setResumeMode] = useState<"active" | "upload" | "saved" | "none">("active");
+  const [selectedResumeId, setSelectedResumeId] = useState("");
+  const [uploadedResumeId, setUploadedResumeId] = useState<string | null>(null);
+
+  // Job description selection mode: "active" | "paste" | "saved" | "none"
+  const [jobMode, setJobMode] = useState<"active" | "paste" | "saved" | "none">("active");
+  const [selectedJobId, setSelectedJobId] = useState("");
+  const [careerTargetId, setCareerTargetId] = useState("");
+  const [newJobTitle, setNewJobTitle] = useState("");
+  const [newJobCompany, setNewJobCompany] = useState("");
+  const [newJobText, setNewJobText] = useState("");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -72,7 +94,7 @@ export function InterviewManager() {
 
     let shouldOpenCustom = false;
     if (type && (interviewTypes as readonly string[]).includes(type)) {
-      setPresetType(type as InterviewConfiguration["interviewType"]);
+      setSelectedType(type as InterviewConfiguration["interviewType"]);
       shouldOpenCustom = true;
     }
     if (paramRole) {
@@ -80,11 +102,13 @@ export function InterviewManager() {
       shouldOpenCustom = true;
     }
     if (paramResumeId) {
-      setResumeId(paramResumeId);
+      setSelectedResumeId(paramResumeId);
+      setResumeMode("saved");
       shouldOpenCustom = true;
     }
     if (paramJobId) {
-      setJobDescriptionId(paramJobId);
+      setSelectedJobId(paramJobId);
+      setJobMode("saved");
       shouldOpenCustom = true;
     }
     if (paramTargetId) {
@@ -112,10 +136,6 @@ export function InterviewManager() {
     queryKey: ["career-targets"],
     queryFn: () => apiClient<{ careerTargets: CareerTargetDto[] }>("/api/v1/career-targets"),
   });
-  const history = useQuery({
-    queryKey: ["analytics-history", "recommendation"],
-    queryFn: () => apiClient<InterviewHistory>("/api/v1/analytics/history?page=1&pageSize=1"),
-  });
   const nextPractice = useQuery({
     queryKey: ["analytics", "next-practice"],
     queryFn: () =>
@@ -125,7 +145,7 @@ export function InterviewManager() {
   const activeResume = useMemo(
     () =>
       resumes.data?.resumes.find(
-        (resume) => resume.isActive && ["READY", "ANALYZED"].includes(resume.status),
+        (resume) => resume.isActive && ["READY", "ANALYZING", "ANALYZED"].includes(resume.status),
       ),
     [resumes.data],
   );
@@ -138,14 +158,29 @@ export function InterviewManager() {
       jobs.data?.jobDescriptions.find((job) => job.status === "ANALYZED" || job.status === "READY"),
     [jobs.data],
   );
+
   const defaults = profile.data?.profile;
+
+  // Determine if the user has set up a profile context
+  const hasProfile = Boolean(
+    (defaults?.targetRole && defaults.targetRole.trim() !== "") ||
+    defaults?.profession ||
+    activeResume ||
+    relevantJob ||
+    activeTarget,
+  );
+
   const fallbackRecommendation = useMemo<InterviewConfiguration>(
     () => ({
       interviewType: "MIXED",
       difficulty: defaults?.defaultDifficulty ?? "MEDIUM",
       durationMinutes: defaults?.defaultInterviewDuration ?? 30,
       language: defaults?.preferredLanguage ?? "en",
-      targetRole: defaults?.targetRole ?? relevantJob?.title ?? "General interview practice",
+      targetRole:
+        defaults?.targetRole ??
+        defaults?.profession ??
+        relevantJob?.title ??
+        "General interview practice",
       ...(activeResume ? { resumeId: activeResume.id } : {}),
       ...(relevantJob ? { jobDescriptionId: relevantJob.id } : {}),
       ...(activeTarget ? { careerTargetId: activeTarget.id } : {}),
@@ -186,23 +221,6 @@ export function InterviewManager() {
     },
   });
 
-  const customConfiguration = (): InterviewStartInput => ({
-    interviewType: presetType ?? "MIXED",
-    ...(role.trim() ? { targetRole: role.trim() } : {}),
-    ...(difficulty ? { difficulty } : {}),
-    ...(resumeId ? { resumeId } : {}),
-    ...(jobDescriptionId ? { jobDescriptionId } : {}),
-    ...(careerTargetId ? { careerTargetId } : {}),
-  });
-  const reasons = [
-    activeTarget ? `your current target (${activeTarget.title})` : null,
-    activeResume ? `your active resume (${activeResume.fileName})` : null,
-    defaults?.targetRole ? `your target role (${defaults.targetRole})` : null,
-    relevantJob ? `a saved job description (${relevantJob.title ?? "saved role"})` : null,
-    history.data?.items.some((item) => item.status === "COMPLETED" && item.reportStatus === "READY")
-      ? "your recent interview feedback"
-      : null,
-  ].filter(Boolean);
   const recommendation = nextPractice.data?.recommendation;
   const recommended = recommendation
     ? {
@@ -219,7 +237,74 @@ export function InterviewManager() {
       }
     : fallbackRecommendation;
 
-  if (planBoundary)
+  const startInterview = (configuration: InterviewStartInput) => {
+    const resume = configuration.resumeId
+      ? resumes.data?.resumes.find((candidate) => candidate.id === configuration.resumeId)
+      : null;
+    if (resume && resume.status !== "ANALYZED") {
+      setResumeGuidance(resumeAnalysisGuidance(resume));
+      setCustomOpen(true);
+      return;
+    }
+    setResumeGuidance(null);
+    launch.mutate(configuration);
+  };
+
+  const handleStartCustom = async () => {
+    let finalJobId: string | undefined = undefined;
+
+    // If user typed a new job description inline
+    if (jobMode === "paste" && newJobText.trim().length >= 100) {
+      try {
+        const res = await apiClient<{ jobDescription: JobDescriptionDto }>(
+          "/api/v1/job-descriptions",
+          {
+            method: "POST",
+            body: {
+              title: newJobTitle.trim() || undefined,
+              company: newJobCompany.trim() || undefined,
+              rawText: newJobText.trim(),
+            },
+          },
+        );
+        finalJobId = res.jobDescription.id;
+      } catch (err) {
+        console.error("Failed to create inline job description", err);
+      }
+    } else if (jobMode === "active" && relevantJob) {
+      finalJobId = relevantJob.id;
+    } else if (jobMode === "saved" && selectedJobId) {
+      finalJobId = selectedJobId;
+    }
+
+    let finalResumeId: string | undefined = undefined;
+    if (resumeMode === "active" && activeResume) {
+      finalResumeId = activeResume.id;
+    } else if (resumeMode === "upload" && uploadedResumeId) {
+      finalResumeId = uploadedResumeId;
+    } else if (resumeMode === "saved" && selectedResumeId) {
+      finalResumeId = selectedResumeId;
+    }
+
+    const config: InterviewStartInput = {
+      interviewType: selectedType,
+      difficulty: difficulty || defaults?.defaultDifficulty || "MEDIUM",
+      durationMinutes: duration || defaults?.defaultInterviewDuration || 30,
+      language: defaults?.preferredLanguage || "en",
+      ...(role.trim()
+        ? { targetRole: role.trim() }
+        : defaults?.targetRole
+          ? { targetRole: defaults.targetRole }
+          : {}),
+      ...(finalResumeId ? { resumeId: finalResumeId } : {}),
+      ...(finalJobId ? { jobDescriptionId: finalJobId } : {}),
+      ...(careerTargetId && jobMode === "active" ? { careerTargetId } : {}),
+    };
+
+    startInterview(config);
+  };
+
+  if (planBoundary) {
     return (
       <div className="space-y-4">
         {planBoundary.limit ? (
@@ -239,13 +324,14 @@ export function InterviewManager() {
         </button>
       </div>
     );
+  }
 
-  if (failure)
+  if (failure) {
     return (
       <RecoveryCard
         onRetry={() => {
           setFailure(null);
-          launch.mutate(failure);
+          startInterview(failure);
         }}
         onEdit={() => {
           setFailure(null);
@@ -257,191 +343,492 @@ export function InterviewManager() {
         }}
       />
     );
+  }
 
   return (
     <div className="space-y-6">
+      {/* Recommended Practice Card */}
       <section className="rounded-3xl border border-primary/30 bg-[radial-gradient(circle_at_100%_0%,oklch(0.7_0.16_280_/_18%),transparent_26rem)] p-6 shadow-xl shadow-black/10 sm:p-8">
-        <div className="flex flex-wrap items-start justify-between gap-5">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-2xl">
-            <p className="flex items-center gap-2 text-sm font-medium text-primary">
-              <Sparkles className="size-4" /> Recommended practice
-            </p>
-            <h2 className="mt-3 text-2xl font-semibold tracking-[-.04em]">
-              Practice for {recommended.targetRole}
+            <div className="flex items-center gap-2">
+              <span className="flex items-center gap-1.5 rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-primary">
+                <Sparkles className="size-3.5" />
+                {hasProfile ? "Profile-based recommendation" : "Intake & Discovery Session"}
+              </span>
+            </div>
+
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
+              {hasProfile
+                ? `Practice for ${recommended.targetRole}`
+                : "General Practice Interview (Get to Know You)"}
             </h2>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              {recommendation?.reasons.join(" ") ??
-                (reasons.length
-                  ? `Built from ${reasons.join(", ")}.`
-                  : "A focused mixed interview you can start without any documents.")}
+
+            <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
+              {hasProfile
+                ? (recommendation?.reasons.join(" ") ??
+                  `Tailored to ${[
+                    activeTarget ? `your target (${activeTarget.title})` : null,
+                    activeResume ? `your resume (${activeResume.fileName})` : null,
+                    defaults?.targetRole ? `role (${defaults.targetRole})` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}.`)
+                : "Start right away! Since you haven't set up your profile yet, the AI interviewer will begin with a conversational get-to-know-you session to learn about your background, career goals, and experience."}
             </p>
-            <p className="mt-2 text-xs font-medium uppercase tracking-wide text-primary">
-              Based on {recommendation?.basis === "HISTORY" ? "previous practice" : "your profile"}
-            </p>
+
+            {!hasProfile ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Want role-specific practice instead?{" "}
+                <Link
+                  href="/profile"
+                  className="font-semibold text-primary underline underline-offset-4"
+                >
+                  Set up your profile first
+                </Link>
+              </p>
+            ) : null}
           </div>
-          <Button size="lg" onClick={() => launch.mutate(recommended)} disabled={launch.isPending}>
+
+          <Button
+            size="lg"
+            onClick={() => startInterview(recommended)}
+            disabled={launch.isPending}
+            className="shrink-0 h-12 px-6 text-base shadow-md"
+          >
             {launch.isPending ? (
               <LoaderCircle className="size-4 animate-spin" />
             ) : (
               <Sparkles className="size-4" />
             )}
-            {launch.isPending ? "Preparing your interview…" : "Start recommended practice"}
+            {launch.isPending
+              ? "Preparing your interview…"
+              : hasProfile
+                ? "Start Recommended Practice"
+                : "Start General Practice"}
           </Button>
         </div>
         {launch.isPending ? <PreparationProgress /> : null}
       </section>
 
-      <section className="rounded-3xl border border-border bg-card/60 p-6">
+      {/* Custom Interview Section */}
+      <section className="rounded-3xl border border-border bg-card/60 p-6 sm:p-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="flex items-center gap-2 text-sm font-medium">
-              <SlidersHorizontal className="size-4 text-primary" /> Custom interview
+            <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <SlidersHorizontal className="size-4 text-primary" /> Custom Interview
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Choose only the context you want to use.
+              Configure a brand new interview from scratch, or choose specific pieces of your
+              profile.
             </p>
           </div>
-          <Button variant="outline" onClick={() => setCustomOpen((value) => !value)}>
-            Create custom interview <ArrowRight className="size-4" />
+          <Button
+            variant={customOpen ? "default" : "outline"}
+            onClick={() => setCustomOpen((value) => !value)}
+          >
+            {customOpen ? "Collapse Setup" : "Create Custom Interview"}
+            <ArrowRight className="size-4 ml-1.5" />
           </Button>
         </div>
+
         {customOpen ? (
-          <CustomSetup
-            role={role}
-            setRole={setRole}
-            difficulty={difficulty}
-            setDifficulty={setDifficulty}
-            resumes={resumes.data?.resumes ?? []}
-            jobs={jobs.data?.jobDescriptions ?? []}
-            targets={careerTargets.data?.careerTargets ?? []}
-            resumeId={resumeId}
-            setResumeId={setResumeId}
-            jobDescriptionId={jobDescriptionId}
-            setJobDescriptionId={setJobDescriptionId}
-            careerTargetId={careerTargetId}
-            setCareerTargetId={setCareerTargetId}
-            pending={launch.isPending}
-            presetType={presetType}
-            onStart={() => launch.mutate(customConfiguration())}
-          />
+          <div className="mt-7 space-y-6 border-t border-border pt-6">
+            {/* Interview Type Selector */}
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                1. Select Interview Type
+              </label>
+              <div className="mt-2.5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+                {[
+                  { id: "MIXED", label: "Mixed", icon: Sparkles, desc: "Technical & behavioral" },
+                  {
+                    id: "TECHNICAL",
+                    label: "Technical",
+                    icon: Cpu,
+                    desc: "Concepts & architecture",
+                  },
+                  {
+                    id: "BEHAVIORAL",
+                    label: "Behavioral",
+                    icon: Users,
+                    desc: "STAR stories & culture",
+                  },
+                  { id: "CODING", label: "Coding", icon: Code2, desc: "Algorithms & logic" },
+                  {
+                    id: "SYSTEM_DESIGN",
+                    label: "System Design",
+                    icon: Target,
+                    desc: "Scale & trade-offs",
+                  },
+                  {
+                    id: "HR",
+                    label: "HR / Fit",
+                    icon: UserCheck,
+                    desc: "Career goals & background",
+                  },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  const isSelected = selectedType === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() =>
+                        setSelectedType(item.id as InterviewConfiguration["interviewType"])
+                      }
+                      className={`flex flex-col items-start rounded-2xl border p-3.5 text-left transition-all ${
+                        isSelected
+                          ? "border-primary bg-primary/10 ring-2 ring-primary/20"
+                          : "border-border bg-background/50 hover:border-border hover:bg-card"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <Icon
+                          className={`size-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
+                        />
+                        <span className="text-xs font-semibold text-foreground">{item.label}</span>
+                      </div>
+                      <span className="mt-1 text-[11px] text-muted-foreground leading-tight line-clamp-1">
+                        {item.desc}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Target Role & Level */}
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-1.5 sm:col-span-2">
+                <div className="flex items-center justify-between">
+                  <label
+                    className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                    htmlFor="custom-target-role"
+                  >
+                    2. Target Role
+                  </label>
+                  {defaults?.targetRole && role !== defaults.targetRole ? (
+                    <button
+                      type="button"
+                      onClick={() => setRole(defaults.targetRole!)}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      Use Profile Role ({defaults.targetRole})
+                    </button>
+                  ) : null}
+                </div>
+                <Input
+                  id="custom-target-role"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  placeholder={defaults?.targetRole ?? "e.g. Senior Frontend Engineer"}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label
+                  className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                  htmlFor="custom-difficulty"
+                >
+                  Difficulty Level
+                </label>
+                <select
+                  id="custom-difficulty"
+                  className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={difficulty}
+                  onChange={(e) =>
+                    setDifficulty(e.target.value as InterviewConfiguration["difficulty"] | "")
+                  }
+                >
+                  <option value="">
+                    Profile default ({defaults?.defaultDifficulty ?? "MEDIUM"})
+                  </option>
+                  {["EASY", "MEDIUM", "HARD", "EXPERT"].map((lvl) => (
+                    <option key={lvl} value={lvl}>
+                      {lvl}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Duration Selector */}
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Session Duration
+              </label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[15, 30, 45, 60].map((mins) => (
+                  <button
+                    key={mins}
+                    type="button"
+                    onClick={() => setDuration(mins)}
+                    className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-1.5 text-xs font-medium transition-all ${
+                      duration === mins
+                        ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                        : "border-border bg-background hover:bg-card text-foreground"
+                    }`}
+                  >
+                    <Clock className="size-3.5" />
+                    {mins} minutes
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Resume Source Choice */}
+            <div className="space-y-3 rounded-2xl border border-border/80 bg-background/40 p-4 sm:p-5">
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <FileText className="size-4 text-primary" /> 3. Candidate Resume Context
+              </label>
+
+              <div className="flex flex-wrap gap-2">
+                {activeResume ? (
+                  <button
+                    type="button"
+                    onClick={() => setResumeMode("active")}
+                    className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition-all ${
+                      resumeMode === "active"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Use Profile Resume ({activeResume.fileName})
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() => setResumeMode("upload")}
+                  className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition-all ${
+                    resumeMode === "upload"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-background text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Plus className="inline size-3 mr-1" /> Upload Brand New Resume
+                </button>
+
+                {(resumes.data?.resumes ?? []).length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setResumeMode("saved")}
+                    className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition-all ${
+                      resumeMode === "saved"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Select From Saved ({resumes.data?.resumes.length})
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() => setResumeMode("none")}
+                  className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition-all ${
+                    resumeMode === "none"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-background text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  No Resume (General)
+                </button>
+              </div>
+
+              {resumeMode === "upload" ? (
+                <div className="mt-3">
+                  <ResumeUploadDropzone
+                    variant="compact"
+                    onUploadSuccess={(result) => {
+                      setUploadedResumeId(result.resume.id);
+                      setResumeGuidance(
+                        result.analysis === "started"
+                          ? "AI analysis has started for this resume. Wait until it is ready before starting the interview."
+                          : "The resume uploaded, but analysis could not start. Use Analyze resume from your profile and try again.",
+                      );
+                    }}
+                  />
+                  {uploadedResumeId ? (
+                    <p className="mt-2 text-xs font-medium text-emerald-500 flex items-center gap-1.5">
+                      <CheckCircle2 className="size-3.5" /> Resume uploaded and selected for this
+                      session!
+                    </p>
+                  ) : null}
+                </div>
+              ) : resumeMode === "saved" ? (
+                <select
+                  className="mt-2 h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                  value={selectedResumeId}
+                  onChange={(e) => setSelectedResumeId(e.target.value)}
+                >
+                  <option value="">Select a saved resume</option>
+                  {(resumes.data?.resumes ?? [])
+                    .filter((r) => r.status !== "DELETED" && r.status !== "PENDING_UPLOAD")
+                    .map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.fileName} {r.isActive ? "· (Active)" : ""}{" "}
+                        {r.status === "ANALYZING"
+                          ? "· (Extracting skills…)"
+                          : r.status === "FAILED"
+                            ? "· (Analysis incomplete)"
+                            : ""}
+                      </option>
+                    ))}
+                </select>
+              ) : null}
+
+              {resumeGuidance ? (
+                <div
+                  className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-foreground"
+                  role="alert"
+                >
+                  <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                  <span>{resumeGuidance}</span>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Job Description Source Choice */}
+            <div className="space-y-3 rounded-2xl border border-border/80 bg-background/40 p-4 sm:p-5">
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <Briefcase className="size-4 text-primary" /> 4. Job Description & Requirements
+              </label>
+
+              <div className="flex flex-wrap gap-2">
+                {relevantJob ? (
+                  <button
+                    type="button"
+                    onClick={() => setJobMode("active")}
+                    className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition-all ${
+                      jobMode === "active"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Use Saved Job ({relevantJob.title ?? "Current Target"})
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() => setJobMode("paste")}
+                  className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition-all ${
+                    jobMode === "paste"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-background text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Plus className="inline size-3 mr-1" /> Paste Brand New Job Description
+                </button>
+
+                {(jobs.data?.jobDescriptions ?? []).length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setJobMode("saved")}
+                    className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition-all ${
+                      jobMode === "saved"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Select From Saved ({jobs.data?.jobDescriptions.length})
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() => setJobMode("none")}
+                  className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition-all ${
+                    jobMode === "none"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-background text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  No Job Description
+                </button>
+              </div>
+
+              {jobMode === "paste" ? (
+                <div className="mt-3 space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Input
+                      placeholder="Role Title (e.g. Senior Backend Engineer)"
+                      value={newJobTitle}
+                      onChange={(e) => setNewJobTitle(e.target.value)}
+                    />
+                    <Input
+                      placeholder="Company Name (e.g. Stripe, Google)"
+                      value={newJobCompany}
+                      onChange={(e) => setNewJobCompany(e.target.value)}
+                    />
+                  </div>
+                  <textarea
+                    className="w-full rounded-xl border border-input bg-background p-3 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    rows={4}
+                    placeholder="Paste the job description and requirements here (minimum 100 characters)..."
+                    value={newJobText}
+                    onChange={(e) => setNewJobText(e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    {newJobText.trim().length} / 100 minimum characters
+                  </p>
+                </div>
+              ) : jobMode === "saved" ? (
+                <select
+                  className="mt-2 h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                  value={selectedJobId}
+                  onChange={(e) => setSelectedJobId(e.target.value)}
+                >
+                  <option value="">Select a saved job description</option>
+                  {(jobs.data?.jobDescriptions ?? []).map((j) => (
+                    <option key={j.id} value={j.id}>
+                      {j.title ?? "Job description"} {j.company ? `@ ${j.company}` : ""}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </div>
+
+            {/* Launch CTA */}
+            <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
+              <p className="text-xs text-muted-foreground">
+                Session will start with a {selectedType.toLowerCase().replace("_", " ")} focus for{" "}
+                {role.trim() || defaults?.targetRole || "general practice"}.
+              </p>
+              <Button
+                size="lg"
+                onClick={handleStartCustom}
+                disabled={
+                  launch.isPending ||
+                  (jobMode === "paste" &&
+                    newJobText.trim().length > 0 &&
+                    newJobText.trim().length < 100)
+                }
+                className="h-11 px-6 gap-2"
+              >
+                {launch.isPending ? (
+                  <LoaderCircle className="size-4 animate-spin" />
+                ) : (
+                  <ArrowRight className="size-4" />
+                )}
+                {launch.isPending ? "Preparing custom interview…" : "Start Custom Interview"}
+              </Button>
+            </div>
+          </div>
         ) : null}
       </section>
+
       <p className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
+        <Link className="underline underline-offset-4" href="/profile">
+          Manage your candidate profile
+        </Link>
+        <span>·</span>
         <Link className="underline underline-offset-4" href="/resumes">
-          Manage your targets, resume, and job descriptions
+          Manage your resumes and target jobs
         </Link>
       </p>
-    </div>
-  );
-}
-
-function CustomSetup(props: {
-  role: string;
-  setRole: (value: string) => void;
-  difficulty: InterviewConfiguration["difficulty"] | "";
-  setDifficulty: (value: InterviewConfiguration["difficulty"] | "") => void;
-  resumes: Resume[];
-  jobs: JobDescriptionDto[];
-  targets: CareerTargetDto[];
-  resumeId: string;
-  setResumeId: (value: string) => void;
-  jobDescriptionId: string;
-  setJobDescriptionId: (value: string) => void;
-  careerTargetId: string;
-  setCareerTargetId: (value: string) => void;
-  pending: boolean;
-  presetType: InterviewConfiguration["interviewType"] | null;
-  onStart: () => void;
-}) {
-  const usesProfileOnly =
-    !props.presetType &&
-    !props.role.trim() &&
-    !props.difficulty &&
-    !props.resumeId &&
-    !props.jobDescriptionId &&
-    !props.careerTargetId;
-  return (
-    <div className="mt-6 space-y-4 border-t border-border pt-5">
-      {props.presetType ? (
-        <p className="flex gap-2 rounded-xl border border-primary/25 bg-primary/10 p-3 text-sm text-muted-foreground">
-          <Info className="mt-0.5 size-4 shrink-0 text-primary" />
-          Starting from your practice plan: a {props.presetType.replace("_", " ")} interview. You
-          can still adjust everything below.
-        </p>
-      ) : null}
-      <p className="text-sm text-muted-foreground">
-        Every option is optional. Add any combination that helps, or leave them blank for a
-        profile-based practice session.
-      </p>
-      <Input
-        value={props.role}
-        onChange={(event) => props.setRole(event.target.value)}
-        placeholder="Target role (optional)"
-      />
-      <select
-        className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
-        value={props.difficulty}
-        onChange={(event) =>
-          props.setDifficulty(event.target.value as InterviewConfiguration["difficulty"] | "")
-        }
-      >
-        <option value="">Use your profile difficulty (or Medium)</option>
-        {["EASY", "MEDIUM", "HARD", "EXPERT"].map((value) => (
-          <option key={value}>{value}</option>
-        ))}
-      </select>
-      <select
-        className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
-        value={props.careerTargetId}
-        onChange={(event) => props.setCareerTargetId(event.target.value)}
-      >
-        <option value="">No target job for this interview</option>
-        {props.targets.map((target) => (
-          <option key={target.id} value={target.id}>
-            {target.title}
-            {target.status === "ACTIVE" ? " · Current" : ""}
-            {target.company ? ` · ${target.company}` : ""}
-          </option>
-        ))}
-      </select>
-      <select
-        className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
-        value={props.resumeId}
-        onChange={(event) => props.setResumeId(event.target.value)}
-      >
-        <option value="">No resume for this interview</option>
-        {props.resumes
-          .filter((resume) => ["READY", "ANALYZED"].includes(resume.status))
-          .map((resume) => (
-            <option key={resume.id} value={resume.id}>
-              {resume.fileName}
-              {resume.isActive ? " · Active" : ""}
-            </option>
-          ))}
-      </select>
-      <select
-        className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
-        value={props.jobDescriptionId}
-        onChange={(event) => props.setJobDescriptionId(event.target.value)}
-      >
-        <option value="">No job description for this interview</option>
-        {props.jobs.map((job) => (
-          <option key={job.id} value={job.id}>
-            {job.title ?? "Saved job description"}
-          </option>
-        ))}
-      </select>
-      {usesProfileOnly ? (
-        <p className="flex gap-2 rounded-xl border border-primary/25 bg-primary/10 p-3 text-sm text-muted-foreground">
-          <Info className="mt-0.5 size-4 shrink-0 text-primary" />
-          No custom context was added. This interview will use your saved profile settings. You can
-          still start now.
-        </p>
-      ) : null}
-      <Button onClick={props.onStart} disabled={props.pending}>
-        {props.pending ? "Preparing your interview…" : "Start interview"}{" "}
-        <ArrowRight className="size-4" />
-      </Button>
     </div>
   );
 }
@@ -454,6 +841,7 @@ function PreparationProgress() {
     </p>
   );
 }
+
 function RecoveryCard({
   onRetry,
   onEdit,
@@ -468,8 +856,7 @@ function RecoveryCard({
       <CircleAlert className="size-5 text-amber-300" />
       <h2 className="mt-3 text-xl font-semibold">We couldn’t prepare that interview.</h2>
       <p className="mt-2 text-sm text-muted-foreground">
-        Your setup is still safe. You can try again, adjust it, or start with a simpler role-based
-        session.
+        Your setup is still safe. You can try again, adjust it, or start with a simpler session.
       </p>
       <div className="mt-5 flex flex-wrap gap-2">
         <Button onClick={onRetry}>Try again</Button>
@@ -483,6 +870,7 @@ function RecoveryCard({
     </section>
   );
 }
+
 function simpleConfiguration(profile?: ProfileDefaults): InterviewConfiguration {
   return {
     interviewType: "MIXED",
@@ -492,6 +880,7 @@ function simpleConfiguration(profile?: ProfileDefaults): InterviewConfiguration 
     ...(profile?.targetRole ? { targetRole: profile.targetRole } : {}),
   };
 }
+
 class PreparationError extends Error {
   constructor(readonly configuration: InterviewStartInput) {
     super("Preparation failed.");

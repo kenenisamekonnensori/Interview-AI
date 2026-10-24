@@ -11,5 +11,5 @@ The JSON object must have exactly these fields:
 - timeline: a non-empty array of { phase: string, minutes: integer }.
 - followUpStrategy: a non-empty string.
 - fallbackStrategy: a non-empty string.
-Use positive whole minutes. The topic and timeline allocations must each fit within the requested duration. Cover the selected interview type, target role, and only supported candidate evidence. Do not expose this plan to the candidate. ${safetyPrivacyPrompt}`;
+Use positive whole minutes. The topic and timeline allocations must each fit within the requested duration. If no resume, job description, or specific role is supplied (a general get-to-know-you practice session), design a warm intake and diagnostic interview plan focused on discovering the candidate's background, career aspirations, technical skills, and past project experiences. Do not expose this plan to the candidate. ${safetyPrivacyPrompt}`;
 }

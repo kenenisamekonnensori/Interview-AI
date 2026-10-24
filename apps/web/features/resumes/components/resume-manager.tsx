@@ -1,6 +1,6 @@
 "use client";
 
-import type { Resume, ResumeUploadRequest, ResumeUploadResponse } from "@interviewer-ai/types";
+import type { Resume } from "@interviewer-ai/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Briefcase,
@@ -19,65 +19,16 @@ import {
 } from "lucide-react";
 import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
 
-import { apiBinaryClient, apiClient } from "@/lib/api-client";
+import { apiClient } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { resumeAnalysisFailureLabel } from "@/features/resumes/lib/resume-analysis-guidance";
+import {
+  formatResumeFileSize as formatFileSize,
+  uploadResumeFile,
+  validateResumeFile,
+} from "@/features/resumes/lib/resume-upload";
 
 const resumesQueryKey = ["resumes"] as const;
-const maximumFileSize = 10 * 1024 * 1024;
-const acceptedMimeTypes = new Set([
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-]);
-
-function formatFileSize(bytes: number) {
-  return `${(bytes / 1024 / 1024).toFixed(bytes < 1024 * 1024 ? 1 : 0)} MB`;
-}
-
-function validateResumeFile(file: File) {
-  if (!acceptedMimeTypes.has(file.type)) return "Please select a PDF or DOCX file.";
-  if (file.size > maximumFileSize) return "Your resume must be 10 MB or smaller.";
-  return null;
-}
-
-async function uploadResume(file: File) {
-  const payload: ResumeUploadRequest = {
-    fileName: file.name,
-    mimeType: file.type as ResumeUploadRequest["mimeType"],
-    fileSize: file.size,
-  };
-  const { resume, upload } = await apiClient<ResumeUploadResponse>("/api/v1/resumes/uploads", {
-    method: "POST",
-    body: payload,
-  });
-
-  let response: Response | null = null;
-  try {
-    response = await fetch(upload.url, { method: "PUT", headers: upload.headers, body: file });
-  } catch {
-    // Authenticated API fallback if direct storage origin is blocked
-    await apiBinaryClient<{ resume: Resume }>(`/api/v1/resumes/${resume.id}/content`, {
-      body: file,
-      contentType: file.type,
-    });
-  }
-
-  if (response && !response.ok) {
-    throw new Error("Your file could not be uploaded. Please try again.");
-  }
-
-  const completed = await apiClient<{ resume: Resume }>(`/api/v1/resumes/${resume.id}/complete`, {
-    method: "POST",
-  });
-
-  // Automatically start AI skill analysis right after upload
-  try {
-    await apiClient(`/api/v1/resumes/${resume.id}/analyze`, { method: "POST" });
-  } catch {
-    // Best effort background trigger; candidate can re-trigger if needed
-  }
-
-  return completed;
-}
 
 type ResumeAnalysisData = {
   summary: string;
@@ -97,6 +48,7 @@ export function ResumeManager() {
   const inputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [expandedResumeId, setExpandedResumeId] = useState<string | null>(null);
   const [uploadingName, setUploadingName] = useState<string | null>(null);
@@ -111,14 +63,20 @@ export function ResumeManager() {
   const refresh = () => queryClient.invalidateQueries({ queryKey: resumesQueryKey });
 
   const upload = useMutation({
-    mutationFn: uploadResume,
+    mutationFn: (file: File) => uploadResumeFile(file),
     onMutate: (file) => {
       setUploadingName(file.name);
       setError(null);
+      setSuccess(null);
     },
     onSuccess: (result) => {
       setUploadingName(null);
       setExpandedResumeId(result.resume.id);
+      setSuccess(
+        result.analysis === "started"
+          ? "Resume uploaded. AI analysis is in progress."
+          : "Resume uploaded. AI analysis could not start; use Retry Analysis below.",
+      );
       refresh();
     },
     onError: (cause) => {
@@ -154,6 +112,7 @@ export function ResumeManager() {
       return;
     }
     setError(null);
+    setSuccess(null);
     upload.mutate(file);
   }
 
@@ -294,15 +253,47 @@ export function ResumeManager() {
       {error ? (
         <div
           aria-live="polite"
-          className="mt-4 flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive"
+          className="mt-4 flex items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive"
           role="alert"
         >
           <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-xs font-medium hover:underline shrink-0"
+          >
+            Dismiss
+          </button>
         </div>
+      ) : null}
+
+      {success ? (
+        <p
+          aria-live="polite"
+          className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-700 dark:text-emerald-400"
+          role="status"
+        >
+          {success}
+        </p>
       ) : null}
 
       {/* Resumes List */}
       <div className="mt-6 space-y-3.5">
+        {resumes.some((r) => r.status === "FAILED") ? (
+          <div
+            className="flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-foreground"
+            role="alert"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="size-4 text-amber-500 shrink-0" />
+              <span>
+                AI skill extraction was incomplete on a resume. Click{" "}
+                <strong>&quot;Retry Analysis&quot;</strong> below to re-extract skills and
+                experience.
+              </span>
+            </div>
+          </div>
+        ) : null}
         {isPending ? (
           <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
             <LoaderCircle className="size-4 animate-spin text-primary" />
@@ -369,7 +360,13 @@ export function ResumeManager() {
                           AI Analysis Ready
                         </span>
                       ) : resume.status === "FAILED" ? (
-                        <span className="text-xs text-destructive">Analysis failed</span>
+                        <span
+                          className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive"
+                          title={resumeAnalysisFailureLabel(resume.analysisFailureCode)}
+                        >
+                          AI analysis incomplete ·{" "}
+                          {resumeAnalysisFailureLabel(resume.analysisFailureCode)}
+                        </span>
                       ) : (
                         <span className="text-xs text-muted-foreground">Ready for analysis</span>
                       )}
@@ -397,16 +394,19 @@ export function ResumeManager() {
 
                   <Button
                     size="sm"
-                    variant="outline"
+                    variant={resume.status === "FAILED" ? "default" : "outline"}
                     onClick={() => analyze.mutate(resume.id)}
                     disabled={analyze.isPending || isAnalyzing}
+                    className="gap-1.5"
                   >
                     <Sparkles className="size-3" />
                     {isAnalyzing
                       ? "Analyzing…"
                       : resume.status === "ANALYZED"
                         ? "Re-analyze"
-                        : "Analyze"}
+                        : resume.status === "FAILED"
+                          ? "Retry Analysis"
+                          : "Analyze"}
                   </Button>
 
                   {!resume.isActive ? (
