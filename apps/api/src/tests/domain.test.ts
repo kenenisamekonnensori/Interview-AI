@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { z } from "zod";
 import { test } from "vitest";
 
 import {
@@ -10,6 +11,9 @@ import { CareerTargetError, CareerTargetService } from "../modules/jobs/career-t
 import { createJobDescriptionSchema } from "../modules/jobs/schema.js";
 import { generatedReportSchema } from "../modules/reports/schema.js";
 import { createResumeUploadSchema } from "../modules/resumes/schema.js";
+import { createResumeRepository } from "../modules/resumes/repository.js";
+import { ResumeStorageError } from "../modules/resumes/storage.js";
+import { classifyResumeAnalysisFailure } from "../services/resume-analysis.service.js";
 import {
   assertConversationTransition,
   assertInterviewTransition,
@@ -525,6 +529,94 @@ test("interview creation rejects a target the user does not own", async () => {
     (error: unknown) =>
       error instanceof InterviewLifecycleError && error.code === "CAREER_TARGET_NOT_FOUND",
   );
+});
+
+test("resume analysis failures map to safe application categories", () => {
+  assert.equal(
+    classifyResumeAnalysisFailure(new AiProviderError("CONFIGURATION", "missing api key")),
+    "AI_CONFIGURATION",
+  );
+  assert.equal(
+    classifyResumeAnalysisFailure(new AiProviderError("TRANSIENT", "rate limited")),
+    "AI_UNAVAILABLE",
+  );
+  assert.equal(classifyResumeAnalysisFailure(new ResumeParseError()), "DOCUMENT_UNREADABLE");
+  assert.equal(classifyResumeAnalysisFailure(new ResumeStorageError()), "STORAGE_UNAVAILABLE");
+  assert.equal(classifyResumeAnalysisFailure(new Error("boom")), "SYSTEM_ERROR");
+  // Schema failures validate AI output, not the document: they are provider
+  // problems, so the UI must not tell the user to re-upload a healthy PDF.
+  assert.equal(
+    classifyResumeAnalysisFailure(
+      new z.ZodError([
+        {
+          code: "invalid_type",
+          expected: "string",
+          input: 7,
+          path: ["summary"],
+          message: "Expected string, received number",
+        },
+      ]),
+    ),
+    "AI_UNAVAILABLE",
+  );
+});
+
+test("interview creation requires an analyzed resume and links it when ready", async () => {
+  const resumeId = "44444444-4444-4444-8444-444444444444";
+  const configuration = {
+    interviewType: "MIXED" as const,
+    difficulty: "MEDIUM" as const,
+    durationMinutes: 30,
+    language: "en",
+    resumeId,
+  };
+
+  const failedService = new InterviewService(
+    {
+      userProfile: { findUnique: async () => null },
+      resume: { findFirst: async () => null },
+      jobDescription: { findFirst: async () => null },
+      careerTarget: { findFirst: async () => null },
+    } as never,
+    {} as never,
+    {} as never,
+    {} as never,
+  );
+  await assert.rejects(
+    failedService.create("candidate-1", configuration),
+    (error: unknown) =>
+      error instanceof InterviewLifecycleError && error.code === "RESUME_ANALYSIS_REQUIRED",
+  );
+
+  const readyService = new InterviewService(
+    {
+      userProfile: { findUnique: async () => null },
+      resume: {
+        findFirst: async ({ where }: { where: { status: string } }) =>
+          where.status === "ANALYZED"
+            ? { id: resumeId, userId: "candidate-1", fileName: "resume.pdf" }
+            : null,
+      },
+      jobDescription: { findFirst: async () => null },
+      careerTarget: { findFirst: async () => null },
+      interview: {
+        create: async ({ data }: { data: Record<string, unknown> }) => ({
+          id: "33333333-3333-4333-8333-333333333333",
+          ...data,
+          createdAt: new Date("2026-10-23T00:00:00.000Z"),
+          updatedAt: new Date("2026-10-23T00:00:00.000Z"),
+          resume: { id: resumeId, fileName: "resume.pdf" },
+          jobDescription: null,
+          careerTarget: null,
+        }),
+      },
+    } as never,
+    {} as never,
+    {} as never,
+    {} as never,
+  );
+  const interview = await readyService.create("candidate-1", configuration);
+  assert.equal(interview.resume?.fileName, "resume.pdf");
 });
 
 test("dashboard overview exposes the current target job with its context", async () => {
@@ -1556,6 +1648,36 @@ test("interview, resume, and job inputs enforce documented limits", () => {
   );
   assert.equal(createJobDescriptionSchema.safeParse({ rawText: "too short" }).success, false);
   assert.equal(createJobDescriptionSchema.safeParse({ rawText: "x".repeat(100) }).success, true);
+});
+
+test("resume lists keep completed uploads visible while analysis is in progress or finished", async () => {
+  const calls: unknown[] = [];
+  const repository = createResumeRepository({
+    resume: {
+      findMany: async (args: unknown) => {
+        calls.push(args);
+        return [];
+      },
+    },
+  } as never);
+
+  await repository.list("candidate-1", false);
+  await repository.list("candidate-1", true);
+
+  assert.deepEqual(calls, [
+    {
+      where: {
+        userId: "candidate-1",
+        deletedAt: null,
+        status: { not: "PENDING_UPLOAD" },
+      },
+      orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
+    },
+    {
+      where: { userId: "candidate-1", deletedAt: null },
+      orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
+    },
+  ]);
 });
 
 test("first-time and profile-only users can start a role-based interview without documents", () => {

@@ -2,6 +2,31 @@ import type { PrismaClient } from "../../../prisma/generated/client.js";
 
 export function createResumeRepository(database: PrismaClient) {
   return {
+    /**
+     * Transitions READY | ANALYZED | FAILED -> ANALYZING and stamps the dispatch
+     * time. Returns the number of matching rows: callers dispatch work only
+     * when this returns 1, which is what keeps concurrent /analyze requests
+     * from dispatching duplicate jobs.
+     */
+    beginAnalysis: async (id: string) =>
+      (
+        await database.resume.updateMany({
+          where: { id, status: { in: ["READY", "ANALYZED", "FAILED"] } },
+          data: { status: "ANALYZING", analysisFailureCode: null, analysisStartedAt: new Date() },
+        })
+      ).count,
+    /**
+     * Claims a stale ANALYZING resume for one new dispatch. The atomic
+     * compare-and-swap on analysisStartedAt guarantees exactly one dispatcher
+     * wins even when several requests race; it returns 1 for that winner.
+     */
+    claimStaleAnalysis: async (id: string, staleBefore: Date) =>
+      (
+        await database.resume.updateMany({
+          where: { id, status: "ANALYZING", analysisStartedAt: { lt: staleBefore } },
+          data: { analysisStartedAt: new Date() },
+        })
+      ).count,
     create: (data: {
       userId: string;
       storageKey: string;
@@ -13,7 +38,11 @@ export function createResumeRepository(database: PrismaClient) {
       database.resume.findFirst({ where: { id, userId, deletedAt: null } }),
     list: (userId: string, includePending: boolean) =>
       database.resume.findMany({
-        where: { userId, deletedAt: null, ...(includePending ? {} : { status: "READY" }) },
+        where: {
+          userId,
+          deletedAt: null,
+          ...(includePending ? {} : { status: { not: "PENDING_UPLOAD" } }),
+        },
         orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
       }),
     complete: (id: string) =>

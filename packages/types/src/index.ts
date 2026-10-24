@@ -881,12 +881,19 @@ export type RealtimeEvent = {
 export type HealthStatus = { status: "ok" };
 export type ResumeStatus =
   "PENDING_UPLOAD" | "READY" | "ANALYZING" | "ANALYZED" | "FAILED" | "DELETED";
+export type ResumeAnalysisFailureCode =
+  | "AI_CONFIGURATION"
+  | "AI_UNAVAILABLE"
+  | "DOCUMENT_UNREADABLE"
+  | "STORAGE_UNAVAILABLE"
+  | "SYSTEM_ERROR";
 export type Resume = {
   id: string;
   fileName: string;
   mimeType: string;
   fileSize: number;
   status: ResumeStatus;
+  analysisFailureCode: ResumeAnalysisFailureCode | null;
   isActive: boolean;
   uploadedAt: string | null;
   createdAt: string;

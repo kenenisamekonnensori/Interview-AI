@@ -8,6 +8,7 @@ export function toResumeDto(resume: PrismaResume): Resume {
     mimeType: resume.mimeType,
     fileSize: resume.fileSize,
     status: resume.status,
+    analysisFailureCode: resume.analysisFailureCode as Resume["analysisFailureCode"],
     isActive: resume.isActive,
     uploadedAt: resume.uploadedAt?.toISOString() ?? null,
     createdAt: resume.createdAt.toISOString(),

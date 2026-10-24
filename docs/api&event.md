@@ -94,6 +94,8 @@ All endpoints below are under `/api/v1`, require an authenticated verified user,
 
 Resume upload first creates an owned `PENDING_UPLOAD` record through `POST /resumes/uploads`. The browser normally uploads the supplied signed URL directly to object storage and calls `POST /resumes/:id/complete`. If that browser-to-storage request fails before receiving a response, the web app may instead send the same PDF or DOCX bytes to `POST /resumes/:id/content`; the API applies the same signed ownership metadata, stores the object, verifies it, and returns the ready resume. The fallback is authenticated, accepts at most 10 MB, and is not a second persistence model.
 
+Resume storage and AI analysis are separate states. A profile upload is stored and may be made active without automatically sending it to the AI. A personalized interview requires an `ANALYZED` resume; the client directs the candidate to explicitly start analysis when required. A custom-interview upload may start analysis in the background. Analysis failures retain a safe category (`AI_CONFIGURATION`, `AI_UNAVAILABLE`, `DOCUMENT_UNREADABLE`, `STORAGE_UNAVAILABLE`, or `SYSTEM_ERROR`) so the UI can offer a precise retry or support path without exposing credentials or provider internals.
+
 Errors use `ApiErrorShape`: `{ code, message, details? }`. Invalid lifecycle changes return `409 INVALID_STATE_TRANSITION` (or a more specific lifecycle error); the current persisted state remains authoritative.
 
 ---

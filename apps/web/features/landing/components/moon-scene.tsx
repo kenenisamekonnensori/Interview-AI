@@ -1,9 +1,83 @@
 "use client";
 
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, createContext, useContext, useEffect } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Sphere } from "@react-three/drei";
 import * as THREE from "three";
+
+/**
+ * Three.js r183+ deprecated THREE.Clock in favor of THREE.Timer.
+ * Upstream @react-three/fiber v9 still instantiates THREE.Clock internally inside createStore()
+ * while waiting for R3F v10. We configure Three.js console interception to filter out
+ * this specific upstream deprecation notice, while migrating our own application code to THREE.Timer.
+ */
+function initThreeDeprecationFilter() {
+  if (typeof window === "undefined") return;
+
+  const FILTER_KEY = "__THREE_CLOCK_DEPRECATION_FILTERED__";
+  if ((window as unknown as Record<string, boolean>)[FILTER_KEY]) {
+    return;
+  }
+  (window as unknown as Record<string, boolean>)[FILTER_KEY] = true;
+
+  const prevConsoleFn = THREE.getConsoleFunction();
+  THREE.setConsoleFunction((type, message, ...params) => {
+    if (
+      typeof message === "string" &&
+      message.includes("THREE.Clock: This module has been deprecated")
+    ) {
+      return;
+    }
+    if (prevConsoleFn) {
+      prevConsoleFn(type, message, ...params);
+    } else {
+      console[type](message, ...params);
+    }
+  });
+
+  const originalConsoleWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    if (
+      typeof args[0] === "string" &&
+      args[0].includes("THREE.Clock: This module has been deprecated")
+    ) {
+      return;
+    }
+    originalConsoleWarn.apply(console, args);
+  };
+}
+
+initThreeDeprecationFilter();
+
+const SceneTimerContext = createContext<THREE.Timer | null>(null);
+
+function useSceneTimer(): THREE.Timer {
+  const timer = useContext(SceneTimerContext);
+  if (!timer) {
+    throw new Error("useSceneTimer must be used within a SceneTimerProvider");
+  }
+  return timer;
+}
+
+function SceneTimerProvider({ children }: { children: React.ReactNode }) {
+  const timer = useMemo(() => new THREE.Timer(), []);
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      timer.connect(document);
+    }
+    return () => {
+      timer.dispose();
+    };
+  }, [timer]);
+
+  // Update timer once per simulation step before child useFrame hooks run
+  useFrame(() => {
+    timer.update();
+  }, -1);
+
+  return <SceneTimerContext.Provider value={timer}>{children}</SceneTimerContext.Provider>;
+}
 
 /**
  * Acoustic Voice Orb Palette:
@@ -87,6 +161,7 @@ const ACOUSTIC_SHADER = {
 
 function AcousticOrb() {
   const meshRef = useRef<THREE.Mesh>(null);
+  const timer = useSceneTimer();
 
   const uniforms = useMemo(
     () => ({
@@ -99,8 +174,8 @@ function AcousticOrb() {
     [],
   );
 
-  useFrame((state) => {
-    const t = state.clock.getElapsedTime();
+  useFrame(() => {
+    const t = timer.getElapsed();
     uniforms.uTime.value = t;
     if (meshRef.current) {
       meshRef.current.rotation.y = t * 0.04;
@@ -126,6 +201,7 @@ function AcousticOrb() {
  * creating depth without visual weight.
  */
 function AcousticHalo() {
+  const timer = useSceneTimer();
   const uniforms = useMemo(
     () => ({
       uGlowColor: { value: new THREE.Color(ORB_COLORS.halo) },
@@ -134,8 +210,8 @@ function AcousticHalo() {
     [],
   );
 
-  useFrame((state) => {
-    uniforms.uTime.value = state.clock.getElapsedTime();
+  useFrame(() => {
+    uniforms.uTime.value = timer.getElapsed();
   });
 
   return (
@@ -179,11 +255,12 @@ function AcousticHalo() {
  * visually demonstrating voice turn-taking and auditory processing.
  */
 function AcousticPulseRipples() {
+  const timer = useSceneTimer();
   const ripple1 = useRef<THREE.Mesh>(null);
   const ripple2 = useRef<THREE.Mesh>(null);
 
-  useFrame((state) => {
-    const t = state.clock.getElapsedTime();
+  useFrame(() => {
+    const t = timer.getElapsed();
     if (ripple1.current) {
       const p1 = (t * 0.35) % 1;
       const s1 = 1.25 + p1 * 0.9;
@@ -219,13 +296,14 @@ function AcousticPulseRipples() {
  * Precision wire loops representing voice frequencies and real-time turn-taking.
  */
 function HarmonicRibbons() {
+  const timer = useSceneTimer();
   const ring1Ref = useRef<THREE.Group>(null);
   const ring2Ref = useRef<THREE.Group>(null);
   const beaconRef = useRef<THREE.Mesh>(null);
   const beaconPulseRef = useRef<THREE.Mesh>(null);
 
-  useFrame((state) => {
-    const t = state.clock.getElapsedTime();
+  useFrame(() => {
+    const t = timer.getElapsed();
     if (ring1Ref.current) {
       ring1Ref.current.rotation.z = t * 0.08;
       ring1Ref.current.rotation.x = 0.45 + Math.sin(t * 0.05) * 0.06;
@@ -323,14 +401,14 @@ function AcousticOrbGroup() {
 
 function Scene() {
   return (
-    <>
+    <SceneTimerProvider>
       <ambientLight intensity={0.45} />
       {/* Warm key light matching the travertine studio atmosphere */}
       <pointLight position={[4.5, 3.0, 4.0]} intensity={1.2} color="#fff6e5" />
       <pointLight position={[-3.0, -1.5, 2.5]} intensity={0.3} color="#dfc185" />
 
       <AcousticOrbGroup />
-    </>
+    </SceneTimerProvider>
   );
 }
 

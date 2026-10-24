@@ -74,6 +74,8 @@ model Resume {
   mimeType      String
   fileSize      Int
   status        ResumeStatus    @default(PENDING_UPLOAD)
+  analysisFailureCode String?
+  analysisStartedAt   DateTime?
   isActive      Boolean         @default(false)
   uploadedAt    DateTime?
   deletedAt     DateTime?

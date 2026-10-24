@@ -93,8 +93,16 @@ export function registerResumeRoutes(
           code: "RESUME_NOT_READY",
           message: "Finish uploading this resume before analysis.",
         });
-      if (resume.status !== "ANALYZING") {
-        await database.resume.update({ where: { id: resume.id }, data: { status: "ANALYZING" } });
+      // The claim both starts fresh attempts and recovers ANALYZING resumes
+      // whose dispatch went stale, so a crashed analysis is always retryable.
+      // Returning 202 while another dispatcher owns the attempt is accurate:
+      // the state really is ANALYZING, and the winner will persist the result.
+      if (await service.claimForAnalysis(resume)) {
+        observability().event("resume.analysis.claimed", {
+          requestId: request.id,
+          resumeId: resume.id,
+          fromStatus: resume.status,
+        });
         const dispatched = monolith?.dispatchResumeAnalysis(resume.id, resume.userId, request.id);
         if (!dispatched) {
           await queue.enqueue({
