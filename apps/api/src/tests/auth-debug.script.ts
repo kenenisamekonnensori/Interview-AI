@@ -1,10 +1,8 @@
-import { createRequire } from "node:module";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { config } from "dotenv";
+import { PrismaClient } from "../../prisma/generated/client.js";
 
 config({ path: process.cwd() + "/../../.env" });
-const require = createRequire(process.cwd() + "/package.json");
-const { PrismaPg } = require("@prisma/adapter-pg");
-const { PrismaClient } = require("./modules/auth/../../prisma/generated/client");
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,
