@@ -23,10 +23,7 @@ const experienceItemSchema = z
     position: z.string().trim().max(200).nullable().optional(),
     role: z.string().trim().max(200).nullable().optional(),
     highlights: z
-      .union([
-        z.array(z.string().trim().min(1)),
-        z.string().transform((str) => [str.trim()]),
-      ])
+      .union([z.array(z.string().trim().min(1)), z.string().transform((str) => [str.trim()])])
       .optional()
       .default([]),
   })

@@ -99,7 +99,9 @@ export function ProfileOverview() {
       setSaveFeedback("Resume analysis has started. You can continue setting up your profile.");
     },
     onError: (cause) =>
-      setSaveFeedback(cause instanceof Error ? cause.message : "We could not start resume analysis."),
+      setSaveFeedback(
+        cause instanceof Error ? cause.message : "We could not start resume analysis.",
+      ),
   });
 
   const activeResume = resumes.data?.resumes.find(
@@ -304,9 +306,7 @@ export function ProfileOverview() {
                         {resumeAnalysisFailureLabel(activeResume.analysisFailureCode)}
                       </span>
                     ) : (
-                      <span className="text-xs text-muted-foreground">
-                        Ready to analyze
-                      </span>
+                      <span className="text-xs text-muted-foreground">Ready to analyze</span>
                     )}
                   </div>
                 </div>

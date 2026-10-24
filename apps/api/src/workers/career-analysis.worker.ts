@@ -42,7 +42,8 @@ async function markTerminalFailure(job: CareerAnalysisJob, failure: QueueFailure
         ? "AI_CONFIGURATION"
         : failure.code === "DOCUMENT_INVALID"
           ? "DOCUMENT_UNREADABLE"
-          : failure.code === "STORAGE_CONFIGURATION" || failure.code === "STORAGE_VERIFICATION_FAILED"
+          : failure.code === "STORAGE_CONFIGURATION" ||
+              failure.code === "STORAGE_VERIFICATION_FAILED"
             ? "STORAGE_UNAVAILABLE"
             : failure.code === "AI_PROVIDER_REJECTED"
               ? "AI_UNAVAILABLE"

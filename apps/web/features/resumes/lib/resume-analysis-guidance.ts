@@ -75,9 +75,7 @@ export function resumeAnalysisGuidance(resume: Resume): string {
   }
   if (resume.status === "FAILED") {
     const copy = resumeAnalysisFailureCopy(resume.analysisFailureCode);
-    return copy.retryable
-      ? `Resume analysis did not finish: ${copy.message}`
-      : copy.message;
+    return copy.retryable ? `Resume analysis did not finish: ${copy.message}` : copy.message;
   }
   return "This resume has not been analyzed yet. Open your profile and click Analyze resume so the AI can use it to prepare the interview.";
 }

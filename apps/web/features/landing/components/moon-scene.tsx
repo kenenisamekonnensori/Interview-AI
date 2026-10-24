@@ -76,11 +76,7 @@ function SceneTimerProvider({ children }: { children: React.ReactNode }) {
     timer.update();
   }, -1);
 
-  return (
-    <SceneTimerContext.Provider value={timer}>
-      {children}
-    </SceneTimerContext.Provider>
-  );
+  return <SceneTimerContext.Provider value={timer}>{children}</SceneTimerContext.Provider>;
 }
 
 /**
