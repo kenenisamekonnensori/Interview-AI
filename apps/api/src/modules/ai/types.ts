@@ -13,6 +13,7 @@ export type AiInterviewContext = {
   resumeSkills?: string[] | undefined;
   jobRequiredSkills?: string[] | undefined;
   priorWeakAreas?: string[] | undefined;
+  isGeneralIntake?: boolean | undefined;
 };
 
 export type AiConversationMemory = {

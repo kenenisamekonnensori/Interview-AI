@@ -133,6 +133,11 @@ export class ConversationService {
         resumeSkills: resume?.skills,
         jobRequiredSkills: job?.requiredSkills,
         priorWeakAreas: priorWeakAreas.slice(0, 6),
+        isGeneralIntake:
+          !resume &&
+          !job &&
+          (!conversation.interview.targetRole ||
+            conversation.interview.targetRole.toLowerCase().includes("general interview")),
       },
       conversationMemory: {
         coveredTopics: context.coveredTopics,

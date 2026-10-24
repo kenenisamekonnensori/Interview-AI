@@ -70,7 +70,6 @@ export async function createResumeUploadUrl(
   environment: ServerEnvironment,
   key: string,
   mimeType: string,
-  owner: { userId: string; resumeId: string },
 ) {
   const configuration = getR2Configuration(environment);
   const url = await observability().time(
@@ -83,10 +82,6 @@ export async function createResumeUploadUrl(
           Bucket: configuration.bucket,
           Key: key,
           ContentType: mimeType,
-          Metadata: {
-            [resumeOwnerMetadataKey]: owner.userId,
-            [resumeIdMetadataKey]: owner.resumeId,
-          },
         }),
         { expiresIn: PRESIGNED_UPLOAD_TTL_SECONDS },
       ),
@@ -95,8 +90,6 @@ export async function createResumeUploadUrl(
     url,
     headers: {
       "Content-Type": mimeType,
-      "x-amz-meta-owner-user-id": owner.userId,
-      "x-amz-meta-resume-id": owner.resumeId,
     },
     expiresAt: new Date(Date.now() + PRESIGNED_UPLOAD_TTL_SECONDS * 1000),
   };
@@ -134,6 +127,9 @@ export async function assertResumeObjectExists(
   key: string,
   expected: { fileSize: number; mimeType: string; userId: string; id: string },
 ) {
+  if (!key.startsWith(`resumes/${expected.userId}/`)) {
+    throw new ResumeStorageError();
+  }
   const configuration = getR2Configuration(environment);
   try {
     const object = await observability().time(
@@ -145,11 +141,15 @@ export async function assertResumeObjectExists(
         ),
     );
     const metadata = object.Metadata ?? {};
+    const ownerMismatch =
+      metadata[resumeOwnerMetadataKey] && metadata[resumeOwnerMetadataKey] !== expected.userId;
+    const resumeIdMismatch =
+      metadata[resumeIdMetadataKey] && metadata[resumeIdMetadataKey] !== expected.id;
     if (
       object.ContentLength !== expected.fileSize ||
       object.ContentType !== expected.mimeType ||
-      metadata[resumeOwnerMetadataKey] !== expected.userId ||
-      metadata[resumeIdMetadataKey] !== expected.id
+      ownerMismatch ||
+      resumeIdMismatch
     ) {
       throw new ResumeStorageError();
     }

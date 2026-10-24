@@ -2,7 +2,11 @@ import type { PrismaClient } from "../../prisma/generated/client.js";
 import type { ServerEnvironment } from "@interviewer-ai/config";
 import { observability, withCorrelationId } from "./observability.js";
 import type { BillingEventProcessor } from "../modules/billing/billing-event-processor.js";
-import { analyzeResume, markResumeAnalysisFailed } from "./resume-analysis.service.js";
+import {
+  analyzeResume,
+  classifyResumeAnalysisFailure,
+  markResumeAnalysisFailed,
+} from "./resume-analysis.service.js";
 import { analyzeJobDescription, markJobAnalysisFailed } from "./job-analysis.service.js";
 import { planInterview, markInterviewPlanFailed } from "./interview-plan.service.js";
 import type { ReportService } from "../modules/reports/service.js";
@@ -52,7 +56,12 @@ export class MonolithExecutionManager {
             resumeId,
             error: error instanceof Error ? error.message : String(error),
           });
-          await markResumeAnalysisFailed(this.database, resumeId, userId);
+          await markResumeAnalysisFailed(
+            this.database,
+            resumeId,
+            userId,
+            classifyResumeAnalysisFailure(error),
+          );
         }
       });
     });

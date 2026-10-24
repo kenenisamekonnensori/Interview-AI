@@ -71,7 +71,7 @@ export class InterviewService {
               id: configuration.resumeId,
               userId,
               deletedAt: null,
-              status: { in: ["READY", "ANALYZED"] },
+              status: "ANALYZED",
             },
           })
         : null,
@@ -88,8 +88,8 @@ export class InterviewService {
     ]);
     if (configuration.resumeId && !resume)
       throw new InterviewLifecycleError(
-        "RESUME_NOT_FOUND",
-        "Choose a resume you own that is ready to use.",
+        "RESUME_ANALYSIS_REQUIRED",
+        "Analyze the selected resume before using it to prepare a personalized interview.",
       );
     if (configuration.jobDescriptionId && !job)
       throw new InterviewLifecycleError(

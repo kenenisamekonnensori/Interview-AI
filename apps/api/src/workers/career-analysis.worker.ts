@@ -16,7 +16,11 @@ import {
   processQueueJob,
   type QueueFailure,
 } from "../services/queue-worker.js";
-import { analyzeResume, markResumeAnalysisFailed } from "../services/resume-analysis.service.js";
+import {
+  analyzeResume,
+  markResumeAnalysisFailed,
+  type ResumeAnalysisFailureCode,
+} from "../services/resume-analysis.service.js";
 import { analyzeJobDescription, markJobAnalysisFailed } from "../services/job-analysis.service.js";
 import { planInterview, markInterviewPlanFailed } from "../services/interview-plan.service.js";
 import { analyzeUserSkills, markSkillAnalysisFailed } from "../services/skill-analysis.service.js";
@@ -33,7 +37,17 @@ configureObservability(console);
 
 async function markTerminalFailure(job: CareerAnalysisJob, failure: QueueFailure) {
   if (job.kind === "resume") {
-    await markResumeAnalysisFailed(database, job.resumeId, job.userId);
+    const analysisFailureCode: ResumeAnalysisFailureCode =
+      failure.code === "AI_CONFIGURATION"
+        ? "AI_CONFIGURATION"
+        : failure.code === "DOCUMENT_INVALID"
+          ? "DOCUMENT_UNREADABLE"
+          : failure.code === "STORAGE_CONFIGURATION" || failure.code === "STORAGE_VERIFICATION_FAILED"
+            ? "STORAGE_UNAVAILABLE"
+            : failure.code === "AI_PROVIDER_REJECTED"
+              ? "AI_UNAVAILABLE"
+              : "SYSTEM_ERROR";
+    await markResumeAnalysisFailed(database, job.resumeId, job.userId, analysisFailureCode);
   } else if (job.kind === "job-description") {
     await markJobAnalysisFailed(database, job.jobDescriptionId, job.userId);
   } else if (job.kind === "interview-plan") {
