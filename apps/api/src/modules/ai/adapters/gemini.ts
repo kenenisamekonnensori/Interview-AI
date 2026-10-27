@@ -19,6 +19,7 @@ export class GeminiAdapter {
     context,
     timeoutMs,
     maxOutputTokens,
+    maxAttempts,
   }: AiStructuredRequest): Promise<unknown> {
     if (!this.environment.GEMINI_API_KEY)
       return this.fail("CONFIGURATION", "The AI provider is not configured.");
@@ -26,7 +27,11 @@ export class GeminiAdapter {
     return observability().time(
       "ai.provider.call",
       { provider: "gemini", capability: "structured-json", model: this.environment.GEMINI_MODEL },
-      () => withAiRetry(() => this.requestJson(instructions, context, deadline, maxOutputTokens)),
+      () =>
+        withAiRetry(
+          () => this.requestJson(instructions, context, deadline, maxOutputTokens),
+          maxAttempts,
+        ),
     );
   }
 

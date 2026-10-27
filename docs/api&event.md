@@ -60,6 +60,8 @@ Any active conversation state -> CLOSING -> COMPLETED
 
 The greeting is generated before the first listening state, so its operational transition is `GREETING -> SPEAKING -> LISTENING`. A finalized user transcript follows `LISTENING -> TRANSCRIBING -> THINKING`. These state changes are chosen and persisted by the API.
 
+`LISTENING -> SPEAKING` is reserved for exactly one backend-owned behavior: the canned silence re-engagement. When the candidate stays silent after a greeting, question, or follow-up, the Conversation Manager appends a short fixed-template `CLARIFICATION` turn (never a fabricated answer), pre-warms its TTS, and publishes the standard `AIResponseGenerated` event; the client queues it through the normal playback path and the subsequent playback acknowledgement returns the conversation to `LISTENING`. At most two nudges are delivered per listening period; detected speech schedules a longer watchdog, and the candidate's finalized turn cancels it.
+
 ## Implemented interview and conversation endpoints
 
 All endpoints below are under `/api/v1`, require an authenticated verified user, and return the shared DTOs from `@interviewer-ai/types`.
@@ -74,7 +76,7 @@ All endpoints below are under `/api/v1`, require an authenticated verified user,
 | `GET` | `/interviews/:id/state` | — | Returns the authoritative lifecycle state, timestamps, conversation state, and report readiness. |
 | `DELETE` | `/interviews/:id` | — | Cancels only a cancellable interview. |
 | `POST` | `/interviews/:id/voice-token` | — | Returns a short-lived Deepgram browser token. |
-| `POST` | `/interviews/:id/conversation/start` | — | Transitions `READY -> IN_PROGRESS`, creates the conversation, and persists the initial AI greeting. Retries return the existing conversation without creating a second one. |
+| `POST` | `/interviews/:id/conversation/start` | — | Transitions `READY -> IN_PROGRESS` and creates the conversation in `GREETING`, returning immediately; greeting generation is decoupled from the request path and happens through `POST /interviews/:id/conversation/next-response` (the single generation path, so retries never create a second conversation or a duplicate greeting). |
 | `POST` | `/interviews/:id/conversation/next-response` | — | Backend generates and persists an AI turn. When a prior request already persisted the pending turn, retries return that same turn without creating another. |
 | `POST` | `/interviews/:id/conversation/transcripts` | `{ text, metadata? }` | Persists a finalized user transcript and moves the conversation to `THINKING`. |
 | `POST` | `/interviews/:id/conversation/speaking` | — | Publishes an authenticated candidate-speaking event; no audio or interim transcript is persisted. |

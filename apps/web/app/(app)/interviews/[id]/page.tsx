@@ -9,7 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleAlert, Clock3, LoaderCircle, Radio, ShieldCheck, Square, Wifi } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -60,6 +60,10 @@ export default function LiveInterviewPage() {
     onSuccess: () => client.invalidateQueries({ queryKey }),
   });
   const invalidateInterview = () => client.invalidateQueries({ queryKey });
+  // Server-pushed AI turns (e.g. the silence watchdog's canned nudge) are
+  // delivered to the microphone component through this registry, which owns
+  // transcript appending and playback without a second event vocabulary.
+  const serverAiTurnRef = useRef<((turn: { id: string; text: string }) => void) | null>(null);
   // Realtime sync: server-pushed lifecycle and turn events refetch authoritative
   // state immediately (no polling wait), and resync after any reconnect so no
   // state change is missed while the stream was down.
@@ -71,7 +75,10 @@ export default function LiveInterviewPage() {
     {
       InterviewStarted: invalidateInterview,
       TranscriptFinalized: invalidateInterview,
-      AIResponseGenerated: invalidateInterview,
+      AIResponseGenerated: (payload) => {
+        invalidateInterview();
+        serverAiTurnRef.current?.({ id: payload.turn.id, text: payload.turn.text });
+      },
       InterviewCompletionRequested: invalidateInterview,
       InterviewCompleted: invalidateInterview,
       ReportGenerated: invalidateInterview,
@@ -207,6 +214,9 @@ export default function LiveInterviewPage() {
                   onEndInterview={() => end.mutate()}
                   onResponseRecovered={() => client.invalidateQueries({ queryKey })}
                   onInterviewCompleted={() => client.invalidateQueries({ queryKey })}
+                  onServerAiTurn={(handler) => {
+                    serverAiTurnRef.current = handler;
+                  }}
                 />
               </div>
             )}

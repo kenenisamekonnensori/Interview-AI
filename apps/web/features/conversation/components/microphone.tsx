@@ -46,7 +46,7 @@ export type VoiceSessionState =
 export type InterviewMode = "VOICE" | "TEXT";
 
 type DeepgramResult = {
-  channel?: { alternatives?: Array<{ transcript?: string }> };
+  channel?: { alternatives?: Array<{ transcript?: string; confidence?: number }> };
   is_final?: boolean;
 };
 
@@ -199,6 +199,16 @@ const reconnectLimit = 2;
 /** When a final transcript arrives while the interviewer is busy, keep retrying the submit for a bounded time. */
 const pendingFlushMaxAttempts = 10;
 const pendingFlushIntervalMs = 2_000;
+/** No barge-in decision may be made this soon after AI playback starts: the TTS lead-in is the loudest echo spike. */
+const bargeInGraceMs = 1_000;
+/** Barge-in requires Deepgram itself to be confident this is real speech, not noise or leaked echo. */
+const minimumBargeInConfidence = 0.8;
+/** Minimum recognized text for a barge-in decision. */
+const minimumBargeInCharacters = 3;
+/** A noisy ceiling: conspiracy of false positives cannot cancel playback more than this per turn. */
+const maximumBargeInsPerTurn = 3;
+/** After a real barge-in, ignore finals for a moment: the trailing echo of the cancelled audio is already in flight. */
+const echoSuppressionMs = 1_500;
 
 export function InterviewMicrophone({
   interviewId,
@@ -212,6 +222,7 @@ export function InterviewMicrophone({
   restoredConversation,
   interviewLanguage = "en",
   captionsEnabled = true,
+  onServerAiTurn,
 }: {
   interviewId: string;
   disabled?: boolean;
@@ -225,6 +236,18 @@ export function InterviewMicrophone({
   restoredConversation?: LiveConversationSnapshot | null;
   interviewLanguage?: string;
   captionsEnabled?: boolean;
+  /**
+   * Registers a handler for AI turns pushed by the realtime stream (e.g. the
+   * backend silence watchdog's canned re-engagement). The component owns
+   * transcript display and playback for those turns.
+   */
+  /**
+   * The page registers itself here once at mount: it passes a callback that the
+   * microphone may call with `{ id, text }` for every AI turn the server pushes
+   * over SSE (e.g. the backend silence watchdog's canned nudge), so the pushed
+   * turn is played by the exact same request-driven code path.
+   */
+  onServerAiTurn?: (handler: (turn: { id: string; text: string }) => void) => void;
 }) {
   const [state, setState] = useState<VoiceSessionState>("IDLE");
   const [transcript, setTranscript] = useState<string[]>([]);
@@ -255,6 +278,13 @@ export function InterviewMicrophone({
   const reconnectAttemptsRef = useRef(0);
   const finalizingRef = useRef(false);
   const speakingNotifiedRef = useRef(false);
+  /** Start time of the AI playback currently in the SPEAKING state (0 = none). */
+  const playbackStartedAtRef = useRef(0);
+  /** Finalized transcripts are dropped until this instant (trailing echo after a cancel). */
+  const echoSuppressedUntilRef = useRef(0);
+  const bargeInCountRef = useRef(0);
+  /** The text of the last AI turn: the recognizer must never hear this and act on it. */
+  const latestAiTurnTextRef = useRef<string | null>(null);
   const recoveryRef = useRef<AiResponseRecovery | null>(null);
   const displayedAiTurnIdsRef = useRef(new Set<string>());
   const latestAiTurnRef = useRef<string | null>(null);
@@ -268,6 +298,10 @@ export function InterviewMicrophone({
   const responsePendingRef = useRef(false);
 
   const active = state !== "IDLE" && state !== "ERROR";
+
+  /** Current interaction mode for closures that must not resubscribe (SSE bridge). */
+  const modeRef = useRef<InterviewMode>("VOICE");
+  modeRef.current = mode;
 
   function updateState(next: VoiceSessionState) {
     console.log(`[Voice Pipeline] State transition -> ${next}`);
@@ -303,6 +337,27 @@ export function InterviewMicrophone({
 
   useEffect(() => () => cleanupSession(), []);
 
+  // Realtime bridge: AI turns pushed by the server (e.g. the backend silence
+  // watchdog's canned nudge) are appended and played with the exact same code
+  // path as request-driven turns, so there is no second playback model.
+  const onServerAiTurnRef = useRef(onServerAiTurn);
+  onServerAiTurnRef.current = onServerAiTurn;
+  useEffect(() => {
+    onServerAiTurnRef.current?.((turn: { id: string; text: string }) => {
+      if (!sessionStartedRef.current) return; // outside an active session, the page refetch shows the turn
+      if (displayedAiTurnIdsRef.current.has(turn.id)) return; // request-driven path already owns this turn
+      appendAiTranscript(turn);
+      if (modeRef.current === "TEXT") {
+        // Playback is not part of typing mode; acknowledging the turn moves the
+        // conversation back to LISTENING, mirroring the audio path's ack.
+        void acknowledgeTextTurn(turn.id);
+      } else {
+        void playAiTurn(turn.id, sessionRef.current);
+      }
+    });
+    // Registered once at mount; the closure only touches refs and stable setters.
+  }, []);
+
   useEffect(() => {
     if (disabled) stopVoiceTransport();
   }, [disabled]);
@@ -324,6 +379,7 @@ export function InterviewMicrophone({
     );
     const latestAiTurn = [...turns].reverse().find((turn) => turn.speaker === "AI");
     latestAiTurnRef.current = latestAiTurn?.id ?? null;
+    latestAiTurnTextRef.current = latestAiTurn?.text ?? null;
     setShowDiagnostic(false);
     updateMode("TEXT");
     setTypingMode(restoredConversation.state === "LISTENING");
@@ -366,6 +422,12 @@ export function InterviewMicrophone({
     };
   }, [cameraActive]);
 
+  function resetPlaybackGuards() {
+    playbackStartedAtRef.current = 0;
+    echoSuppressedUntilRef.current = 0;
+    bargeInCountRef.current = 0;
+  }
+
   function cleanupSession() {
     sessionRef.current += 1;
     if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
@@ -390,6 +452,7 @@ export function InterviewMicrophone({
     connectionRef.current = null;
     finalizingRef.current = false;
     speakingNotifiedRef.current = false;
+    resetPlaybackGuards();
     updateRecovery(null);
     setTypingMode(false);
     setRestoredSpeakingTurnId(null);
@@ -400,6 +463,7 @@ export function InterviewMicrophone({
 
   function stopVoiceTransport() {
     sessionRef.current += 1;
+    resetPlaybackGuards();
     if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
     reconnectTimerRef.current = null;
     audioQueue.cancelAll();
@@ -719,6 +783,10 @@ export function InterviewMicrophone({
     speakingNotifiedRef.current = true;
     if (stateRef.current === "SPEAKING") {
       console.log("[Voice Pipeline] Candidate barge-in detected. Cancelling AI audio playback.");
+      // A genuine interruption: the cancelled audio's trailing echo is already
+      // in the recognizer pipeline, so finals for the next moment are dropped.
+      echoSuppressedUntilRef.current = Date.now() + echoSuppressionMs;
+      playbackStartedAtRef.current = 0;
       audioQueue.cancelAll();
       updateState("LISTENING");
     }
@@ -728,10 +796,12 @@ export function InterviewMicrophone({
   async function handleTranscript(message: unknown, session: number) {
     if (disabled || session !== sessionRef.current || recoveryRef.current) return;
     const result = message as DeepgramResult;
-    const text = result.channel?.alternatives?.[0]?.transcript?.trim();
+    const alternative = result.channel?.alternatives?.[0];
+    const text = alternative?.transcript?.trim();
     if (!text) return;
     try {
-      await notifySpeaking();
+      // Interim results are captions only: they are low-confidence, arrive for
+      // every syllable, and can never drive a barge-in or state decision.
       if (!result.is_final) {
         setPartialTranscript(text);
         return;
@@ -742,8 +812,35 @@ export function InterviewMicrophone({
       if (currentState === "CLOSING") {
         return;
       }
+      // Trailing echo of the audio just cancelled by a real barge-in is still
+      // in flight; dropping it briefly prevents a cancel-of-the-cancel loop.
+      if (Date.now() < echoSuppressedUntilRef.current) {
+        return;
+      }
+      // The mic hears the interviewer's playback; never act on its transcript.
+      if (isSelfEcho(text, latestAiTurnTextRef.current)) {
+        return;
+      }
+      if (currentState === "SPEAKING") {
+        // Barge-in must be real speech: confident, long enough, outside the
+        // playback grace window, and within a per-turn ceiling so a noisy
+        // microphone cannot spin a cancel loop.
+        const confident = (alternative?.confidence ?? 0) >= minimumBargeInConfidence;
+        const outsideGrace =
+          playbackStartedAtRef.current === 0 ||
+          Date.now() - playbackStartedAtRef.current >= bargeInGraceMs;
+        const allowed =
+          confident &&
+          outsideGrace &&
+          text.length >= minimumBargeInCharacters &&
+          bargeInCountRef.current < maximumBargeInsPerTurn;
+        if (!allowed) {
+          return;
+        }
+        bargeInCountRef.current += 1;
+      }
+      await notifySpeaking();
       if (
-        currentState === "SPEAKING" ||
         currentState === "THINKING" ||
         currentState === "TRANSCRIBING" ||
         finalizingRef.current
@@ -972,6 +1069,7 @@ export function InterviewMicrophone({
 
   function appendAiTranscript(turn: GeneratedTurn["turn"]) {
     latestAiTurnRef.current = turn.id;
+    latestAiTurnTextRef.current = turn.text;
     if (displayedAiTurnIdsRef.current.has(turn.id)) return;
     displayedAiTurnIdsRef.current.add(turn.id);
     setTranscript((turns) => [...turns, `Interviewer: ${turn.text}`]);
@@ -984,6 +1082,11 @@ export function InterviewMicrophone({
       onPlay: () => {
         if (session === sessionRef.current) {
           speakingNotifiedRef.current = false;
+          // A new AI turn starts a fresh barge-in accounting: record exactly
+          // when playback began for the grace window and reset the ceiling.
+          playbackStartedAtRef.current = Date.now();
+          bargeInCountRef.current = 0;
+          echoSuppressedUntilRef.current = 0;
           updateState("SPEAKING");
         }
       },
@@ -1313,6 +1416,32 @@ export function InterviewMicrophone({
       ) : null}
     </div>
   );
+}
+
+/**
+ * Normalizes text into lowercase word tokens for the echo-overlap check.
+ */
+function normalizeWords(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N} ]/gu, "")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/**
+ * Echo defense: the microphone hears the interviewer's own playback through the
+ * speakers, so Deepgram transcribes the AI turn itself. A transcript that is
+ * mostly words from the last AI turn is self-echo — it must never trigger
+ * barge-in or become the candidate's answer.
+ */
+function isSelfEcho(candidate: string, aiTurnText: string | null) {
+  if (!aiTurnText) return false;
+  const candidateWords = normalizeWords(candidate);
+  if (candidateWords.length < 2) return false;
+  const aiWords = new Set(normalizeWords(aiTurnText));
+  const overlap = candidateWords.filter((word) => aiWords.has(word)).length;
+  return overlap / candidateWords.length >= 0.6;
 }
 
 function getAiResponseRecovery(cause: unknown): AiResponseRecovery | null {

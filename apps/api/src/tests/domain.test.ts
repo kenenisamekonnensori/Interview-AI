@@ -20,6 +20,7 @@ import {
   InvalidStateTransitionError,
 } from "../modules/conversation/state-machine.js";
 import { interviewerResponseProposalSchema } from "../modules/ai/output-schema.js";
+import { buildGreetingPrompt } from "@interviewer-ai/prompts";
 import { AiProviderError } from "../modules/ai/errors.js";
 import { withAiRetry } from "../modules/ai/retry.js";
 import { RequestRateLimiter, requestRateLimitPolicy } from "../services/request-rate-limit.js";
@@ -1512,12 +1513,28 @@ test("interview lifecycle accepts only documented transitions", () => {
   );
 });
 
+test("the compact greeting prompt asks for a short spoken opening turn only", () => {
+  const prompt = buildGreetingPrompt({
+    interviewType: "BEHAVIORAL",
+    difficulty: "MEDIUM",
+    targetRole: "Senior Backend Engineer",
+    language: "en",
+  });
+  assert.match(prompt, /GREETING/);
+  assert.match(prompt, /one short opening question/i);
+  // The greeting never needs the assessment machinery: the field is omitted.
+  assert.match(prompt, /"assessment": omit/);
+});
+
 test("conversation lifecycle rejects terminal and skipped states", () => {
   assert.doesNotThrow(() => assertConversationTransition("GREETING", "SPEAKING"));
   assert.doesNotThrow(() => assertConversationTransition("SPEAKING", "LISTENING"));
   assert.doesNotThrow(() => assertConversationTransition("LISTENING", "CLOSING"));
   assert.throws(() => assertConversationTransition("COMPLETED", "LISTENING"));
-  assert.throws(() => assertConversationTransition("LISTENING", "SPEAKING"));
+  // LISTENING -> SPEAKING is the backend-only canned silence nudge: a fixed
+  // re-engagement line appended when the candidate stays silent after a
+  // question. It is an approved machine transition, reserved for that behavior.
+  assert.doesNotThrow(() => assertConversationTransition("LISTENING", "SPEAKING"));
 });
 
 test("AI failure after transcript persistence returns safe recovery while keeping THINKING", () => {
