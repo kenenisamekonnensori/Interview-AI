@@ -297,7 +297,8 @@ export async function connectAgentTransport(
     sendAudio: (chunk: Buffer) => {
       if (socket.readyState === socket.OPEN) socket.send(chunk, { binary: true });
     },
-    injectUserMessage: (content: string) => socket.send(JSON.stringify({ type: "InjectUserMessage", content })),
+    injectUserMessage: (content: string) =>
+      socket.send(JSON.stringify({ type: "InjectUserMessage", content })),
     updateThinkPrompt: (instruction: string, headers?: Record<string, string>) =>
       socket.send(
         JSON.stringify({

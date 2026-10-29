@@ -38,7 +38,10 @@ vi.mock("ws", async () => {
     readyState = 1;
     sentMessages: Array<string | Buffer> = [];
     close = vi.fn();
-    constructor(public url: string, public options?: unknown) {
+    constructor(
+      public url: string,
+      public options?: unknown,
+    ) {
       super();
       captured.sockets.push(this);
     }
@@ -113,10 +116,11 @@ describe("buildAgentSettings", () => {
       ),
     ).toThrowError(/GEMINI_API_KEY/);
     expect(() =>
-      buildAgentSettings(
-        { DEEPGRAM_API_KEY: undefined } as unknown as ServerEnvironment,
-        { language: "en", geminiModel: "m", instruction: "i" },
-      ),
+      buildAgentSettings({ DEEPGRAM_API_KEY: undefined } as unknown as ServerEnvironment, {
+        language: "en",
+        geminiModel: "m",
+        instruction: "i",
+      }),
     ).toThrowError(DeepgramConfigurationError);
   });
 

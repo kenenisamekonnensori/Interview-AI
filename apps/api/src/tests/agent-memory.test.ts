@@ -69,18 +69,22 @@ describe("buildAgentMemoryUpdate", () => {
 
 describe("deriveTopicReference", () => {
   it("maps a question by significant token overlap", () => {
-    expect(deriveTopicReference("How did you design the caching layer eviction?", ["caching strategies"])).toBe(
-      "caching strategies",
-    );
+    expect(
+      deriveTopicReference("How did you design the caching layer eviction?", [
+        "caching strategies",
+      ]),
+    ).toBe("caching strategies");
   });
   it("returns null if no topic tokens match", () => {
-    expect(deriveTopicReference("What did you have for breakfast?", ["caching strategies"])).toBeNull();
+    expect(
+      deriveTopicReference("What did you have for breakfast?", ["caching strategies"]),
+    ).toBeNull();
   });
   it("selects the strongest topic match", () => {
     const topics = ["distributed systems", "caching strategies"];
-    expect(deriveTopicReference("Describe your distributed systems architecture in detail", topics)).toBe(
-      "distributed systems",
-    );
+    expect(
+      deriveTopicReference("Describe your distributed systems architecture in detail", topics),
+    ).toBe("distributed systems");
   });
 });
 
@@ -203,12 +207,14 @@ describe("coerceAgentMemory", () => {
 
 describe("buildAgentMemoryDigest", () => {
   it("contains only bounded memory context for the live think prompt", () => {
-    expect(buildAgentMemoryDigest({
-      ...EMPTY,
-      askedQuestions: ["Q1"],
-      topicCoverage: [{ topic: "caching", outcome: "ASKED" }],
-      weakAreas: ["W1"],
-    })).toEqual({
+    expect(
+      buildAgentMemoryDigest({
+        ...EMPTY,
+        askedQuestions: ["Q1"],
+        topicCoverage: [{ topic: "caching", outcome: "ASKED" }],
+        weakAreas: ["W1"],
+      }),
+    ).toEqual({
       askedQuestions: ["Q1"],
       coveredTopics: ["caching"],
       remainingObjectives: ["Design caching", "Explain trade-offs"],

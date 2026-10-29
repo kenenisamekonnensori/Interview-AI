@@ -570,7 +570,8 @@ export class ConversationService {
     // Agent sessions carry no browser-facing provider token: the gateway talks
     // to Deepgram with the server key on the voice-stream websocket.
     const pipeline = this.environment.VOICE_PIPELINE;
-    const directToken = pipeline === "legacy" ? await tryGrantDeepgramAccessToken(this.environment) : null;
+    const directToken =
+      pipeline === "legacy" ? await tryGrantDeepgramAccessToken(this.environment) : null;
     return {
       pipeline,
       accessToken: directToken ?? undefined,
@@ -641,10 +642,7 @@ export class ConversationService {
  * buffer so the normal cache is populated when the stream ends. The browser
  * starts hearing audio at the first WAV chunk instead of after full synthesis.
  */
-function teeTtsStreamToCache(
-  turnId: string,
-  providerStream: AsyncIterable<Uint8Array>,
-): Readable {
+function teeTtsStreamToCache(turnId: string, providerStream: AsyncIterable<Uint8Array>): Readable {
   const chunks: Buffer[] = [];
   const tee = new PassThrough();
   Readable.from(providerStream)
@@ -658,7 +656,9 @@ function teeTtsStreamToCache(
       tee.push(null);
     })
     .on("error", (cause: unknown) => {
-      tee.destroy(new Error(`TTS stream failed: ${cause instanceof Error ? cause.message : String(cause)}`));
+      tee.destroy(
+        new Error(`TTS stream failed: ${cause instanceof Error ? cause.message : String(cause)}`),
+      );
     });
   return tee;
 }
@@ -671,7 +671,8 @@ function teeTtsStreamToCache(
  */
 function silenceNudgeText(language: string, strike: number): string {
   const first = "Take your time — I'm here whenever you're ready.";
-  const second = "No rush at all. Would you like to pause here, or shall we move to the next question?";
+  const second =
+    "No rush at all. Would you like to pause here, or shall we move to the next question?";
   const byLanguage: Record<string, { 1: string; 2: string }> = {
     en: { 1: first, 2: second },
     es: {

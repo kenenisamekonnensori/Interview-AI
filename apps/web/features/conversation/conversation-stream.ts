@@ -1,18 +1,13 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type {
-  RealtimeEventName,
-  RealtimeEventPayloads,
-} from "@interviewer-ai/types";
+import type { RealtimeEventName, RealtimeEventPayloads } from "@interviewer-ai/types";
 
 import { webEnvironment } from "@/lib/env";
 
 /** Each handler receives the payload for its exact event name, not a union. */
 type StreamHandlers = {
-  [Name in RealtimeEventName as Name]?: (
-    payload: RealtimeEventPayloads[Name],
-  ) => void;
+  [Name in RealtimeEventName as Name]?: (payload: RealtimeEventPayloads[Name]) => void;
 };
 
 /**

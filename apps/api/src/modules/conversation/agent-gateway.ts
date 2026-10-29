@@ -1,10 +1,7 @@
 import type { WebSocket as FastifySocket } from "ws";
 import type { ServerEnvironment } from "@interviewer-ai/config";
 import type { ConversationState, ConversationTurn } from "@interviewer-ai/types";
-import {
-  buildAgentInterviewInstruction,
-  buildAgentOpeningMessage,
-} from "@interviewer-ai/prompts";
+import { buildAgentInterviewInstruction, buildAgentOpeningMessage } from "@interviewer-ai/prompts";
 import { interviewPlanSchema } from "@interviewer-ai/types";
 
 import type { PrismaClient } from "../../../prisma/generated/client.js";
@@ -29,7 +26,10 @@ import { ConversationService } from "./service.js";
 const keepAliveIntervalMs = 5_000;
 
 type GatewayDeps = {
-  log: { error: (payload: unknown, message: string) => void; warn: (payload: unknown, message: string) => void };
+  log: {
+    error: (payload: unknown, message: string) => void;
+    warn: (payload: unknown, message: string) => void;
+  };
   environment: ServerEnvironment;
   database: PrismaClient;
   service: ConversationService;
@@ -98,7 +98,8 @@ class AgentVoiceGateway {
     this.memorySnapshot = coerceAgentMemory(conversation.interview.memory, plan);
     this.latestAgentQuestion =
       conversation.turns.find(
-        (turn) => turn.speaker === "AI" && ["QUESTION", "FOLLOW_UP", "CLARIFICATION"].includes(turn.type),
+        (turn) =>
+          turn.speaker === "AI" && ["QUESTION", "FOLLOW_UP", "CLARIFICATION"].includes(turn.type),
       )?.text ?? "";
 
     // The plan, analyzed resume/job details and recent turns are fetched once
@@ -119,7 +120,8 @@ class AgentVoiceGateway {
     this.resumeSummary = resumeAnalysis?.summary ?? null;
     this.resumeSkills = jsonStringList(resumeAnalysis?.skills, 20);
     this.jobRequiredSkills = jsonStringList(jobAnalysis?.requiredSkills, 20);
-    if (environment.GEMINI_API_KEY) this.thinkHeaders = { "x-goog-api-key": environment.GEMINI_API_KEY };
+    if (environment.GEMINI_API_KEY)
+      this.thinkHeaders = { "x-goog-api-key": environment.GEMINI_API_KEY };
     const history = [...conversation.turns]
       .reverse()
       .filter((turn) => turn.speaker === "USER" || turn.speaker === "AI")
@@ -253,14 +255,18 @@ class AgentVoiceGateway {
     await this.speechStartPromise;
     this.pendingUserText = "";
     try {
-      const result = await this.deps.service.persistFinalTranscript(this.deps.interviewId, this.deps.userId, {
-        text,
-        metadata: {
-          provider: "deepgram-agent",
-          language: this.language,
-          finalizedAt: new Date().toISOString(),
+      const result = await this.deps.service.persistFinalTranscript(
+        this.deps.interviewId,
+        this.deps.userId,
+        {
+          text,
+          metadata: {
+            provider: "deepgram-agent",
+            language: this.language,
+            finalizedAt: new Date().toISOString(),
+          },
         },
-      });
+      );
       this.latestUserAnswer = text;
       this.lastPersistedUserSequence = result.turn.sequence;
       this.sendJson({ type: "user-transcript", text, turn: result.turn });
@@ -270,7 +276,10 @@ class AgentVoiceGateway {
       });
     } catch (error) {
       this.deps.log.warn({ error }, "Agent pipeline: user transcript persistence failed");
-      this.sendJson({ type: "error", message: "Your answer could not be saved. Please retry or switch to text." });
+      this.sendJson({
+        type: "error",
+        message: "Your answer could not be saved. Please retry or switch to text.",
+      });
       this.teardown("Transcript persistence failed.");
     }
   }
@@ -335,8 +344,14 @@ class AgentVoiceGateway {
         return appended;
       });
       if (!turn) {
-        this.deps.log.warn({ interviewId }, "Agent pipeline: turn was not persisted due to state conflict");
-        this.sendJson({ type: "error", message: "The interview state changed; refreshing your session." });
+        this.deps.log.warn(
+          { interviewId },
+          "Agent pipeline: turn was not persisted due to state conflict",
+        );
+        this.sendJson({
+          type: "error",
+          message: "The interview state changed; refreshing your session.",
+        });
         return;
       }
       this.memorySnapshot = nextMemory;
@@ -359,7 +374,10 @@ class AgentVoiceGateway {
         sequence: turn.sequence,
       });
       if (kind === "QUESTION" && answerForAssessment) {
-        this.assessmentPromise = this.assessLatestAnswer(answerForAssessment, questionForAssessment).catch((error) => {
+        this.assessmentPromise = this.assessLatestAnswer(
+          answerForAssessment,
+          questionForAssessment,
+        ).catch((error) => {
           this.deps.log.warn({ error }, "Agent pipeline: post-turn assessment failed");
         });
       } else {
@@ -417,8 +435,11 @@ class AgentVoiceGateway {
     const topic =
       deriveTopicReference(questionText, this.planTopics) ??
       this.planTopics.find((item) =>
-        memory.topicCoverage.some((covered) => covered.topic === item && covered.outcome === "ASKED"),
-      ) ?? null;
+        memory.topicCoverage.some(
+          (covered) => covered.topic === item && covered.outcome === "ASKED",
+        ),
+      ) ??
+      null;
     const assessment = await this.aiProvider.generateStructured(
       {
         instructions: `Evaluate the candidate's answer to one interviewer question against the supplied plan objectives. Return ONLY JSON matching {"answerDepth":"SHALLOW|ADEQUATE|STRONG","followUpNeeded":boolean,"completedObjectives":string[]}. Mark an objective complete only when this answer gives adequate or strong evidence for it. SHALLOW means missing or incorrect evidence, ADEQUATE means relevant but incomplete, STRONG means specific, correct and well-supported. followUpNeeded is true only when an important objective needs another probe. Do not invent candidate claims or add other fields.`,
@@ -448,11 +469,23 @@ class AgentVoiceGateway {
         where: { id: this.conversationId },
         select: { sequence: true, state: true },
       });
-      if (!latest || latest.sequence < candidateAnswerSequence || latest.state === "CLOSING" || latest.state === "COMPLETED") return;
+      if (
+        !latest ||
+        latest.sequence < candidateAnswerSequence ||
+        latest.state === "CLOSING" ||
+        latest.state === "COMPLETED"
+      )
+        return;
       await this.repository.updateMemory(tx, this.deps.interviewId, nextMemory);
     });
     const latest = await this.repository.findActiveOwned(this.deps.interviewId, this.deps.userId);
-    if (!latest || latest.sequence < candidateAnswerSequence || latest.state === "CLOSING" || latest.state === "COMPLETED") return;
+    if (
+      !latest ||
+      latest.sequence < candidateAnswerSequence ||
+      latest.state === "CLOSING" ||
+      latest.state === "COMPLETED"
+    )
+      return;
     this.memorySnapshot = nextMemory;
     await this.refreshThinkContext();
     observability().event("voice.gateway.assessment_saved", {

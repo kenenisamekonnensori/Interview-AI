@@ -26,11 +26,13 @@ export type AgentMemorySnapshot = {
 
 export type AgentTurnKind = "GREETING" | "QUESTION" | "CLOSING";
 
-export const agentAnswerAssessmentSchema = z.object({
-  answerDepth: z.enum(["SHALLOW", "ADEQUATE", "STRONG"]),
-  followUpNeeded: z.boolean(),
-  completedObjectives: z.array(z.string().trim().min(1)).max(20),
-}).strict();
+export const agentAnswerAssessmentSchema = z
+  .object({
+    answerDepth: z.enum(["SHALLOW", "ADEQUATE", "STRONG"]),
+    followUpNeeded: z.boolean(),
+    completedObjectives: z.array(z.string().trim().min(1)).max(20),
+  })
+  .strict();
 export type AgentAnswerAssessment = z.infer<typeof agentAnswerAssessmentSchema>;
 
 /** Turns whose text is a question the interviewer asked (never a greeting/closing). */
@@ -58,7 +60,9 @@ function stringList(values: Prisma.JsonValue | null): string[] {
 
 type AgentCoverageOutcome = "ASKED" | "FOLLOWED_UP" | "COMPLETED";
 
-function coerceCoverage(values: Prisma.JsonValue): Array<{ topic: string; outcome: AgentCoverageOutcome }> {
+function coerceCoverage(
+  values: Prisma.JsonValue,
+): Array<{ topic: string; outcome: AgentCoverageOutcome }> {
   if (!Array.isArray(values)) return [];
   return values.flatMap((item) => {
     if (typeof item !== "object" || item === null) return [];
@@ -215,7 +219,11 @@ export function buildAgentMemoryUpdate({
   return {
     ...memory,
     askedQuestions: uniqueStrings([...memory.askedQuestions, responseText], 12),
-    topicCoverage: mergeAgentCoverage(memory.topicCoverage, deriveTopicReference(responseText, planTopics), "ASKED"),
+    topicCoverage: mergeAgentCoverage(
+      memory.topicCoverage,
+      deriveTopicReference(responseText, planTopics),
+      "ASKED",
+    ),
   };
 }
 
@@ -247,11 +255,7 @@ export function applyAgentAnswerAssessment({
 }): AgentMemorySnapshot {
   const label = topic ?? "the current topic";
   const coverage = topic
-    ? mergeAgentCoverage(
-        memory.topicCoverage,
-        topic,
-        followUpNeeded ? "FOLLOWED_UP" : "COMPLETED",
-      )
+    ? mergeAgentCoverage(memory.topicCoverage, topic, followUpNeeded ? "FOLLOWED_UP" : "COMPLETED")
     : memory.topicCoverage;
   const candidateStrengths =
     answerDepth === "STRONG"
@@ -261,12 +265,11 @@ export function applyAgentAnswerAssessment({
     answerDepth === "SHALLOW"
       ? uniqueStrings([...memory.weakAreas, `Needs deeper evidence on ${label}`], 8)
       : memory.weakAreas;
-  const missedFollowUps =
-    followUpNeeded
-      ? uniqueStrings([...memory.missedFollowUps, `Follow up on ${label}`], 6)
-      : topic
-        ? memory.missedFollowUps.filter((item) => !item.includes(label))
-        : memory.missedFollowUps;
+  const missedFollowUps = followUpNeeded
+    ? uniqueStrings([...memory.missedFollowUps, `Follow up on ${label}`], 6)
+    : topic
+      ? memory.missedFollowUps.filter((item) => !item.includes(label))
+      : memory.missedFollowUps;
   return {
     ...memory,
     topicCoverage: coverage,
@@ -303,8 +306,11 @@ function lowerDifficulty(current: AgentMemorySnapshot["questionDifficulty"]) {
 
 export function hasCoveredAllAgentObjectives(memory: AgentMemorySnapshot, planTopics: string[]) {
   if (memory.remainingObjectives.length > 0) return false;
-  return planTopics.length === 0 || planTopics.every((topic) =>
-    memory.topicCoverage.some((item) => item.topic === topic && item.outcome === "COMPLETED"),
+  return (
+    planTopics.length === 0 ||
+    planTopics.every((topic) =>
+      memory.topicCoverage.some((item) => item.topic === topic && item.outcome === "COMPLETED"),
+    )
   );
 }
 

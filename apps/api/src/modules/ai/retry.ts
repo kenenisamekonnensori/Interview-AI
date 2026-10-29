@@ -7,7 +7,10 @@ const defaultMaxAttempts = 3;
  * tighter attempt budget: a slow greeting hurts the user even when it
  * eventually succeeds, so fewer faster attempts beat more patient ones.
  */
-export async function withAiRetry<T>(operation: () => Promise<T>, maxAttempts = defaultMaxAttempts) {
+export async function withAiRetry<T>(
+  operation: () => Promise<T>,
+  maxAttempts = defaultMaxAttempts,
+) {
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {

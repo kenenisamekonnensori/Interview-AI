@@ -50,12 +50,7 @@ export function registerConversationRoutes(
   eventBus?: RealtimeEventBus,
 ) {
   const events = new ConversationEventPublisher(app.log, eventBus);
-  const service = new ConversationService(
-    database,
-    environment,
-    interviewService,
-    events,
-  );
+  const service = new ConversationService(database, environment, interviewService, events);
 
   app.get(
     "/api/v1/interviews/:id/conversation/turns/:turnId/audio",

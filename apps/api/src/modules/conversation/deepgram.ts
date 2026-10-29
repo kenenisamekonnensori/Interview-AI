@@ -69,7 +69,10 @@ export function ttsModelFor(language: string): string | null {
 
 /** Raised when a voice-provider network segment exceeds its deadline. */
 export class DeepgramDeadlineError extends Error {
-  constructor(readonly segment: string, readonly deadlineMs: number) {
+  constructor(
+    readonly segment: string,
+    readonly deadlineMs: number,
+  ) {
     super(`The voice provider did not respond within ${deadlineMs} ms (${segment}).`);
     this.name = "DeepgramDeadlineError";
   }
@@ -126,10 +129,8 @@ export async function grantDeepgramAccessTokenWithClient(client: DeepgramClient)
       "voice.provider.call",
       { provider: "deepgram", capability: "grant-token" },
       () =>
-        withVoiceDeadline(
-          "grant-token",
-          voiceGrantTokenDeadlineMs,
-          () => client.auth.v1.tokens.grant(),
+        withVoiceDeadline("grant-token", voiceGrantTokenDeadlineMs, () =>
+          client.auth.v1.tokens.grant(),
         ),
     );
     if (!grant.access_token) throw new Error("Token response contained no access token.");
