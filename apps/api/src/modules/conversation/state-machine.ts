@@ -23,7 +23,7 @@ const interviewTransitions: Record<InterviewStatus, readonly InterviewStatus[]> 
 };
 
 const conversationTransitions: Record<ConversationState, readonly ConversationState[]> = {
-  GREETING: ["SPEAKING", "CLOSING"],
+  GREETING: ["SPEAKING", "LISTENING", "CLOSING"],
   // LISTENING -> SPEAKING is the backend-only canned nudge: when the candidate
   // stays silent after a question, the interviewer re-engages with a fixed
   // prompt line (never a fabricated answer), exactly like a human interviewer.

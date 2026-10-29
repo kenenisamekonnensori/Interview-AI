@@ -31,6 +31,7 @@ import {
 } from "@/features/conversation/voice-languages";
 import { VoiceVisualizer } from "./voice-visualizer";
 import { audioQueue } from "./audio-queue";
+import { AgentAudioPlayer, AgentMicCapture } from "../agent-voice";
 import { MicDiagnostic } from "./mic-diagnostic";
 
 export type VoiceSessionState =
@@ -110,7 +111,18 @@ function createBackendVoiceSocket(streamPath: string): LiveConnection {
   ws.onopen = () => {
     handlers["open"]?.forEach((fn) => fn());
   };
+  ws.binaryType = "arraybuffer";
   ws.onmessage = (event) => {
+    if (event.data instanceof ArrayBuffer) {
+      handlers["binary"]?.forEach((fn) => fn(event.data));
+      return;
+    }
+    if (event.data instanceof Blob) {
+      void event.data.arrayBuffer().then((frame) => {
+        handlers["binary"]?.forEach((fn) => fn(frame));
+      });
+      return;
+    }
     try {
       const data = JSON.parse(event.data);
       handlers["message"]?.forEach((fn) => fn(data));
@@ -209,6 +221,10 @@ const minimumBargeInCharacters = 3;
 const maximumBargeInsPerTurn = 3;
 /** After a real barge-in, ignore finals for a moment: the trailing echo of the cancelled audio is already in flight. */
 const echoSuppressionMs = 1_500;
+/** Local VAD while request-driven audio plays: RMS gate (0..1) for candidate speech. */
+const localBargeInRmsThreshold = 0.02;
+/** Consecutive loud capture blocks before a local barge-in is accepted (~250 ms at 4096 samples). */
+const localBargeInFrames = 3;
 
 export function InterviewMicrophone({
   interviewId,
@@ -243,11 +259,11 @@ export function InterviewMicrophone({
    */
   /**
    * The page registers itself here once at mount: it passes a callback that the
-   * microphone may call with `{ id, text }` for every AI turn the server pushes
-   * over SSE (e.g. the backend silence watchdog's canned nudge), so the pushed
-   * turn is played by the exact same request-driven code path.
+   * microphone may call with `{ id, text, type }` for every AI turn the server
+   * pushes over SSE (e.g. the backend silence watchdog's canned nudge), so the
+   * pushed turn is played by the exact same request-driven code path.
    */
-  onServerAiTurn?: (handler: (turn: { id: string; text: string }) => void) => void;
+  onServerAiTurn?: (handler: (turn: { id: string; text: string; type?: string }) => void) => void;
 }) {
   const [state, setState] = useState<VoiceSessionState>("IDLE");
   const [transcript, setTranscript] = useState<string[]>([]);
@@ -288,6 +304,16 @@ export function InterviewMicrophone({
   const recoveryRef = useRef<AiResponseRecovery | null>(null);
   const displayedAiTurnIdsRef = useRef(new Set<string>());
   const latestAiTurnRef = useRef<string | null>(null);
+  /** Agent pipeline (server-owned gateway) state, set per session start. */
+  const agentModeRef = useRef(false);
+  const agentPlayerRef = useRef<AgentAudioPlayer | null>(null);
+  const agentMicRef = useRef<AgentMicCapture | null>(null);
+  const agentAudioDoneRef = useRef(false);
+  const agentAudioTurnIdRef = useRef<string | null>(null);
+  /** Capture pauses while request-driven audio plays so the agent never hears its own voice. */
+  const agentMicMutedRef = useRef(false);
+  /** Consecutive loud capture blocks observed while the capture is muted. */
+  const localBargeInFramesRef = useRef(0);
   const restoredVersionRef = useRef("");
   const stateRef = useRef<VoiceSessionState>("IDLE");
   const sessionStartedRef = useRef(false);
@@ -343,8 +369,12 @@ export function InterviewMicrophone({
   const onServerAiTurnRef = useRef(onServerAiTurn);
   onServerAiTurnRef.current = onServerAiTurn;
   useEffect(() => {
-    onServerAiTurnRef.current?.((turn: { id: string; text: string }) => {
+    onServerAiTurnRef.current?.((turn: { id: string; text: string; type?: string }) => {
       if (!sessionStartedRef.current) return; // outside an active session, the page refetch shows the turn
+      // The agent websocket delivers the gateway's own turns; the canned silence
+      // nudge is the one server-pushed turn it does not own, so it still plays
+      // through the request-driven audio path in agent mode.
+      if (agentModeRef.current && turn.type !== "CLARIFICATION") return;
       if (displayedAiTurnIdsRef.current.has(turn.id)) return; // request-driven path already owns this turn
       appendAiTranscript(turn);
       if (modeRef.current === "TEXT") {
@@ -446,6 +476,15 @@ export function InterviewMicrophone({
     audioQueue.cancelAll();
     recorderRef.current?.stop();
     recorderRef.current = null;
+    agentMicRef.current?.stop();
+    agentMicRef.current = null;
+    agentPlayerRef.current?.dispose();
+    agentPlayerRef.current = null;
+    agentModeRef.current = false;
+    agentAudioDoneRef.current = false;
+    agentAudioTurnIdRef.current = null;
+    agentMicMutedRef.current = false;
+    localBargeInFramesRef.current = 0;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     connectionRef.current?.close();
@@ -469,6 +508,15 @@ export function InterviewMicrophone({
     audioQueue.cancelAll();
     recorderRef.current?.stop();
     recorderRef.current = null;
+    agentMicRef.current?.stop();
+    agentMicRef.current = null;
+    agentPlayerRef.current?.dispose();
+    agentPlayerRef.current = null;
+    agentModeRef.current = false;
+    agentAudioDoneRef.current = false;
+    agentAudioTurnIdRef.current = null;
+    agentMicMutedRef.current = false;
+    localBargeInFramesRef.current = 0;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     connectionRef.current?.close();
@@ -559,14 +607,20 @@ export function InterviewMicrophone({
       const voiceTokenPromise = apiClient<{
         accessToken?: string;
         streamPath?: string;
+        pipeline?: "agent" | "legacy";
       }>(`/api/v1/interviews/${interviewId}/voice-token`, { method: "POST" });
 
       const [conversation, voiceData] = await Promise.all([conversationPromise, voiceTokenPromise]);
       onStarted?.();
+      agentModeRef.current = voiceData.pipeline === "agent";
 
       if (session !== sessionRef.current) return;
 
-      const greetingPromise = resolvePendingAiTurn(conversation);
+      // Agent mode: the agent speaks the greeting over the websocket and the
+      // gateway persists it; the legacy /next-response call would append a
+      // duplicate greeting turn.
+      const greetingPromise =
+        voiceData.pipeline === "agent" ? Promise.resolve(null) : resolvePendingAiTurn(conversation);
 
       // 3. Connect voice transport concurrently with greeting synthesis/resolution
       await connectVoiceWithData(voiceData, session);
@@ -636,6 +690,12 @@ export function InterviewMicrophone({
     return null;
   }
 
+  async function acknowledgeAgentTurn(turnId: string) {
+    if (agentAudioTurnIdRef.current !== turnId) return;
+    agentAudioTurnIdRef.current = null;
+    await acknowledgeTextTurn(turnId);
+  }
+
   async function acknowledgeTextTurn(turnId: string) {
     const ack = await apiClient<{ state?: string }>(
       `/api/v1/interviews/${interviewId}/conversation/turns/${turnId}/playback-completed`,
@@ -676,6 +736,7 @@ export function InterviewMicrophone({
     const voiceData = await apiClient<{
       accessToken?: string;
       streamPath?: string;
+      pipeline?: "agent" | "legacy";
     }>(`/api/v1/interviews/${interviewId}/voice-token`, { method: "POST" });
     await connectVoiceWithData(voiceData, session);
   }
@@ -684,11 +745,16 @@ export function InterviewMicrophone({
     voiceData: {
       accessToken?: string;
       streamPath?: string;
+      pipeline?: "agent" | "legacy";
     },
     session: number,
   ) {
     if (session !== sessionRef.current) return;
     connectionRef.current?.close();
+
+    // The server-owned agent gateway carries no browser-facing provider token;
+    // streaming, transcripts, and playback all run over the backend socket.
+    agentModeRef.current = voiceData.pipeline === "agent";
 
     let connection: LiveConnection;
     if (voiceData.accessToken) {
@@ -737,24 +803,55 @@ export function InterviewMicrophone({
     }
     connectionRef.current = connection;
 
-    if (!recorderRef.current && streamRef.current) {
-      const recorder = new MediaRecorder(streamRef.current, recorderOptions());
-      recorder.ondataavailable = (event) => {
-        if (event.data.size && connectionRef.current) {
-          const conn = connectionRef.current as unknown as {
-            sendMedia?: (blob: Blob) => void;
-            socket?: { send: (blob: Blob) => void };
-          };
-          if (typeof conn.sendMedia === "function") {
-            conn.sendMedia(event.data);
-          } else if (conn.socket?.send) {
-            conn.socket.send(event.data);
-          }
+    if (agentModeRef.current) {
+      const player = agentPlayerRef.current ?? new AgentAudioPlayer();
+      agentPlayerRef.current = player;
+      player.resume();
+      connection.on("binary", (frame: unknown) => {
+        if (session === sessionRef.current && frame instanceof ArrayBuffer) {
+          player.push(frame);
         }
-      };
-      recorder.start(250);
-      recorderRef.current = recorder;
-      console.log("[Voice Pipeline] MediaRecorder active (250ms chunks).");
+      });
+      console.log("[Voice Pipeline] Agent playback sink ready (24 kHz PCM).");
+    }
+
+    if (!recorderRef.current && !agentMicRef.current && streamRef.current) {
+      if (agentModeRef.current) {
+        const capture = new AgentMicCapture(
+          streamRef.current,
+          async (chunk) => {
+            // Drop frames while a request-driven turn is playing (e.g. the canned
+            // silence nudge): the gateway would otherwise transcribe the nudge as
+            // candidate speech.
+            if (agentMicMutedRef.current) return;
+            const conn = connectionRef.current as unknown as {
+              socket?: { send: (data: ArrayBuffer) => void };
+            } | null;
+            conn?.socket?.send(chunk);
+          },
+          (level) => handleLocalAudioLevel(level, session),
+        );
+        agentMicRef.current = capture;
+        console.log("[Voice Pipeline] Agent mic PCM capture active (16 kHz).");
+      } else {
+        const recorder = new MediaRecorder(streamRef.current, recorderOptions());
+        recorder.ondataavailable = (event) => {
+          if (event.data.size && connectionRef.current) {
+            const conn = connectionRef.current as unknown as {
+              sendMedia?: (blob: Blob) => void;
+              socket?: { send: (blob: Blob) => void };
+            };
+            if (typeof conn.sendMedia === "function") {
+              conn.sendMedia(event.data);
+            } else if (conn.socket?.send) {
+              conn.socket.send(event.data);
+            }
+          }
+        };
+        recorder.start(250);
+        recorderRef.current = recorder;
+        console.log("[Voice Pipeline] MediaRecorder active (250ms chunks).");
+      }
     }
     if (stateRef.current !== "SPEAKING" && stateRef.current !== "THINKING") {
       updateState("LISTENING");
@@ -762,7 +859,10 @@ export function InterviewMicrophone({
   }
 
   function scheduleReconnect(session: number) {
-    if (session !== sessionRef.current || state === "IDLE" || state === "ERROR") return;
+    // Connection handlers outlive the render they were registered on: read the
+    // live state, not the state captured when the socket was created.
+    const liveState = stateRef.current;
+    if (session !== sessionRef.current || liveState === "IDLE" || liveState === "ERROR") return;
     if (reconnectAttemptsRef.current >= reconnectLimit) {
       stopVoiceTransport();
       setError("Voice connection was lost.");
@@ -776,6 +876,41 @@ export function InterviewMicrophone({
     reconnectTimerRef.current = window.setTimeout(() => {
       void connectVoice(session).catch(() => scheduleReconnect(session));
     }, 500 * reconnectAttemptsRef.current);
+  }
+
+  /**
+   * While request-driven audio plays the microphone is muted to the gateway, so
+   * the provider cannot detect an interruption: local voice activity is the
+   * only way the candidate can take the floor back during that audio.
+   */
+  function handleLocalAudioLevel(level: number, session: number) {
+    if (!agentMicMutedRef.current) {
+      localBargeInFramesRef.current = 0;
+      return;
+    }
+    if (level < localBargeInRmsThreshold) {
+      localBargeInFramesRef.current = 0;
+      return;
+    }
+    localBargeInFramesRef.current += 1;
+    if (localBargeInFramesRef.current < localBargeInFrames) return;
+    localBargeInFramesRef.current = 0;
+    handleLocalBargeIn(session);
+  }
+
+  function handleLocalBargeIn(session: number) {
+    if (session !== sessionRef.current || !agentMicMutedRef.current) return;
+    console.log("[Voice Pipeline] Local barge-in detected: cancelling server-pushed audio.");
+    agentMicMutedRef.current = false;
+    audioQueue.cancelAll();
+    updateState("LISTENING");
+    const turnId = latestAiTurnRef.current;
+    if (!turnId) return;
+    // The cancelled turn still needs its acknowledgement: the server stays in
+    // SPEAKING until playback-completed returns it to LISTENING.
+    void acknowledgeTextTurn(turnId).catch((cause) => {
+      console.warn("[Voice Pipeline] Barge-in acknowledgement failed.", cause);
+    });
   }
 
   async function notifySpeaking() {
@@ -794,7 +929,95 @@ export function InterviewMicrophone({
   }
 
   async function handleTranscript(message: unknown, session: number) {
-    if (disabled || session !== sessionRef.current || recoveryRef.current) return;
+    if (session !== sessionRef.current) return;
+
+    // Agent pipeline messages (server-owned Deepgram Voice Agent gateway).
+    // Deepgram legacy results carry no "type" field, so these branches are
+    // unreachable on the legacy path.
+    if (message && typeof message === "object" && "type" in message) {
+      const agentMessage = message as {
+        type: string;
+        text?: string;
+        message?: string;
+        state?: string;
+        turn?: { id: string; text: string } | null;
+        turnId?: string;
+      };
+      switch (agentMessage.type) {
+        case "agent-ready":
+          console.log("[Voice Pipeline] Agent gateway ready (SettingsApplied).");
+          agentPlayerRef.current?.resume();
+          return;
+        case "user-speech-started":
+          // The provider detected interruption; the gateway already persists
+          // the server-side state transition, so the client only updates UI.
+          agentPlayerRef.current?.stop();
+          if (stateRef.current === "SPEAKING") updateState("LISTENING");
+          return;
+        case "user-transcript":
+          if (agentMessage.text && !disabled && !recoveryRef.current) {
+            setPartialTranscript("");
+            setTranscript((turns) => [...turns, `You: ${agentMessage.text}`]);
+          }
+          return;
+        case "agent-turn": {
+          const turn = agentMessage.turn;
+          if (!turn || displayedAiTurnIdsRef.current.has(turn.id)) return;
+          agentAudioTurnIdRef.current = turn.id;
+          appendAiTranscript(turn);
+          // The persisted turn's audio starts now: the interviewer is speaking,
+          // so candidate speech from this point is a real interruption.
+          if (agentMessage.state === "SPEAKING") updateState("SPEAKING");
+          if (agentAudioDoneRef.current) {
+            // AgentAudioDone only means the provider has sent all frames. The
+            // client waits for scheduled PCM to finish for UI synchronization;
+            // only then does it acknowledge the turn.
+            await agentPlayerRef.current?.whenIdle();
+            if (session !== sessionRef.current) return;
+            try {
+              await acknowledgeAgentTurn(turn.id);
+            } catch (cause) {
+              console.warn("[Voice Pipeline] Agent turn ack failed; resuming listening.", cause);
+              updateState("LISTENING");
+            }
+            agentAudioDoneRef.current = false;
+          }
+          return;
+        }
+        case "agent-audio-done":
+          agentAudioDoneRef.current = true;
+          if (agentMessage.turnId) agentAudioTurnIdRef.current = agentMessage.turnId;
+          void (async () => {
+            await agentPlayerRef.current?.whenIdle();
+            if (session !== sessionRef.current) return;
+            const turnId = agentAudioTurnIdRef.current;
+            if (!turnId) return;
+            try {
+              await acknowledgeAgentTurn(turnId);
+            } catch (cause) {
+              console.warn("[Voice Pipeline] Agent turn ack failed; resuming listening.", cause);
+              updateState("LISTENING");
+            } finally {
+              agentAudioDoneRef.current = false;
+            }
+          })();
+          return;
+        case "agent-closing":
+          updateState("CLOSING");
+          return;
+        case "error":
+          console.error("[Voice Pipeline] Agent gateway error:", agentMessage.message);
+          setError(agentMessage.message ?? "Voice connection problem.");
+          return;
+        case "warning":
+          console.warn("[Voice Pipeline] Agent gateway warning:", agentMessage.message);
+          return;
+        default:
+          break;
+      }
+    }
+
+    if (disabled || recoveryRef.current) return;
     const result = message as DeepgramResult;
     const alternative = result.channel?.alternatives?.[0];
     const text = alternative?.transcript?.trim();
@@ -840,11 +1063,7 @@ export function InterviewMicrophone({
         bargeInCountRef.current += 1;
       }
       await notifySpeaking();
-      if (
-        currentState === "THINKING" ||
-        currentState === "TRANSCRIBING" ||
-        finalizingRef.current
-      ) {
+      if (currentState === "THINKING" || currentState === "TRANSCRIBING" || finalizingRef.current) {
         // Buffer speech while the interviewer is busy so words are never lost
         bufferPendingAnswer(text);
         return;
@@ -1081,6 +1300,7 @@ export function InterviewMicrophone({
       turnId,
       onPlay: () => {
         if (session === sessionRef.current) {
+          if (agentModeRef.current) agentMicMutedRef.current = true;
           speakingNotifiedRef.current = false;
           // A new AI turn starts a fresh barge-in accounting: record exactly
           // when playback began for the grace window and reset the ceiling.
@@ -1091,6 +1311,7 @@ export function InterviewMicrophone({
         }
       },
       onEnded: (ackState) => {
+        agentMicMutedRef.current = false;
         if (session !== sessionRef.current) return;
         if (ackState === "COMPLETED" || ackState === "COMPLETING") {
           updateState("CLOSING");
@@ -1102,6 +1323,7 @@ export function InterviewMicrophone({
       },
       onError: (err) => {
         console.warn(`[Voice Pipeline] Audio playback failed for turn ${turnId}:`, err);
+        agentMicMutedRef.current = false;
         if (session === sessionRef.current) showPlaybackFallback(turnId);
       },
     });

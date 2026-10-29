@@ -8,6 +8,14 @@ type ApiRequestOptions = Omit<RequestInit, "body" | "headers" | "method"> & {
 };
 
 type ApiErrorBody = Partial<ApiErrorShape>;
+
+/**
+ * Hard deadline for every API call (Phase 0 of the voice-system roadmap). A
+ * request that outruns its deadline becomes a fast, typed failure instead of a
+ * silently pending promise — callers already have fallback paths for errors.
+ * Callers with a legitimate longer wait may pass their own `signal`.
+ */
+const apiRequestDeadlineMs = 20_000;
 type BinaryApiRequestOptions = Omit<RequestInit, "body" | "headers" | "method"> & {
   body: BodyInit;
   contentType: string;
@@ -61,6 +69,8 @@ export async function apiClient<T>(
     credentials: credentials ?? "include",
     headers: requestHeaders,
     method,
+    // Bound the request unless the caller supplied its own deadline signal.
+    signal: options.signal ?? AbortSignal.timeout(apiRequestDeadlineMs),
   };
 
   if (body !== undefined) {

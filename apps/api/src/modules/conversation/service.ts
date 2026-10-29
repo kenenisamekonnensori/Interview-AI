@@ -56,6 +56,12 @@ const silenceNudgeDelayMs = 9_000;
 const speechPendingNudgeDelayMs = 20_000;
 /** A question gets at most two canned nudges; exhausted nudges stop so the session can never loop. */
 const maxSilenceNudgesPerTurn = 2;
+/**
+ * How long the audio route may wait on an in-flight TTS pre-warm before it
+ * falls back to cold synthesis (Phase 0: a pre-warm must never extend the
+ * audio route's wait beyond its own deadline).
+ */
+const preWarmAwaitDeadlineMs = 10_000;
 
 export class ConversationError extends Error {
   constructor(
@@ -412,11 +418,25 @@ export class ConversationService {
     const turn = await this.getAudioTurn(interviewId, turnId, userId);
     const cached = getCachedAudio(turnId);
     if (cached) return { turn, audio: cached, cached: true };
-    // If a pre-warm is still running for this turn, await it instead of
-    // synthesizing a duplicate copy of the same audio.
+    // If a pre-warm is still running for this turn, await it — but only up to
+    // a deadline: the route then falls through to its own cold synthesis so a
+    // stalled pre-warm cannot extend the audio fetch past its deadline.
     const inFlight = awaitPreWarm(turnId);
     if (inFlight) {
-      const audio = await inFlight;
+      const audio = await Promise.race([
+        inFlight,
+        new Promise<undefined>((resolve) => {
+          const timer = setTimeout(() => {
+            observability().event("conversation.audio.prewarm_await_timeout", {
+              interviewId,
+              turnId,
+              deadlineMs: preWarmAwaitDeadlineMs,
+            });
+            resolve(undefined);
+          }, preWarmAwaitDeadlineMs);
+          timer.unref();
+        }),
+      ]);
       if (audio) return { turn, audio, cached: true };
     }
     const stream = await this.synthesizeTurn({
@@ -547,8 +567,12 @@ export class ConversationService {
       );
     markVoiceActive(interviewId);
     const ticket = await this.ticketService.createTicket(interviewId, userId);
-    const directToken = await tryGrantDeepgramAccessToken(this.environment);
+    // Agent sessions carry no browser-facing provider token: the gateway talks
+    // to Deepgram with the server key on the voice-stream websocket.
+    const pipeline = this.environment.VOICE_PIPELINE;
+    const directToken = pipeline === "legacy" ? await tryGrantDeepgramAccessToken(this.environment) : null;
     return {
+      pipeline,
       accessToken: directToken ?? undefined,
       streamTicket: ticket,
       streamPath: `/api/v1/interviews/${interviewId}/conversation/voice-stream?ticket=${ticket}`,

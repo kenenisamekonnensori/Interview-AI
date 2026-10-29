@@ -1,4 +1,9 @@
 export { buildEvaluationPrompt } from "./evaluation.js";
+export {
+  buildAgentInterviewInstruction,
+  buildAgentOpeningMessage,
+  type AgentInterviewInstructionInput,
+} from "./agent.js";
 export { buildFollowUpGuidance } from "./follow-up.js";
 export {
   buildGreetingPrompt,

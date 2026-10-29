@@ -8,7 +8,9 @@ import {
   DeepgramConfigurationError,
   DeepgramTokenGrantError,
   createDeepgramLiveStream,
+  voiceLiveConnectDeadlineMs,
 } from "./deepgram.js";
+import { startAgentVoiceGateway } from "./agent-gateway.js";
 import { ConversationEventPublisher } from "./events.js";
 import {
   conversationInterviewIdSchema,
@@ -47,11 +49,12 @@ export function registerConversationRoutes(
   interviewService: InterviewService,
   eventBus?: RealtimeEventBus,
 ) {
+  const events = new ConversationEventPublisher(app.log, eventBus);
   const service = new ConversationService(
     database,
     environment,
     interviewService,
-    new ConversationEventPublisher(app.log, eventBus),
+    events,
   );
 
   app.get(
@@ -117,6 +120,7 @@ export function registerConversationRoutes(
     async (socket, request) => {
       let isClosed = false;
       let forwardToDeepgram: ((buffer: Buffer) => void) | null = null;
+      let forwardToAgent: ((buffer: Buffer) => void) | null = null;
       const earlyChunks: Buffer[] = [];
 
       socket.on("message", (data: unknown, isBinary: boolean) => {
@@ -124,7 +128,9 @@ export function registerConversationRoutes(
         try {
           if (isBinary || Buffer.isBuffer(data)) {
             const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
-            if (forwardToDeepgram) {
+            if (forwardToAgent) {
+              forwardToAgent(buffer);
+            } else if (forwardToDeepgram) {
               forwardToDeepgram(buffer);
             } else if (earlyChunks.length < 50) {
               earlyChunks.push(buffer);
@@ -173,11 +179,57 @@ export function registerConversationRoutes(
 
       if (isClosed) return;
 
+      // VOICE_PIPELINE=agent: the server owns the whole Deepgram Voice Agent
+      // session (see agent-gateway.ts). Legacy stays the default pipeline.
+      if (environment.VOICE_PIPELINE === "agent") {
+        try {
+          const gateway = await startAgentVoiceGateway({
+            log: app.log,
+            environment,
+            database,
+            service,
+            events,
+            socket,
+            interviewId,
+            userId,
+          });
+          forwardToAgent = (buffer) => gateway.sendClientAudio(buffer);
+          for (const chunk of earlyChunks.splice(0)) forwardToAgent(chunk);
+          socket.on("close", () => {
+            forwardToAgent = null;
+          });
+        } catch (err) {
+          app.log.error({ err }, "Failed to start the agent voice gateway");
+          socket.close(1011, "Voice session initialization failed");
+        }
+        return;
+      }
+
       try {
         const liveStream = await createDeepgramLiveStream(environment, interview.language);
         let isLiveStreamOpen = false;
         const pendingAudioChunks: Buffer[] = [...earlyChunks];
         earlyChunks.length = 0;
+
+        // Phase 0 deadline: if the provider stream never opens, the client must
+        // get a clean failure to retry on, not an open socket in dead air.
+        const connectDeadlineMs = voiceLiveConnectDeadlineMs;
+        const connectTimer = setTimeout(() => {
+          if (isLiveStreamOpen) return;
+          observability().event("voice.provider.deadline_exceeded", {
+            segment: "live-stream-open",
+            deadlineMs: connectDeadlineMs,
+          });
+          try {
+            liveStream.close();
+          } catch {
+            // best-effort teardown; the close event handles the rest
+          }
+          if (socket.readyState === socket.OPEN) {
+            socket.close(1013, "The transcription service did not connect in time. Please retry.");
+          }
+        }, connectDeadlineMs);
+        connectTimer.unref();
 
         const flushChunks = () => {
           while (pendingAudioChunks.length > 0) {
@@ -194,6 +246,7 @@ export function registerConversationRoutes(
 
         liveStream.on("open", () => {
           isLiveStreamOpen = true;
+          clearTimeout(connectTimer);
           if (socket.readyState === socket.OPEN) {
             socket.send(JSON.stringify({ type: "connected", interviewId }));
           }
@@ -215,6 +268,7 @@ export function registerConversationRoutes(
 
         liveStream.on("close", () => {
           isLiveStreamOpen = false;
+          clearTimeout(connectTimer);
           if (socket.readyState === socket.OPEN) {
             socket.close(1000, "Transcription stream closed");
           }

@@ -63,7 +63,9 @@ export default function LiveInterviewPage() {
   // Server-pushed AI turns (e.g. the silence watchdog's canned nudge) are
   // delivered to the microphone component through this registry, which owns
   // transcript appending and playback without a second event vocabulary.
-  const serverAiTurnRef = useRef<((turn: { id: string; text: string }) => void) | null>(null);
+  const serverAiTurnRef = useRef<
+    ((turn: { id: string; text: string; type?: string }) => void) | null
+  >(null);
   // Realtime sync: server-pushed lifecycle and turn events refetch authoritative
   // state immediately (no polling wait), and resync after any reconnect so no
   // state change is missed while the stream was down.
@@ -77,7 +79,11 @@ export default function LiveInterviewPage() {
       TranscriptFinalized: invalidateInterview,
       AIResponseGenerated: (payload) => {
         invalidateInterview();
-        serverAiTurnRef.current?.({ id: payload.turn.id, text: payload.turn.text });
+        serverAiTurnRef.current?.({
+          id: payload.turn.id,
+          text: payload.turn.text,
+          type: payload.turn.type,
+        });
       },
       InterviewCompletionRequested: invalidateInterview,
       InterviewCompleted: invalidateInterview,
@@ -92,6 +98,17 @@ export default function LiveInterviewPage() {
     const timer = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, [data?.interview.startedAt, data?.interview.status]);
+
+  // Phase 0 reconciliation: the SSE stream is push-only, so any dropped event
+  // (reconnect gap, missed lifecycle message) would otherwise leave the UI posing
+  // on stale state until the user acts. While the interview is live, a cheap
+  // periodic refetch (plus the refetch that already runs on every stream open)
+  // self-heals the view against the server's authoritative state.
+  useEffect(() => {
+    if (!streamEnabled) return;
+    const probe = window.setInterval(() => client.invalidateQueries({ queryKey }), 20_000);
+    return () => window.clearInterval(probe);
+  }, [streamEnabled, client, queryKey]);
 
   if (isPending) return <PageMessage message="Loading your interview…" loading />;
   if (error || !data)

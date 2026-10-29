@@ -12,6 +12,14 @@ export type AudioQueueItem = {
   onError?: (error: Error) => void;
 };
 
+/**
+ * Per-item deadline for the audio fetch (Phase 0 of the voice-system roadmap):
+ * the fetch spans the network round-trip AND the whole audio body read, so a
+ * stalled server response must fail into the item's onError path (text-mode
+ * fallback) instead of a hung `isPlaying` flag blocking every later turn.
+ */
+const audioFetchDeadlineMs = 15_000;
+
 class AudioPlaybackQueue {
   private queue: AudioQueueItem[] = [];
   private isPlaying = false;
@@ -95,7 +103,7 @@ class AudioPlaybackQueue {
 
       const response = await fetch(
         `${webEnvironment.NEXT_PUBLIC_API_URL}/api/v1/interviews/${item.interviewId}/conversation/turns/${item.turnId}/audio`,
-        { credentials: "include" },
+        { credentials: "include", signal: AbortSignal.timeout(audioFetchDeadlineMs) },
       );
 
       if (!response.ok) {
