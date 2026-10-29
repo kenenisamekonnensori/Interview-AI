@@ -31,6 +31,12 @@ export type GenerateInterviewerResponseInput = {
   latestCandidateAnswer: string | null;
   /** Real-time turns must fail fast instead of stalling the session. */
   timeoutMs?: number;
+  /**
+   * First-turn greeting: a compact prompt, small output budget, and tighter
+   * attempt count, since every extra second is dead air before the interview
+   * even starts.
+   */
+  greetingOnly?: boolean;
 };
 
 export type InterviewerResponseProposal = {
@@ -49,4 +55,5 @@ export type AiStructuredRequest = {
   context: unknown;
   timeoutMs?: number;
   maxOutputTokens?: number;
+  maxAttempts?: number;
 };

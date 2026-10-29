@@ -2,6 +2,18 @@ import { DeepgramClient } from "@deepgram/sdk";
 import type { ServerEnvironment } from "@interviewer-ai/config";
 import { observability } from "../../services/observability.js";
 
+/**
+ * Deadline boundaries for voice-provider network segments (Phase 0 of the
+ * voice-system roadmap). A session step must NEVER exceed its deadline: a
+ * provider that never answers has to become a fast, observable failure that
+ * the caller degrades on, not minutes of silent waiting.
+ */
+export const voiceGrantTokenDeadlineMs = 5_000;
+export const voiceLiveConnectDeadlineMs = 8_000;
+export const voiceTtsGenerateDeadlineMs = 6_000;
+/** No TTS audio chunk for this long = the stream stalled. */
+export const voiceTtsChunkIdleDeadlineMs = 6_000;
+
 export class DeepgramConfigurationError extends Error {
   constructor() {
     super("DEEPGRAM_API_KEY is not configured.");
@@ -55,6 +67,51 @@ export function ttsModelFor(language: string): string | null {
   return isSupportedVoiceLanguage(language) ? ttsModelByLanguage[language] : null;
 }
 
+/** Raised when a voice-provider network segment exceeds its deadline. */
+export class DeepgramDeadlineError extends Error {
+  constructor(
+    readonly segment: string,
+    readonly deadlineMs: number,
+  ) {
+    super(`The voice provider did not respond within ${deadlineMs} ms (${segment}).`);
+    this.name = "DeepgramDeadlineError";
+  }
+}
+
+function noteDeadlineExceeded(segment: string, deadlineMs: number, cause?: unknown) {
+  observability().event("voice.provider.deadline_exceeded", {
+    segment,
+    deadlineMs,
+    reason: cause instanceof Error ? cause.message : undefined,
+  });
+}
+
+/**
+ * Races the operation against a hard deadline. The Deepgram SDK does not accept
+ * abort signals on these calls, so the underlying request may complete later;
+ * the CALLER still stops waiting at the deadline, which is the guarantee Phase 0
+ * requires: no session step can hang on a provider segment.
+ */
+export async function withVoiceDeadline<T>(
+  segment: string,
+  deadlineMs: number,
+  operation: () => Promise<T>,
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      noteDeadlineExceeded(segment, deadlineMs);
+      reject(new DeepgramDeadlineError(segment, deadlineMs));
+    }, deadlineMs);
+    timer.unref();
+  });
+  try {
+    return await Promise.race([operation(), deadline]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function grantDeepgramAccessToken(environment: ServerEnvironment) {
   if (!environment.DEEPGRAM_API_KEY) throw new DeepgramConfigurationError();
   const client = new DeepgramClient({ apiKey: environment.DEEPGRAM_API_KEY });
@@ -71,7 +128,10 @@ export async function grantDeepgramAccessTokenWithClient(client: DeepgramClient)
     const grant = await observability().time(
       "voice.provider.call",
       { provider: "deepgram", capability: "grant-token" },
-      () => client.auth.v1.tokens.grant(),
+      () =>
+        withVoiceDeadline("grant-token", voiceGrantTokenDeadlineMs, () =>
+          client.auth.v1.tokens.grant(),
+        ),
     );
     if (!grant.access_token) throw new Error("Token response contained no access token.");
     return grant.access_token;
@@ -108,6 +168,10 @@ export async function createDeepgramLiveStream(
 ) {
   if (!environment.DEEPGRAM_API_KEY) throw new DeepgramConfigurationError();
   const client = new DeepgramClient({ apiKey: environment.DEEPGRAM_API_KEY });
+  // The returned connection object itself is created synchronously; its
+  // rest-open must still be bounded. The bridge listens for "open" and for a
+  // connect deadline injected through this metadata (see controller), so a
+  // never-opening stream degrades fast instead of stranding the client socket.
   return client.listen.v1.connect({
     model: "nova-3",
     language,
@@ -129,23 +193,49 @@ export async function synthesizeSpeech(
     "voice.provider.call",
     { provider: "deepgram", capability: "text-to-speech", model },
     () =>
-      client.speak.v1.audio.generate({
-        text,
-        model,
-        encoding: "linear16",
-        container: "wav",
-      }),
+      withVoiceDeadline("text-to-speech", voiceTtsGenerateDeadlineMs, () =>
+        client.speak.v1.audio.generate({
+          text,
+          model,
+          encoding: "linear16",
+          container: "wav",
+        }),
+      ),
   );
   const stream = response.stream();
   if (!stream) throw new DeepgramAudioUnavailableError();
   return stream;
 }
 
-/** Buffers a synthesized audio stream into a single Buffer for caching. */
-export async function bufferAudioStream(stream: AsyncIterable<Uint8Array>): Promise<Buffer> {
+/**
+ * Buffers a synthesized audio stream into a single Buffer with an idle
+ * deadline: synthesis legitimately takes as long as the audio lasts, but
+ * progress must be — if no chunk arrives within the idle window the stream
+ * is declared stalled and the caller degrades fast.
+ */
+export async function bufferAudioStream(
+  stream: AsyncIterable<Uint8Array>,
+  idleDeadlineMs: number = voiceTtsChunkIdleDeadlineMs,
+): Promise<Buffer> {
   const chunks: Buffer[] = [];
-  for await (const chunk of stream) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  const iterator = stream[Symbol.asyncIterator]();
+  for (;;) {
+    let timer: NodeJS.Timeout | undefined;
+    const idle = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        noteDeadlineExceeded("tts-stream-idle", idleDeadlineMs);
+        reject(new DeepgramDeadlineError("tts-stream-idle", idleDeadlineMs));
+      }, idleDeadlineMs);
+      timer.unref();
+    });
+    let next;
+    try {
+      next = await Promise.race([iterator.next(), idle]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (next.done) break;
+    chunks.push(Buffer.isBuffer(next.value) ? next.value : Buffer.from(next.value));
   }
   return Buffer.concat(chunks);
 }

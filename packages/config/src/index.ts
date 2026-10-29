@@ -33,6 +33,13 @@ export const serverEnvironmentSchema = z
     BETTER_AUTH_URL: z.url(),
     DATABASE_URL: z.url(),
     DEEPGRAM_API_KEY: optionalEnvironmentString,
+    /**
+     * Phase 1 of the voice-system roadmap: the realtime voice pipeline choice.
+     * `legacy` is the client-orchestrated browser-to-Deepgram pipeline;
+     * `agent` routes the session through our server-owned Deepgram Voice Agent
+     * gateway. Legacy stays the default until agent-mode meets its SLOs.
+     */
+    VOICE_PIPELINE: z.enum(["agent", "legacy"]).default("legacy"),
     EMAIL_FROM: z.string().min(1),
     GITHUB_CLIENT_ID: optionalEnvironmentString,
     GITHUB_CLIENT_SECRET: optionalEnvironmentString,

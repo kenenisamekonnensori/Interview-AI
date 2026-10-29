@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { RealtimeEvent, RealtimeEventName } from "@interviewer-ai/types";
+import type { RealtimeEventName, RealtimeEventPayloads } from "@interviewer-ai/types";
 
 import { webEnvironment } from "@/lib/env";
 
-type EventPayload = RealtimeEvent["payload"];
-type StreamHandlers = Partial<Record<RealtimeEventName, (payload: EventPayload) => void>>;
+/** Each handler receives the payload for its exact event name, not a union. */
+type StreamHandlers = {
+  [Name in RealtimeEventName as Name]?: (payload: RealtimeEventPayloads[Name]) => void;
+};
 
 /**
  * Subscribes to the interview's realtime event stream (SSE) and dispatches

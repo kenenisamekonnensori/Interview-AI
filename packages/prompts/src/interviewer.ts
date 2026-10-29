@@ -65,3 +65,34 @@ function languageName(language: string) {
   };
   return names[language] ?? language;
 }
+
+/**
+ * Compact prompt for the first greeting turn only. The full interviewer
+ * machinery (assessment fields, memory, topic selection) is unnecessary for a
+ * two-sentence welcome, and every extra token is dead time the candidate hears
+ * as silence before the interview starts.
+ */
+export function buildGreetingPrompt(input: InterviewerPromptInput) {
+  const isGeneral =
+    input.isGeneralIntake ||
+    !input.targetRole ||
+    input.targetRole.toLowerCase().includes("general interview");
+
+  const sessionPreamble = isGeneral
+    ? `You are a warm, experienced senior interviewer opening a conversational, get-to-know-you intake interview.`
+    : `You are an expert, human senior interviewer opening a live ${input.interviewType.toLowerCase().replaceAll("_", " ")} interview for a ${input.targetRole} role.`;
+
+  return `${sessionPreamble}
+Respond in ${languageName(input.language)} only.
+Welcome the candidate, briefly say what the next 2-3 minutes will cover (or introduce yourself for a general intake), and ask ONE short opening question so the candidate can start talking.
+Keep it to two or three short sentences — this is spoken aloud, so warm and concise beat thorough.
+${safetyPrivacyPrompt}
+Return a valid JSON object ONLY containing:
+- "responseText": string (your spoken greeting, ending with the opening question)
+- "responseType": "GREETING"
+- "recommendedAction": "ASK_QUESTION"
+- "topicReference": omit
+- "objectiveReference": omit
+- "suggestedNextConversationState": "SPEAKING"
+- "assessment": omit`;
+}

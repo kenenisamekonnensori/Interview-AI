@@ -60,6 +60,8 @@ Any active conversation state -> CLOSING -> COMPLETED
 
 The greeting is generated before the first listening state, so its operational transition is `GREETING -> SPEAKING -> LISTENING`. A finalized user transcript follows `LISTENING -> TRANSCRIBING -> THINKING`. These state changes are chosen and persisted by the API.
 
+`LISTENING -> SPEAKING` is reserved for exactly one backend-owned behavior: the canned silence re-engagement. When the candidate stays silent after a greeting, question, or follow-up, the Conversation Manager appends a short fixed-template `CLARIFICATION` turn (never a fabricated answer), pre-warms its TTS, and publishes the standard `AIResponseGenerated` event; the client queues it through the normal playback path and the subsequent playback acknowledgement returns the conversation to `LISTENING`. At most two nudges are delivered per listening period; detected speech schedules a longer watchdog, and the candidate's finalized turn cancels it.
+
 ## Implemented interview and conversation endpoints
 
 All endpoints below are under `/api/v1`, require an authenticated verified user, and return the shared DTOs from `@interviewer-ai/types`.
@@ -74,7 +76,7 @@ All endpoints below are under `/api/v1`, require an authenticated verified user,
 | `GET` | `/interviews/:id/state` | — | Returns the authoritative lifecycle state, timestamps, conversation state, and report readiness. |
 | `DELETE` | `/interviews/:id` | — | Cancels only a cancellable interview. |
 | `POST` | `/interviews/:id/voice-token` | — | Returns a short-lived Deepgram browser token. |
-| `POST` | `/interviews/:id/conversation/start` | — | Transitions `READY -> IN_PROGRESS`, creates the conversation, and persists the initial AI greeting. Retries return the existing conversation without creating a second one. |
+| `POST` | `/interviews/:id/conversation/start` | — | Transitions `READY -> IN_PROGRESS` and creates the conversation in `GREETING`, returning immediately; greeting generation is decoupled from the request path and happens through `POST /interviews/:id/conversation/next-response` (the single generation path, so retries never create a second conversation or a duplicate greeting). |
 | `POST` | `/interviews/:id/conversation/next-response` | — | Backend generates and persists an AI turn. When a prior request already persisted the pending turn, retries return that same turn without creating another. |
 | `POST` | `/interviews/:id/conversation/transcripts` | `{ text, metadata? }` | Persists a finalized user transcript and moves the conversation to `THINKING`. |
 | `POST` | `/interviews/:id/conversation/speaking` | — | Publishes an authenticated candidate-speaking event; no audio or interim transcript is persisted. |
@@ -119,6 +121,16 @@ Examples:
 * InterviewCompleted
 
 Events should never contain business logic—they only communicate state changes.
+
+### Agent voice pipeline (server-owned gateway)
+
+`VOICE_PIPELINE` selects the realtime voice pipeline per deployment: `legacy` (default) is the direct browser-to-Deepgram transport described above; `agent` routes each voice session through the server-owned Deepgram Voice Agent gateway:
+
+* `POST /interviews/:id/voice-token` returns `{ pipeline }` so the client knows which transport to use. In agent mode it carries no browser token — the gateway authenticates to Deepgram with the server key.
+* The client opens the existing voice-stream websocket with its ticket; binary mic frames (linear16 16 kHz PCM) are forwarded to the agent session.
+* The gateway persists both sides of the conversation through the append-turn transaction (candidate statements on `AgentThinking`, interviewer utterances on `AgentAudioDone`), updates the interview memory via the agent-path adapter in `agent-memory.ts` (asked questions, token-mapped topic coverage, closing statements), and publishes the same typed events (`TranscriptFinalized`, `AIResponseGenerated`, `UserSpeechStarted`). A close-classified utterance persists as a `CLOSING` turn; the existing playback acknowledgement then completes the interview, exactly like the legacy path.
+* Client messages over the voice-stream socket: `{ type: "agent-ready" }`, `{ type: "user-speech-started" }`, `{ type: "user-transcript", text }`, `{ type: "agent-turn", turn, state }` (media already streamed to the client; the ack path is the same playback-completed acknowledgement), `{ type: "agent-audio-done" }`, `{ type: "warning" | "error", message }`, plus binary linear16 24 kHz PCM frames of the interviewer's speech.
+* Deliberately not in the Phase 1 skeleton: persisted turn audio for replay (live streaming only); the agent lane carries no per-turn assessment payload, so strengths/weak-areas/difficulty are passed through from existing memory rather than re-derived by the gateway.
 
 The client obtains a short-lived Deepgram token from `POST /api/v1/interviews/:id/voice-token`. It sends raw audio directly to Deepgram and sends only the finalized, validated transcript text to the API as a conversation turn. Raw audio is neither proxied through nor persisted by the API by default.
 

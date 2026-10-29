@@ -1,3 +1,5 @@
+import { PassThrough, Readable } from "node:stream";
+
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 import type { ServerEnvironment } from "@interviewer-ai/config";
 import type {
@@ -42,6 +44,24 @@ import { observability } from "../../services/observability.js";
  * control back to the client (which can retry) rather than freeze the session.
  */
 const interviewerTurnTimeoutMs = 20_000;
+/**
+ * First-turn budget: the greeting blocks nothing (it is generated through
+ * next-response), but the candidate is sitting in dead air until it plays, so
+ * fail sooner and let the retry path show something instead of silence.
+ */
+const greetingTurnTimeoutMs = 8_000;
+/** Idle time in LISTENING before the interviewer re-engages, like a human interviewer would. */
+const silenceNudgeDelayMs = 9_000;
+/** Speech was detected but not finalized; allow longer before treating it as silence. */
+const speechPendingNudgeDelayMs = 20_000;
+/** A question gets at most two canned nudges; exhausted nudges stop so the session can never loop. */
+const maxSilenceNudgesPerTurn = 2;
+/**
+ * How long the audio route may wait on an in-flight TTS pre-warm before it
+ * falls back to cold synthesis (Phase 0: a pre-warm must never extend the
+ * audio route's wait beyond its own deadline).
+ */
+const preWarmAwaitDeadlineMs = 10_000;
 
 export class ConversationError extends Error {
   constructor(
@@ -58,6 +78,10 @@ export class ConversationService {
   readonly ticketService: VoiceTicketService;
   private readonly interviewTools: InterviewTools;
   private readonly aiProvider: AiProvider;
+  /** Backend-owned turn taking: one cancellable silence watchdog per conversation. */
+  private readonly silenceWatchdogs = new Map<string, NodeJS.Timeout>();
+  /** Canned nudges delivered since the last fresh question, per conversation. */
+  private readonly silenceStrikes = new Map<string, number>();
 
   constructor(
     private readonly database: PrismaClient,
@@ -73,20 +97,16 @@ export class ConversationService {
 
   async start(interviewId: string, userId: string) {
     const started = await this.interviewService.start(interviewId, userId);
-    let greeting: ConversationResult | null = null;
-    if (started.conversation.state === "GREETING") {
-      try {
-        greeting = await this.generateResponse(interviewId, userId);
-      } catch (error) {
-        if (!(error instanceof ConversationError) || error.code !== "CONVERSATION_STATE_CONFLICT") {
-          throw error;
-        }
-      }
-    }
+    // Greeting generation is decoupled from the request path: the LLM turn can
+    // legitimately take seconds (bounded retries), and holding /start until it
+    // finished froze the first spoken word behind the whole connect chain.
+    // The client resolves a missing greeting via POST /conversation/next-response
+    // — the single generation path, guarded against duplicates by the
+    // append-turn transaction.
     const conversation = await this.repository.findOwnedConversation(interviewId, userId);
     if (!conversation)
       throw new ConversationError("CONVERSATION_NOT_FOUND", "Conversation not found.");
-    return { conversation, greeting, started: started.started };
+    return { conversation, greeting: null, started: started.started };
   }
 
   async generateResponse(interviewId: string, userId: string): Promise<ConversationResult> {
@@ -107,49 +127,61 @@ export class ConversationService {
     const plan = toPlan(conversation.interview.plan);
     const context = buildSessionContext(conversation, plan);
     const actor = { userId };
-    const [resume, job, memory, selectedTopic, priorWeakAreas] = await Promise.all([
-      this.interviewTools.retrieveResumeAnalysis(actor, { interviewId }),
-      this.interviewTools.retrieveJobAnalysis(actor, { interviewId }),
-      this.interviewTools.retrieveMemory(actor, { interviewId }),
-      this.interviewTools.identifyNextPlannedTopic(actor, { interviewId }),
-      this.interviewTools.retrievePriorWeakAreas(actor, { interviewId }),
-    ]);
+    // The greeting needs none of the candidate-context retrievals: it is spoken
+    // before any answer exists, and skipping five DB lookups shaves real
+    // milliseconds off the first word.
+    const isGreetingTurn = conversation.state === "GREETING";
+    const [resume, job, memory, selectedTopic, priorWeakAreas] = isGreetingTurn
+      ? [null, null, null, null, [] as string[]]
+      : await Promise.all([
+          this.interviewTools.retrieveResumeAnalysis(actor, { interviewId }),
+          this.interviewTools.retrieveJobAnalysis(actor, { interviewId }),
+          this.interviewTools.retrieveMemory(actor, { interviewId }),
+          this.interviewTools.identifyNextPlannedTopic(actor, { interviewId }),
+          this.interviewTools.retrievePriorWeakAreas(actor, { interviewId }),
+        ]);
     const shouldClose = hasReachedPlanObjectives(plan, context);
     const latestUserAnswer =
       [...conversation.turns].reverse().find((turn) => turn.speaker === "USER")?.text ?? null;
-    const response = await this.aiProvider.generateInterviewerResponse({
-      interviewContext: {
-        interviewType: conversation.interview.interviewType,
-        difficulty: conversation.interview.difficulty,
-        targetRole: conversation.interview.targetRole,
-        language: conversation.interview.language,
-        objectives: plan.objectives,
-        topics: plan.topics.map((topic) => topic.topic),
-        durationRemainingSeconds: context.durationRemainingSeconds,
-        selectedTopic: selectedTopic
-          ? { topic: selectedTopic.topic, priority: selectedTopic.priority }
-          : undefined,
-        resumeSummary: resume?.summary,
-        resumeSkills: resume?.skills,
-        jobRequiredSkills: job?.requiredSkills,
-        priorWeakAreas: priorWeakAreas.slice(0, 6),
-        isGeneralIntake:
-          !resume &&
-          !job &&
-          (!conversation.interview.targetRole ||
-            conversation.interview.targetRole.toLowerCase().includes("general interview")),
-      },
-      conversationMemory: {
-        coveredTopics: context.coveredTopics,
-        questionCount: context.questionCount,
-        recentTurns: context.recentTurns,
-        unresolvedFollowUps: context.unresolvedFollowUps,
-        askedQuestions: memory?.askedQuestions ?? [],
-        questionDifficulty: memory?.questionDifficulty ?? conversation.interview.difficulty,
-      },
-      latestCandidateAnswer: latestUserAnswer,
-      timeoutMs: interviewerTurnTimeoutMs,
-    });
+    const response = await observability().time(
+      "conversation.turn.generation",
+      { interviewId, state: conversation.state },
+      () =>
+        this.aiProvider.generateInterviewerResponse({
+          interviewContext: {
+            interviewType: conversation.interview.interviewType,
+            difficulty: conversation.interview.difficulty,
+            targetRole: conversation.interview.targetRole,
+            language: conversation.interview.language,
+            objectives: plan.objectives,
+            topics: plan.topics.map((topic) => topic.topic),
+            durationRemainingSeconds: context.durationRemainingSeconds,
+            selectedTopic: selectedTopic
+              ? { topic: selectedTopic.topic, priority: selectedTopic.priority }
+              : undefined,
+            resumeSummary: resume?.summary,
+            resumeSkills: resume?.skills,
+            jobRequiredSkills: job?.requiredSkills,
+            priorWeakAreas: priorWeakAreas.slice(0, 6),
+            isGeneralIntake:
+              !resume &&
+              !job &&
+              (!conversation.interview.targetRole ||
+                conversation.interview.targetRole.toLowerCase().includes("general interview")),
+          },
+          conversationMemory: {
+            coveredTopics: context.coveredTopics,
+            questionCount: context.questionCount,
+            recentTurns: context.recentTurns,
+            unresolvedFollowUps: context.unresolvedFollowUps,
+            askedQuestions: memory?.askedQuestions ?? [],
+            questionDifficulty: memory?.questionDifficulty ?? conversation.interview.difficulty,
+          },
+          latestCandidateAnswer: latestUserAnswer,
+          timeoutMs: isGreetingTurn ? greetingTurnTimeoutMs : interviewerTurnTimeoutMs,
+          greetingOnly: isGreetingTurn,
+        }),
+    );
     const allowClosing =
       shouldClose ||
       context.durationRemainingSeconds <= 120 ||
@@ -220,6 +252,9 @@ export class ConversationService {
         "The conversation changed while the response was generated. Retry the request.",
       );
     }
+    // A freshly generated question opens a new candidate-turn cycle: the
+    // silence-nudge budget resets for that listening period.
+    this.silenceStrikes.delete(conversation.id);
     const result = { turn: asTurnRecord(turn), state: nextState, replayed: false };
     this.events.publish({
       name: "AIResponseGenerated",
@@ -264,6 +299,9 @@ export class ConversationService {
         "CONVERSATION_STATE_CONFLICT",
         "The transcript was already handled by another request. Refresh the conversation state.",
       );
+    // The candidate answered: no more nudges for this period.
+    this.clearSilenceWatchdog(conversation.id);
+    this.silenceStrikes.delete(conversation.id);
     const result = { turn: asTurnRecord(turn), state: "THINKING" as const };
     this.events.publish({
       name: "TranscriptFinalized",
@@ -292,6 +330,10 @@ export class ConversationService {
         }),
       );
     }
+    // Speech was detected: cancel the pending nudge, but keep watching — a
+    // false start (mouth open, no words) should still re-engage eventually.
+    this.clearSilenceWatchdog(conversation.id);
+    this.armSilenceWatchdog(conversation.id, interviewId, userId, speechPendingNudgeDelayMs);
     this.events.publish({
       name: "UserSpeechStarted",
       payload: {
@@ -308,12 +350,21 @@ export class ConversationService {
     if (!turn || turn.speaker !== "AI")
       throw new ConversationError("AI_TURN_NOT_FOUND", "AI turn not found.");
     if (turn.type === "CLOSING") {
+      this.clearSilenceWatchdog(turn.conversationId);
+      this.silenceStrikes.delete(turn.conversationId);
       const interview = await this.interviewService.requestCompletion(interviewId, userId);
       return { state: interview.status };
     }
     if (turn.conversation.interview.status !== "IN_PROGRESS")
       throw new ConversationError("CONVERSATION_NOT_ACTIVE", "The interview is no longer active.");
-    if (turn.conversation.state === "LISTENING") return { state: "LISTENING" as const };
+    if (turn.conversation.state === "LISTENING") {
+      // Idempotent acknowledgement (e.g. a retried request): keep the turn-
+      // taking watchdog alive so pure silence still re-engages.
+      if (["QUESTION", "FOLLOW_UP", "CLARIFICATION", "GREETING"].includes(turn.type)) {
+        this.armSilenceWatchdog(turn.conversationId, interviewId, userId);
+      }
+      return { state: "LISTENING" as const };
+    }
     assertConversationTransition(turn.conversation.state, "LISTENING");
     const changed = await this.database.$transaction((tx) =>
       this.repository.moveState(tx, {
@@ -327,10 +378,20 @@ export class ConversationService {
         "CONVERSATION_STATE_CONFLICT",
         "The playback state changed concurrently. Refresh the conversation state.",
       );
+    // The interviewer question has been played out: start listening for the
+    // answer, and if none arrives, re-engage after a human-feeling pause.
+    if (["QUESTION", "FOLLOW_UP", "CLARIFICATION", "GREETING"].includes(turn.type)) {
+      this.armSilenceWatchdog(turn.conversationId, interviewId, userId);
+    }
     return { state: "LISTENING" as const };
   }
 
   async requestCompletion(interviewId: string, userId: string) {
+    const conversation = await this.repository.findOwnedConversation(interviewId, userId);
+    if (conversation) {
+      this.clearSilenceWatchdog(conversation.id);
+      this.silenceStrikes.delete(conversation.id);
+    }
     return this.interviewService.requestCompletion(interviewId, userId);
   }
 
@@ -357,19 +418,34 @@ export class ConversationService {
     const turn = await this.getAudioTurn(interviewId, turnId, userId);
     const cached = getCachedAudio(turnId);
     if (cached) return { turn, audio: cached, cached: true };
-    // If a pre-warm is still running for this turn, await it instead of
-    // synthesizing a duplicate copy of the same audio.
+    // If a pre-warm is still running for this turn, await it — but only up to
+    // a deadline: the route then falls through to its own cold synthesis so a
+    // stalled pre-warm cannot extend the audio fetch past its deadline.
     const inFlight = awaitPreWarm(turnId);
     if (inFlight) {
-      const audio = await inFlight;
+      const audio = await Promise.race([
+        inFlight,
+        new Promise<undefined>((resolve) => {
+          const timer = setTimeout(() => {
+            observability().event("conversation.audio.prewarm_await_timeout", {
+              interviewId,
+              turnId,
+              deadlineMs: preWarmAwaitDeadlineMs,
+            });
+            resolve(undefined);
+          }, preWarmAwaitDeadlineMs);
+          timer.unref();
+        }),
+      ]);
       if (audio) return { turn, audio, cached: true };
     }
     const stream = await this.synthesizeTurn({
       text: turn.text,
       language: turn.conversation.interview.language,
     });
-    const audio = await bufferAudioStream(stream);
-    setCachedAudio(turnId, audio);
+    // Cold miss: stream the TTS audio through to the browser instead of
+    // buffering the whole file first — first audio plays seconds earlier.
+    const audio = teeTtsStreamToCache(turnId, stream);
     return { turn, audio, cached: false };
   }
 
@@ -381,6 +457,93 @@ export class ConversationService {
         `Voice is not available in ${turn.language}. You can continue by typing.`,
       );
     return synthesizeSpeech(this.environment, turn.text, model);
+  }
+
+  /**
+   * Cancels the pending silence watchdog for a conversation. Called whenever
+   * the candidate visibly does something: speech detection, a finalized turn,
+   * or session completion.
+   */
+  private clearSilenceWatchdog(conversationId: string) {
+    const timer = this.silenceWatchdogs.get(conversationId);
+    if (timer) {
+      clearTimeout(timer);
+      this.silenceWatchdogs.delete(conversationId);
+    }
+  }
+
+  /** Arms (or re-arms) the backend silence watchdog for one listening period. */
+  private armSilenceWatchdog(
+    conversationId: string,
+    interviewId: string,
+    userId: string,
+    delayMs = silenceNudgeDelayMs,
+  ) {
+    this.clearSilenceWatchdog(conversationId);
+    const timer = setTimeout(() => {
+      this.silenceWatchdogs.delete(conversationId);
+      void this.fireSilenceNudge(conversationId, interviewId, userId);
+    }, delayMs);
+    // A pending nudge must never keep the process alive on shutdown.
+    timer.unref();
+    this.silenceWatchdogs.set(conversationId, timer);
+  }
+
+  /**
+   * The candidate has stayed silent after a question: append a short canned
+   * re-engagement turn (never a fabricated answer) and deliver it through the
+   * existing realtime event so the client queues it for playback. This keeps
+   * the conversation feeling live, exactly like a human interviewer does.
+   */
+  private async fireSilenceNudge(
+    conversationId: string,
+    interviewId: string,
+    userId: string,
+  ): Promise<void> {
+    try {
+      const conversation = await this.repository.findActiveOwned(interviewId, userId);
+      if (!conversation || conversation.id !== conversationId || conversation.state !== "LISTENING")
+        return;
+      await this.completeIfExpired(conversation, userId);
+      const strikes = (this.silenceStrikes.get(conversationId) ?? 0) + 1;
+      if (strikes > maxSilenceNudgesPerTurn) {
+        this.silenceStrikes.delete(conversationId);
+        observability().event("conversation.silence.nudges_exhausted", {
+          interviewId,
+          conversationId,
+        });
+        return;
+      }
+      const turn = await this.database.$transaction((tx) =>
+        this.repository.appendTurn(tx, {
+          conversationId: conversation.id,
+          expectedSequence: conversation.sequence,
+          expectedState: "LISTENING",
+          nextState: "SPEAKING",
+          speaker: "AI",
+          type: "CLARIFICATION",
+          text: silenceNudgeText(conversation.interview.language, strikes),
+        }),
+      );
+      if (!turn) return;
+      this.silenceStrikes.set(conversationId, strikes);
+      this.preWarmTurnAudio({ id: turn.id, text: turn.text }, conversation.interview.language);
+      this.events.publish({
+        name: "AIResponseGenerated",
+        payload: { interviewId, conversationId: conversation.id, turn: asTurnDto(turn) },
+      });
+      observability().event("conversation.silence.nudge", {
+        interviewId,
+        conversationId,
+        strike: strikes,
+      });
+    } catch (cause) {
+      observability().error(
+        "conversation.silence.nudge_failed",
+        { interviewId },
+        cause instanceof Error ? cause : new Error(String(cause)),
+      );
+    }
   }
 
   publishPlaybackStarted(interviewId: string, conversationId: string, turnId: string) {
@@ -404,8 +567,13 @@ export class ConversationService {
       );
     markVoiceActive(interviewId);
     const ticket = await this.ticketService.createTicket(interviewId, userId);
-    const directToken = await tryGrantDeepgramAccessToken(this.environment);
+    // Agent sessions carry no browser-facing provider token: the gateway talks
+    // to Deepgram with the server key on the voice-stream websocket.
+    const pipeline = this.environment.VOICE_PIPELINE;
+    const directToken =
+      pipeline === "legacy" ? await tryGrantDeepgramAccessToken(this.environment) : null;
     return {
+      pipeline,
       accessToken: directToken ?? undefined,
       streamTicket: ticket,
       streamPath: `/api/v1/interviews/${interviewId}/conversation/voice-stream?ticket=${ticket}`,
@@ -467,6 +635,65 @@ export class ConversationService {
       "The configured interview duration has ended.",
     );
   }
+}
+
+/**
+ * Streams the TTS provider audio to the client while collecting the full
+ * buffer so the normal cache is populated when the stream ends. The browser
+ * starts hearing audio at the first WAV chunk instead of after full synthesis.
+ */
+function teeTtsStreamToCache(turnId: string, providerStream: AsyncIterable<Uint8Array>): Readable {
+  const chunks: Buffer[] = [];
+  const tee = new PassThrough();
+  Readable.from(providerStream)
+    .on("data", (chunk: Buffer | Uint8Array) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      chunks.push(buffer);
+      tee.push(buffer);
+    })
+    .on("end", () => {
+      if (chunks.length > 0) setCachedAudio(turnId, Buffer.concat(chunks));
+      tee.push(null);
+    })
+    .on("error", (cause: unknown) => {
+      tee.destroy(
+        new Error(`TTS stream failed: ${cause instanceof Error ? cause.message : String(cause)}`),
+      );
+    });
+  return tee;
+}
+
+/**
+ * Canned interviewer re-engagement lines: real interviewers nudge a silent
+ * candidate instead of waiting in dead air. Fixed templates keep the nudge
+ * instant (no LLM call) and predictable. Strike 1 invites; strike 2 offers a
+ * way out of the question.
+ */
+function silenceNudgeText(language: string, strike: number): string {
+  const first = "Take your time — I'm here whenever you're ready.";
+  const second =
+    "No rush at all. Would you like to pause here, or shall we move to the next question?";
+  const byLanguage: Record<string, { 1: string; 2: string }> = {
+    en: { 1: first, 2: second },
+    es: {
+      1: "Tómese su tiempo — estoy aquí cuando quiera continuar.",
+      2: "Sin prisa. ¿Quiere hacer una pausa aquí o pasamos a la siguiente pregunta?",
+    },
+    de: {
+      1: "Lassen Sie sich Zeit — ich bin hier, sobald Sie bereit sind.",
+      2: "Kein Stress. Möchten Sie hier pausieren oder zur nächsten Frage übergehen?",
+    },
+    fr: {
+      1: "Prenez votre temps — je suis là quand vous êtes prêt.",
+      2: "Aucune hâte. Souhaitez-vous marquer une pause ou passer à la question suivante ?",
+    },
+    nl: {
+      1: "Neem uw tijd — ik ben er zodra u er klaar voor bent.",
+      2: "Geen haast. Wilt u hier pauzeren of naar de volgende vraag gaan?",
+    },
+  };
+  const texts = byLanguage[language] ?? { 1: first, 2: second };
+  return strike === 1 ? texts[1] : texts[2];
 }
 
 function buildSessionContext(

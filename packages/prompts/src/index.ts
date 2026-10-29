@@ -1,6 +1,15 @@
 export { buildEvaluationPrompt } from "./evaluation.js";
+export {
+  buildAgentInterviewInstruction,
+  buildAgentOpeningMessage,
+  type AgentInterviewInstructionInput,
+} from "./agent.js";
 export { buildFollowUpGuidance } from "./follow-up.js";
-export { buildInterviewerBehaviorPrompt, type InterviewerPromptInput } from "./interviewer.js";
+export {
+  buildGreetingPrompt,
+  buildInterviewerBehaviorPrompt,
+  type InterviewerPromptInput,
+} from "./interviewer.js";
 export { buildInterviewPlanPrompt } from "./interview-plan.js";
 export { buildReportPrompt } from "./report.js";
 export { buildSkillAnalysisPrompt } from "./skill-analysis.js";

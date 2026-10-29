@@ -1,5 +1,9 @@
 import type { ServerEnvironment } from "@interviewer-ai/config";
-import { buildFollowUpGuidance, buildInterviewerBehaviorPrompt } from "@interviewer-ai/prompts";
+import {
+  buildFollowUpGuidance,
+  buildGreetingPrompt,
+  buildInterviewerBehaviorPrompt,
+} from "@interviewer-ai/prompts";
 
 import { GeminiAdapter } from "./adapters/gemini.js";
 import { AiProviderError } from "./errors.js";
@@ -30,14 +34,37 @@ class ApplicationAiProvider implements AiProvider {
   async generateInterviewerResponse(
     input: GenerateInterviewerResponseInput,
   ): Promise<InterviewerResponseProposal> {
-    const instructions = `${buildInterviewerBehaviorPrompt(input.interviewContext)}\n${buildFollowUpGuidance()}`;
+    const greetingOnly = input.greetingOnly === true;
+    // Greetings skip the full interviewer machinery: no memory/assessment
+    // context, a stripped request payload, and a small output budget — the
+    // greeting is two or three spoken sentences.
+    const instructions = greetingOnly
+      ? buildGreetingPrompt({
+          interviewType: input.interviewContext.interviewType,
+          difficulty: input.interviewContext.difficulty,
+          targetRole: input.interviewContext.targetRole,
+          language: input.interviewContext.language,
+          isGeneralIntake: input.interviewContext.isGeneralIntake,
+        })
+      : `${buildInterviewerBehaviorPrompt(input.interviewContext)}\n${buildFollowUpGuidance()}`;
+    const context =
+      greetingOnly === false
+        ? input
+        : {
+            interviewType: input.interviewContext.interviewType,
+            difficulty: input.interviewContext.difficulty,
+            targetRole: input.interviewContext.targetRole,
+            language: input.interviewContext.language,
+            isGeneralIntake: input.interviewContext.isGeneralIntake,
+          };
     try {
       return interviewerResponseProposalSchema.parse(
         await this.adapter.generateJson({
           instructions,
-          context: input,
-          maxOutputTokens: 350,
+          context,
+          maxOutputTokens: greetingOnly ? 220 : 350,
           ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+          ...(greetingOnly ? { maxAttempts: 2 } : {}),
         }),
       );
     } catch (error) {
