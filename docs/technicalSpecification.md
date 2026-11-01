@@ -337,7 +337,7 @@ It calls the `AiProvider` interface only. Gemini/OpenAI request URLs, SDK types,
 
 `modules/ai/` is the only backend module that integrates a reasoning provider. The initial adapter is Gemini. It exposes `createInterviewPlan`, `generateInterviewerResponse`, `evaluateInterview`, and `generateReport` as domain capabilities. Resume and job analysis use an internal structured-analysis helper in that module.
 
-Deepgram is a voice integration owned by the conversation module: it issues short-lived browser access tokens, transcribes live audio, and synthesizes persisted AI text. It does not plan or reason about an interview.
+Deepgram is a voice integration owned by the conversation module. In the default agent pipeline the API owns one Deepgram Voice Agent WebSocket per live interview (STT, Gemini streaming think, Aura speech) and the browser only sends PCM and plays returned PCM; the legacy pipeline issues short-lived browser access tokens instead. Neither pipeline stores audio. Deepgram does not plan or reason about the interview beyond the server-supplied instruction.
 
 The active environment configuration is:
 
@@ -345,6 +345,7 @@ The active environment configuration is:
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-3.5-flash-lite
 DEEPGRAM_API_KEY=
+VOICE_PIPELINE=agent
 ```
 
 These keys are server-only. OpenAI variables are intentionally not configured. A future provider is added by implementing the provider interface, not by modifying controllers.

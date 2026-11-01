@@ -35,6 +35,10 @@ import {
 
 import { MonolithExecutionManager, isMonolithMode } from "./services/monolith-execution.js";
 import { RealtimeEventBus } from "./services/realtime-events.js";
+import { InterviewSessionSweeper } from "./services/session-expiry-sweeper.js";
+import { VoiceConcurrencyLimiter } from "./services/voice-concurrency.js";
+import { VoiceSessionRegistry } from "./services/voice-session-registry.js";
+import { TranscriptRetentionSweeper } from "./services/transcript-retention.js";
 import Redis from "ioredis";
 import { createRedisConnectionOptions } from "./services/redis-connection.js";
 
@@ -87,6 +91,13 @@ export function createApp() {
   );
   const rateLimiter = createRequestRateLimiter(environment.REDIS_URL);
   const eventBus = new RealtimeEventBus(environment.REDIS_URL);
+  // Phase 4: live voice sessions are owned by exactly one gateway (newest wins)
+  // and the deployment's concurrent-session ceiling is shared across instances.
+  const voiceSessions = new VoiceSessionRegistry(environment.REDIS_URL);
+  const voiceConcurrency = new VoiceConcurrencyLimiter(
+    environment.REDIS_URL,
+    environment.VOICE_MAX_CONCURRENT_SESSIONS,
+  );
 
   app.decorate("auth", auth);
   app.decorateRequest("authContext", null);
@@ -96,6 +107,8 @@ export function createApp() {
     await billingQueue.close();
     await rateLimiter.close();
     await eventBus.close();
+    await voiceSessions.close();
+    await voiceConcurrency.close();
     if (authRedis) {
       await authRedis.quit();
     }
@@ -181,11 +194,30 @@ export function createApp() {
     new ReadinessService(database),
   );
   interviewService.setReportService(reportService);
+  // Phase 3 duration enforcement: a session nobody is watching still completes
+  // itself and queues its report. The grace period lets a live gateway say
+  // goodbye first; completion is atomically claimed, so this is safe to run in
+  // every API process.
+  const sessionSweeper = new InterviewSessionSweeper(database, interviewService);
+  if (environment.NODE_ENV !== "test") sessionSweeper.start();
+  // Phase 4 privacy policy: completed transcripts can age out on a configured
+  // schedule. Off by default (0) because reports are derived from them.
+  const transcriptRetention = new TranscriptRetentionSweeper(database, {
+    retentionDays: environment.TRANSCRIPT_RETENTION_DAYS,
+  });
+  if (environment.NODE_ENV !== "test") transcriptRetention.start();
+  app.addHook("onClose", async () => {
+    await sessionSweeper.stop();
+    await transcriptRetention.stop();
+  });
   registerAnalyticsRoutes(app, database);
   registerPracticePlanRoutes(app, database);
   registerUserProfileRoutes(app, database);
   app.register(async (conversationApp) => {
-    registerConversationRoutes(conversationApp, database, environment, interviewService, eventBus);
+    registerConversationRoutes(conversationApp, database, environment, interviewService, eventBus, {
+      sessions: voiceSessions,
+      concurrency: voiceConcurrency,
+    });
   });
 
   app.get("/health", async () => ({ status: "ok" }));

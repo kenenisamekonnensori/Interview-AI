@@ -14,6 +14,8 @@ export type AiInterviewContext = {
   jobRequiredSkills?: string[] | undefined;
   priorWeakAreas?: string[] | undefined;
   isGeneralIntake?: boolean | undefined;
+  /** The silence ladder escalated: change topic instead of re-asking. */
+  silenceEscalation?: boolean | undefined;
 };
 
 export type AiConversationMemory = {

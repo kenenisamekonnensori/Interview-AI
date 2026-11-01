@@ -16,7 +16,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   aiResponseRecoverySchema,
   type AiResponseRecovery,
-  type ConversationState,
   type FinalizeTranscriptRequest,
   type LiveConversationSnapshot,
 } from "@interviewer-ai/types";
@@ -32,7 +31,6 @@ import {
 import { VoiceVisualizer } from "./voice-visualizer";
 import { audioQueue } from "./audio-queue";
 import { AgentAudioPlayer, AgentMicCapture } from "../agent-voice";
-import { MicDiagnostic } from "./mic-diagnostic";
 
 export type VoiceSessionState =
   | "IDLE"
@@ -207,6 +205,8 @@ type TranscriptResponse = {
   state: string;
 };
 
+/** A newer tab (or a re-join) owns the live voice session: never fight it. */
+const sessionSupersededCloseCode = 4001;
 const reconnectLimit = 2;
 /** When a final transcript arrives while the interviewer is busy, keep retrying the submit for a bounded time. */
 const pendingFlushMaxAttempts = 10;
@@ -274,10 +274,11 @@ export function InterviewMicrophone({
   const [typedAnswer, setTypedAnswer] = useState("");
   const [mode, setMode] = useState<InterviewMode>("VOICE");
   const [voiceFallback, setVoiceFallback] = useState<string | null>(null);
-  const [restoredSpeakingTurnId, setRestoredSpeakingTurnId] = useState<string | null>(null);
   const [pendingAnswer, setPendingAnswer] = useState<string | null>(null);
   const [pendingFlushError, setPendingFlushError] = useState<string | null>(null);
-  const [showDiagnostic, setShowDiagnostic] = useState<boolean>(true);
+  const [joined, setJoined] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const [audioBlocked, setAudioBlocked] = useState(false);
   const [activeSpeechBuffer, setActiveSpeechBuffer] = useState<string>("");
   const [cameraActive, setCameraActive] = useState<boolean>(false);
 
@@ -410,13 +411,14 @@ export function InterviewMicrophone({
     const latestAiTurn = [...turns].reverse().find((turn) => turn.speaker === "AI");
     latestAiTurnRef.current = latestAiTurn?.id ?? null;
     latestAiTurnTextRef.current = latestAiTurn?.text ?? null;
-    setShowDiagnostic(false);
-    updateMode("TEXT");
-    setTypingMode(restoredConversation.state === "LISTENING");
-    setRestoredSpeakingTurnId(
-      restoredConversation.state === "SPEAKING" ? (latestAiTurn?.id ?? null) : null,
-    );
-    updateState(voiceStateForConversation(restoredConversation.state));
+    // A reloaded interview shows its saved transcript, then the candidate
+    // rejoins through the same explicit Join step as a fresh session. The
+    // gateway re-speaks the pending question on connect, so rejoining never
+    // leaves the interviewer waiting for the candidate to talk first.
+    updateMode("VOICE");
+    setTypingMode(false);
+    setJoined(false);
+    updateState("IDLE");
     if (restoredConversation.state === "THINKING") {
       updateRecovery(restoredAiFailureRecovery);
     } else {
@@ -494,7 +496,6 @@ export function InterviewMicrophone({
     resetPlaybackGuards();
     updateRecovery(null);
     setTypingMode(false);
-    setRestoredSpeakingTurnId(null);
     clearPendingAnswer();
     displayedAiTurnIdsRef.current.clear();
     latestAiTurnRef.current = null;
@@ -574,12 +575,21 @@ export function InterviewMicrophone({
   }
 
   async function startVoice(existingStream?: MediaStream) {
-    if ((active && mode === "VOICE") || disabled) return;
+    if (disabled) return;
+    if (sessionStartedRef.current && stateRef.current !== "ERROR") return;
     try {
       assertBrowserSupport();
+      // Unlock audio while the click is still a user gesture: creating or
+      // resuming the output context later (after mic, REST and websocket
+      // awaits) loses user activation in Chrome and the greeting plays into a
+      // suspended context — the candidate sees an interview that never starts.
+      if (stateRef.current === "ERROR") cleanupSession();
       void audioQueue.unlockAudio();
-      if (state === "ERROR") cleanupSession();
+      agentPlayerRef.current ??= new AgentAudioPlayer();
+      agentPlayerRef.current.resume();
       sessionStartedRef.current = true;
+      setJoined(true);
+      setJoining(true);
       const session = sessionRef.current + 1;
       sessionRef.current = session;
       reconnectAttemptsRef.current = 0;
@@ -588,7 +598,6 @@ export function InterviewMicrophone({
       updateMode("VOICE");
       setTypingMode(false);
       updateRecovery(null);
-      setRestoredSpeakingTurnId(null);
       updateState("CONNECTING");
 
       // 1. Acquire microphone stream immediately (or reuse diagnostic stream)
@@ -642,7 +651,29 @@ export function InterviewMicrophone({
       setError(message);
       setVoiceFallback("Voice is unavailable. You can continue by typing.");
       updateState("ERROR");
+    } finally {
+      setJoining(false);
     }
+  }
+
+  /**
+   * The explicit Join step. It must stay a user gesture: it unlocks audio (the
+   * greeting is played right after connect) and asks for the microphone, then
+   * the server-owned interviewer greets without waiting for the candidate to
+   * speak first.
+   */
+  function joinInterview() {
+    if (joining || disabled) return;
+    setJoining(true);
+    setAudioBlocked(false);
+    void startVoice().finally(() => setJoining(false));
+  }
+
+  function enableAudio() {
+    agentPlayerRef.current ??= new AgentAudioPlayer();
+    agentPlayerRef.current.resume();
+    void audioQueue.unlockAudio();
+    setAudioBlocked(false);
   }
 
   async function startText() {
@@ -656,13 +687,13 @@ export function InterviewMicrophone({
       setTypingMode(true);
       setError(null);
       setVoiceFallback(null);
-      setRestoredSpeakingTurnId(null);
       updateState("CONNECTING");
       const conversation = await apiClient<ConversationStartResponse>(
         `/api/v1/interviews/${interviewId}/conversation/start`,
         { method: "POST" },
       );
       onStarted?.();
+      setJoined(true);
       const greeting = await resolvePendingAiTurn(conversation);
       if (greeting) {
         appendAiTranscript(greeting.turn);
@@ -710,6 +741,25 @@ export function InterviewMicrophone({
     void flushPendingAnswer();
   }
 
+  /**
+   * The provider could not produce the interviewer's next turn even after the
+   * server's think fallbacks: the voice session is over, so the candidate keeps
+   * the interview by typing. The notice is the server's fixed template — no
+   * interviewer content is invented client-side.
+   */
+  async function degradeToText(notice: string) {
+    if (recoveryRef.current) return;
+    console.warn("[Voice Pipeline] Voice interviewer degraded to text mode.");
+    // Only a turn whose playback owns the floor still needs its acknowledgement;
+    // an already-settled turn must not be acknowledged twice on the way out.
+    const interruptedTurnId = stateRef.current === "SPEAKING" ? latestAiTurnRef.current : null;
+    if (!interruptedTurnId) latestAiTurnRef.current = null;
+    setTranscript((turns) => [...turns, `Interviewer: ${notice}`]);
+    await switchToText();
+    if (!interruptedTurnId && stateRef.current === "THINKING") updateState("LISTENING");
+    setVoiceFallback(notice);
+  }
+
   async function switchToText() {
     if (disabled) return;
     stopVoiceTransport();
@@ -717,10 +767,12 @@ export function InterviewMicrophone({
     setTypingMode(true);
     setVoiceFallback(null);
     setError(null);
-    setRestoredSpeakingTurnId(null);
     const turnId = latestAiTurnRef.current;
     if (!turnId) {
-      if (state === "IDLE" || state === "ERROR") await startText();
+      // No interviewer turn owns the floor (join failed, capacity, a takeover):
+      // start the text lane properly so the greeting/question exists and the
+      // composer accepts answers, instead of leaving the UI in CONNECTING.
+      await startText();
       return;
     }
     try {
@@ -795,7 +847,7 @@ export function InterviewMicrophone({
 
     connection.on("message", (message) => void handleTranscript(message, session));
     connection.on("error", () => scheduleReconnect(session));
-    connection.on("close", () => scheduleReconnect(session));
+    connection.on("close", (event) => handleConnectionClosed(event, session));
 
     if (session !== sessionRef.current) {
       connection.close();
@@ -856,6 +908,21 @@ export function InterviewMicrophone({
     if (stateRef.current !== "SPEAKING" && stateRef.current !== "THINKING") {
       updateState("LISTENING");
     }
+  }
+
+  /** A superseded session ends quietly; every other drop is recoverable. */
+  function handleConnectionClosed(event: unknown, session: number) {
+    const code =
+      typeof event === "object" && event !== null ? (event as { code?: number }).code : undefined;
+    if (code !== sessionSupersededCloseCode) {
+      scheduleReconnect(session);
+      return;
+    }
+    if (session !== sessionRef.current) return;
+    stopVoiceTransport();
+    sessionStartedRef.current = false;
+    setVoiceFallback("This interview is open in another tab. Continue here in text mode instead.");
+    updateState("ERROR");
   }
 
   function scheduleReconnect(session: number) {
@@ -947,6 +1014,22 @@ export function InterviewMicrophone({
         case "agent-ready":
           console.log("[Voice Pipeline] Agent gateway ready (SettingsApplied).");
           agentPlayerRef.current?.resume();
+          // If the output context is still suspended the greeting is inaudible;
+          // surface the one-tap fix instead of letting the candidate sit in
+          // silence wondering why the interview has not started.
+          setAudioBlocked(agentPlayerRef.current?.isRunning() === false);
+          return;
+        case "agent-thinking":
+          if (stateRef.current !== "CLOSING" && stateRef.current !== "SPEAKING") {
+            updateState("THINKING");
+          }
+          return;
+        case "agent-speaking-started":
+          // The provider starts speaking before it publishes the finalized text
+          // (AgentAudioDone). Without this the UI would show "listening" for
+          // the whole greeting, which is exactly how a live interview looks
+          // dead even though audio is playing.
+          if (stateRef.current !== "CLOSING") updateState("SPEAKING");
           return;
         case "user-speech-started":
           // The provider detected interruption; the gateway already persists
@@ -1004,6 +1087,24 @@ export function InterviewMicrophone({
           return;
         case "agent-closing":
           updateState("CLOSING");
+          return;
+        case "think-degraded":
+        case "capacity":
+          await degradeToText(
+            agentMessage.message ??
+              "I'm having trouble continuing by voice. Let's keep going in text.",
+          );
+          return;
+        case "superseded":
+          // Another tab took over the live session. Reconnecting would start a
+          // takeover fight, so this tab settles into text mode instead.
+          stopVoiceTransport();
+          sessionStartedRef.current = false;
+          setVoiceFallback(
+            agentMessage.message ??
+              "This interview is open in another tab. Continue here in text mode instead.",
+          );
+          updateState("ERROR");
           return;
         case "error":
           console.error("[Voice Pipeline] Agent gateway error:", agentMessage.message);
@@ -1347,59 +1448,70 @@ export function InterviewMicrophone({
     if (!active) return;
     cleanupSession();
     sessionStartedRef.current = false;
+    setJoined(false);
     setPartialTranscript("");
     updateState("IDLE");
   }
 
-  // Render Mic Onboarding Diagnostic Modal / Screen if first time opening
-  if (showDiagnostic && !restoredConversation) {
+  // Explicit Join: one gesture unlocks audio and the microphone, then the
+  // server-owned interviewer greets immediately. There is deliberately no
+  // "say something to prove your mic works" gate — an interview that waits for
+  // the candidate to speak first is an interview that never starts.
+  if (!joined && mode === "VOICE") {
     return (
-      <MicDiagnostic
-        onComplete={(diagnosticStream) => {
-          setShowDiagnostic(false);
-          void startVoice(diagnosticStream);
-        }}
-        onSkipToText={() => {
-          setShowDiagnostic(false);
-          void startText();
-        }}
-      />
+      <div className="mx-auto max-w-xl rounded-3xl border border-white/10 bg-slate-950/80 p-6 shadow-2xl backdrop-blur-xl sm:p-8">
+        <div className="text-center">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-300">
+            <Mic className="size-3.5" /> Ready when you are
+          </span>
+          <h2 className="mt-3 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            {transcript.length > 0 ? "Welcome back to your interview" : "Your interview is ready"}
+          </h2>
+          <p className="mt-2 text-sm text-slate-400">
+            {transcript.length > 0
+              ? "Your conversation so far is saved. Rejoin and the interviewer will pick up where you left off."
+              : "Join to allow your microphone. Your AI interviewer will greet you and start the first question right away."}
+          </p>
+        </div>
+        {error ? (
+          <p className="mt-5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">
+            {error}
+          </p>
+        ) : null}
+        <div className="mt-7 flex w-full flex-col gap-2.5 sm:flex-row">
+          <Button
+            className="flex-1 bg-indigo-600 py-5 text-base font-semibold hover:bg-indigo-500"
+            onClick={joinInterview}
+            disabled={joining || disabled}
+          >
+            {joining ? (
+              <LoaderCircle className="size-4 animate-spin" />
+            ) : (
+              <Mic className="size-4" />
+            )}
+            {joining ? "Joining…" : transcript.length > 0 ? "Rejoin interview" : "Join interview"}
+          </Button>
+          <Button variant="outline" onClick={() => void startText()} disabled={joining || disabled}>
+            <MessageSquare className="size-4" /> Type instead
+          </Button>
+        </div>
+        <p className="mt-4 text-center text-xs text-slate-500">
+          Your microphone is only used for this interview. No audio is recorded or stored.
+        </p>
+      </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Resumed session: the interviewer had a question ready when the page reloaded */}
-      {restoredSpeakingTurnId ? (
-        <div className="rounded-2xl border border-indigo-500/30 bg-indigo-500/10 p-5 backdrop-blur-md">
-          <p className="text-sm font-semibold text-indigo-200">
-            Your interviewer has a question ready.
+      {audioBlocked ? (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 backdrop-blur-md">
+          <p className="text-sm font-medium text-amber-200">
+            Your browser is holding the interviewer&apos;s audio. Enable sound to hear the question.
           </p>
-          <p className="mt-1 text-xs text-indigo-300/80">
-            The question is shown in the transcript below. You can hear it again or continue by
-            typing.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2.5">
-            <Button
-              size="sm"
-              onClick={() => {
-                setRestoredSpeakingTurnId(null);
-                void startVoice();
-              }}
-            >
-              <Volume2 className="size-4" /> Replay question (voice)
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setRestoredSpeakingTurnId(null);
-                void switchToText();
-              }}
-            >
-              Continue by typing
-            </Button>
-          </div>
+          <Button size="sm" className="mt-3" onClick={enableAudio}>
+            <Volume2 className="size-4" /> Enable sound
+          </Button>
         </div>
       ) : null}
 
@@ -1679,14 +1791,6 @@ const restoredAiFailureRecovery: AiResponseRecovery = {
   retryable: true,
   actions: { retry: true, continueByTyping: true, endInterview: true },
 };
-
-function voiceStateForConversation(state: ConversationState): VoiceSessionState {
-  if (state === "LISTENING") return "LISTENING";
-  if (state === "THINKING" || state === "TRANSCRIBING") return "THINKING";
-  if (state === "SPEAKING" || state === "GREETING") return "SPEAKING";
-  if (state === "CLOSING" || state === "COMPLETED") return "CLOSING";
-  return "IDLE";
-}
 
 function truncateText(value: string, length: number) {
   return value.length > length ? `${value.slice(0, length - 1)}…` : value;

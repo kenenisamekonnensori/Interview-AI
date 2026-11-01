@@ -293,6 +293,23 @@ export function applyAgentAnswerAssessment({
   };
 }
 
+/**
+ * Phase 3 silence escalation: a candidate who never answers the question in
+ * front of them earns a durable, honest note in the memory the next turn and
+ * the report read. This is a server observation, not generated content.
+ */
+export function recordAgentSilenceStruggle(
+  memory: AgentMemorySnapshot,
+  topic: string | null,
+): AgentMemorySnapshot {
+  const label = topic ?? "the last question";
+  return {
+    ...memory,
+    weakAreas: uniqueStrings([...memory.weakAreas, `No answer on ${label}`], 8),
+    missedFollowUps: uniqueStrings([...memory.missedFollowUps, `Follow up on ${label}`], 6),
+  };
+}
+
 /** After the final recorded answer, unresolved objectives close the interview rather than looping. */
 function raiseDifficulty(current: AgentMemorySnapshot["questionDifficulty"]) {
   const levels = ["EASY", "MEDIUM", "HARD", "EXPERT"] as const;
@@ -312,6 +329,67 @@ export function hasCoveredAllAgentObjectives(memory: AgentMemorySnapshot, planTo
       memory.topicCoverage.some((item) => item.topic === topic && item.outcome === "COMPLETED"),
     )
   );
+}
+
+/** Greetings and closings are not questions; everything else is a probe. */
+export function classifyAgentTurnKind(isGreeting: boolean, isClosing: boolean): AgentTurnKind {
+  if (isGreeting) return "GREETING";
+  return isClosing ? "CLOSING" : "QUESTION";
+}
+
+export type AgentTurnPlan = {
+  kind: AgentTurnKind;
+  /** The conversation state this utterance leaves the interview in. */
+  nextState: "SPEAKING" | "CLOSING";
+  /** Memory after the utterance; null when the interview has no memory row. */
+  memory: AgentMemorySnapshot | null;
+};
+
+/**
+ * One spoken interviewer utterance → conversation state + memory update. This
+ * is the server-side rule set the legacy lane applies (a question records what
+ * was asked, a farewell ends the interview, plan completion closes it) ported
+ * to the agent lane's plain text, so both lanes agree on coverage and closing.
+ */
+export function resolveAgentTurnPlan({
+  memory,
+  planTopics,
+  text,
+  isGreeting,
+}: {
+  memory: AgentMemorySnapshot | null;
+  planTopics: string[];
+  text: string;
+  isGreeting: boolean;
+}): AgentTurnPlan {
+  // A farewell-looking question ("shall I wrap up?") is still a question.
+  const isClosing = isAgentClosingStatement(text) && !text.trim().endsWith("?");
+  const planComplete = memory ? hasCoveredAllAgentObjectives(memory, planTopics) : false;
+  const kind = classifyAgentTurnKind(isGreeting, isClosing || planComplete);
+  if (!memory)
+    return { kind, nextState: kind === "CLOSING" ? "CLOSING" : "SPEAKING", memory: null };
+  if (kind === "CLOSING") {
+    return {
+      kind,
+      nextState: "CLOSING",
+      memory: {
+        ...memory,
+        topicCoverage: memory.topicCoverage.map((entry) => ({
+          ...entry,
+          outcome: entry.outcome === "ASKED" ? ("COMPLETED" as const) : entry.outcome,
+        })),
+        remainingObjectives: [],
+      },
+    };
+  }
+  return {
+    kind,
+    nextState: "SPEAKING",
+    memory:
+      kind === "QUESTION"
+        ? buildAgentMemoryUpdate({ memory, kind, responseText: text, planTopics })
+        : memory,
+  };
 }
 
 /** Digest fed to the agent instruction so it never repeats what it asked. */

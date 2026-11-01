@@ -22,6 +22,15 @@ export class AgentAudioPlayer {
     void this.ensureContext().resume();
   }
 
+  /**
+   * True once the output context is actually running. A blocked autoplay
+   * policy leaves it suspended even after `resume()`, which is the difference
+   * between "the greeting is late" and "the greeting is inaudible".
+   */
+  isRunning() {
+    return this.context?.state === "running";
+  }
+
   push(chunk: ArrayBuffer) {
     if (chunk.byteLength === 0) return;
     const context = this.ensureContext();

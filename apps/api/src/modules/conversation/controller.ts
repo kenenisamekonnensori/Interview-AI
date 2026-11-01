@@ -22,6 +22,8 @@ import { InterviewLifecycleError, type InterviewService } from "../interviews/se
 import { logSafeError } from "../../services/security.js";
 import { observability } from "../../services/observability.js";
 import type { RealtimeEventBus } from "../../services/realtime-events.js";
+import type { VoiceConcurrencyLimiter } from "../../services/voice-concurrency.js";
+import type { VoiceSessionRegistry } from "../../services/voice-session-registry.js";
 
 const sseHeartbeatIntervalMs = 15_000;
 
@@ -48,6 +50,7 @@ export function registerConversationRoutes(
   environment: ServerEnvironment,
   interviewService: InterviewService,
   eventBus?: RealtimeEventBus,
+  voice?: { sessions: VoiceSessionRegistry; concurrency: VoiceConcurrencyLimiter },
 ) {
   const events = new ConversationEventPublisher(app.log, eventBus);
   const service = new ConversationService(database, environment, interviewService, events);
@@ -174,9 +177,14 @@ export function registerConversationRoutes(
 
       if (isClosed) return;
 
-      // VOICE_PIPELINE=agent: the server owns the whole Deepgram Voice Agent
-      // session (see agent-gateway.ts). Legacy stays the default pipeline.
+      // Default pipeline: the server owns the whole Deepgram Voice Agent
+      // session (see agent-gateway.ts). VOICE_PIPELINE=legacy restores the
+      // browser-owned transport.
       if (environment.VOICE_PIPELINE === "agent") {
+        if (!voice) {
+          socket.close(1011, "The voice gateway is not configured.");
+          return;
+        }
         try {
           const gateway = await startAgentVoiceGateway({
             log: app.log,
@@ -187,7 +195,12 @@ export function registerConversationRoutes(
             socket,
             interviewId,
             userId,
+            sessions: voice.sessions,
+            concurrency: voice.concurrency,
           });
+          // A session that was rejected for capacity or taken over is already
+          // closed; there is nothing to stream audio into.
+          if (gateway.isClosed()) return;
           forwardToAgent = (buffer) => gateway.sendClientAudio(buffer);
           for (const chunk of earlyChunks.splice(0)) forwardToAgent(chunk);
           socket.on("close", () => {

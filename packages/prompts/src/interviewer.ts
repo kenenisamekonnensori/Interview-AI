@@ -6,6 +6,8 @@ export type InterviewerPromptInput = {
   targetRole: string | null;
   language: string;
   isGeneralIntake?: boolean | undefined;
+  /** Phase 3 silence ladder: the candidate did not answer the last question. */
+  silenceEscalation?: boolean | undefined;
 };
 
 export function buildInterviewerBehaviorPrompt(input: InterviewerPromptInput) {
@@ -27,11 +29,18 @@ The candidate does not have a set profile or resume on file yet. This is a conve
 `
     : "";
 
+  const silenceInstructions = input.silenceEscalation
+    ? `
+### Silence Recovery Mode:
+The candidate has stayed silent through two gentle prompts and has not answered the last question. Do not repeat, rephrase or follow up on that question, and do not comment on the silence. Briefly acknowledge the pause in one short clause, then move to a different planned topic that has not been covered yet and ask exactly ONE concise question about it.
+`
+    : "";
+
   return `${sessionPreamble}
 
 ### Language: Respond in ${languageName(input.language)}.
 Speak naturally in the interview's language at all times. The candidate hears you via speech synthesis in that language, so never switch to English unless the candidate does.
-${intakeInstructions}
+${intakeInstructions}${silenceInstructions}
 ### Conversational Persona & Tone Rules:
 1. **Act like an experienced human interviewer**: Speak naturally, concisely, and adaptively. You are holding a real-time voice conversation.
 2. **Use natural conversational transitions**: When reacting to the candidate's latest response, use brief, natural conversational bridges (e.g., "Got it.", "That makes sense.", "Interesting approach with...", "I see, so...", "Good point.").

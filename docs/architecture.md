@@ -8,7 +8,7 @@ The development and initial-release stack is **provider-agnostic at the applicat
 | --- | --- | --- |
 | Speech-to-text (STT) | Deepgram | Browser audio is transcribed through a short-lived Deepgram access token. |
 | Text-to-speech (TTS) | Deepgram | The API synthesizes persisted interviewer text for playback. |
-| Live voice transport | Browser WebSocket to Deepgram | The web app owns microphone capture and playback; the backend only issues a short-lived token. |
+| Live voice transport | Server-owned WebSocket gateway | The browser streams PCM to the API; the API owns one Deepgram Voice Agent session and drives turn-taking. No provider credential reaches the browser. `VOICE_PIPELINE=legacy` restores the previous browser-to-Deepgram transport. |
 | Planning and resume/job analysis | Gemini | Gemini returns validated JSON through the AI provider module. |
 | Interviewing | Gemini | Gemini generates the next interviewer turn; the Conversation Manager owns state and persistence. |
 | Evaluation and reports | Gemini | Implemented through the same provider interface when those modules are added. |
@@ -18,11 +18,13 @@ Gemini and Deepgram were chosen for the build-and-test phase because their free 
 ## Boundaries
 
 ```text
-Web app -- REST / short-lived voice token --> Fastify API
-Web app -- microphone audio / transcript events --> Deepgram
+Web app -- REST + voice WebSocket (PCM) --> Fastify API voice gateway
+Fastify API voice gateway -- one WebSocket (STT -> think -> TTS) --> Deepgram Voice Agent
 Fastify Conversation Manager --> AI provider interface --> Gemini adapter
 Fastify services --> PostgreSQL / Redis / object storage
 ```
+
+Exactly one live gateway owns an interview's voice timeline. `VoiceSessionRegistry` makes the newest connection the owner (a reconnecting tab supersedes the old one over Redis pub/sub) and `VoiceConcurrencyLimiter` enforces the deployment-wide live-session ceiling, so running several API instances never produces two voices or two silence timelines.
 
 The Conversation Manager decides when a turn is needed, validates transitions, and persists approved turns. It calls `AiProvider.generateInterviewerResponse`; it does not construct Gemini requests or parse Gemini responses. The AI module alone owns provider SDKs, HTTP payloads, model names, retries, and output conversion.
 
@@ -55,6 +57,9 @@ Only these AI/voice environment variables are approved for the current stack:
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-3.5-flash-lite
 DEEPGRAM_API_KEY=
+VOICE_PIPELINE=agent
+VOICE_MAX_CONCURRENT_SESSIONS=100
+TRANSCRIPT_RETENTION_DAYS=0
 ```
 
 `GEMINI_API_KEY` and `DEEPGRAM_API_KEY` are server-only. No `NEXT_PUBLIC_` provider key is permitted. OpenAI environment variables are not part of the approved configuration until an OpenAI adapter is deliberately introduced.
@@ -63,7 +68,8 @@ DEEPGRAM_API_KEY=
 
 - Send the smallest resume, job, and conversation context needed for the capability.
 - Do not log full resumes, raw audio, complete prompts, transcripts, credentials, or provider authorization tokens.
-- Store recordings only when the product explicitly enables recording and the user has consented; otherwise retain only the validated transcript and derived results required by the product.
+- Store recordings only when the product explicitly enables recording and the user has consented; otherwise retain only the validated transcript and derived results required by the product. The current product never stores audio.
+- `TRANSCRIPT_RETENTION_DAYS` (default `0`, meaning the interview's lifetime) is the hard age limit for validated transcript turns of completed interviews. When set, `TranscriptRetentionSweeper` deletes the turns only; the interview, its memory and its report remain, so outcomes survive the transcript.
 - Use HTTPS, short-lived Deepgram tokens, server-side provider keys, and existing authorization checks for all provider access.
 
 ## Execution Architecture: Monolith Mode vs Worker Mode

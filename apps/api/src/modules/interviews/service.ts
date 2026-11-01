@@ -290,9 +290,16 @@ export class InterviewService {
         throw new InterviewLifecycleError("INTERVIEW_NOT_FOUND", "Interview not found.");
       }
       const completedAt = new Date();
-      if (interview.conversation.state !== "COMPLETED") {
+      // A spoken farewell already moved the conversation to CLOSING (the
+      // closing turn is appended in that state), so completion only has to
+      // assert the transition when the conversation is still mid-interview.
+      // CLOSING -> CLOSING is not a legal transition and previously made
+      // completing after a spoken goodbye fail.
+      if (
+        interview.conversation.state !== "CLOSING" &&
+        interview.conversation.state !== "COMPLETED"
+      ) {
         assertConversationTransition(interview.conversation.state, "CLOSING");
-        assertConversationTransition("CLOSING", "COMPLETED");
       }
       await tx.conversation.update({
         where: { id: interview.conversation.id },

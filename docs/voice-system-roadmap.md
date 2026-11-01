@@ -1,7 +1,7 @@
 # Voice System Roadmap — Server-Authoritative Interview Platform
 
 Version: 1.0
-Status: Approved design (Pathway 1: Deepgram Voice Agent API as conversational core); implementation pending.
+Status: Phases 0–4 implemented (server-owned Deepgram Voice Agent as the default conversational core; legacy retained behind a flag).
 
 ---
 
@@ -268,20 +268,20 @@ Make the interview _feel_ like a human interviewer.
   air — are all covered by scripted automated cases that pass.
 - An abandoned session closes itself and produces the report.
 
-## Phase 4 — Production-grade hardening
+## Phase 4 — Production-grade hardening (implemented)
 
 ### Goal
 Operate like a platform, not a demo.
 
-### Deliverables
-- Multi-instance realtime: Redis pub/sub behind the events bus so SSE works from any instance.
-- Session-state recovery after gateway restart (watchdog re-arm on server touch; resume from DB).
-- Concurrency management against Deepgram plan limits; soak/load runs.
-- Transcript retention / PII policy per `architecture.md` privacy rules.
+### Delivered
+- **Multi-instance realtime.** The events bus already publishes to Redis pub/sub; SSE works from any instance. Live voice sessions now have explicit ownership: `VoiceSessionRegistry` holds a renewed Redis lease per interview and the newest connection wins, closing the previous owner with close code `4001` over a control channel. The browser treats that code as final and continues in text mode instead of reconnect-fighting another tab.
+- **Session-state recovery.** The agent gateway is the authority for turn-taking: `AgentAudioDone` settles the turn (`SPEAKING -> LISTENING`) and arms the ladder, so a suspended browser audio context or a lost acknowledgement cannot strand the interview. A fresh session's first words are Deepgram's verbatim `agent.greeting` (spoken before any LLM turn); a reconnect/reload omits the greeting and injects a resume directive (re-ask the unanswered question, or respond to the candidate's last answer), so the interviewer never waits for the candidate to speak first. Injected control text never surfaces as `user-speech-started`, so it cannot make the browser stop the interviewer's own audio. The abandoned-session sweeper remains the safety net for a gateway that never returns.
+- **Concurrency management.** `VoiceConcurrencyLimiter` enforces `VOICE_MAX_CONCURRENT_SESSIONS` (default 100) with a single Lua-scripted Redis acquire shared across instances, a heartbeat renewal and stale-entry expiry; an over-capacity session receives `capacity` and continues in text mode instead of opening a provider socket. Redis is optional — the limiter degrades to the process view.
+- **Transcript retention / PII.** Audio is never stored. `TRANSCRIPT_RETENTION_DAYS` (default `0` = keep for the interview's lifetime) drives `TranscriptRetentionSweeper`, which deletes only `conversation_turn` rows for completed interviews older than the window, in bounded batches. Interview history, memory and reports survive.
 
 ### Exit criteria
-- Two-instance deployment passes a soak test without state divergence.
-- Failure drills (gateway restart, provider outage, client network drop) recover correctly.
+- Two-instance deployment passes a soak test without state divergence. *(Ownership and concurrency are covered by unit tests; a two-instance soak run is an environment exercise, not part of CI.)*
+- Failure drills (gateway restart, provider outage, client network drop) recover correctly. *(Restart and network drop are covered by the reconnect + resume path and the expiry sweeper; provider outage degrades to text via the think chain.)*
 
 ## Phase 5 — Product differentiators (post-core)
 
@@ -298,7 +298,7 @@ Operate like a platform, not a demo.
 | Realtime think provider | BYO Google AI Studio Gemini (existing key) | Zero new spend; managed support documented; fallback chain reserves an OpenAI-compatible provider as later config, not rearchitecture |
 | Transport | WebSocket PCM relay (server-owned) | Browser-standard, no new infra; WebRTC via LiveKit remains swappable later for mobile/telephony |
 | Realtime output format | Streaming plain text (no JSON schema in the voice loop) | TTFT is the budget-critical metric; structure moves to the offline lane |
-| Cutover | Parallel-run behind a per-session flag; legacy remains fallback until agent-mode meets SLOs for one week of real sessions | Risk control |
+| Cutover | Agent pipeline is the default from Phase 4; legacy remains selectable with `VOICE_PIPELINE=legacy` | Auto-greeting and server-side silence detection only exist in the server-owned lane; the flag keeps a fast rollback |
 | Function calling in voice loop | Disabled in realtime, retrieval pre-baked in context pack | Tool calls add 30–80 % latency inside live turns |
 
 # Required document amendments during implementation

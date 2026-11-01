@@ -9,6 +9,7 @@ import {
   deriveTopicReference,
   hasCoveredAllAgentObjectives,
   isAgentClosingStatement,
+  resolveAgentTurnPlan,
   type AgentMemorySnapshot,
 } from "../modules/conversation/agent-memory.js";
 
@@ -151,6 +152,92 @@ describe("agent answer assessments", () => {
         ["caching strategies"],
       ),
     ).toBe(true);
+  });
+});
+
+describe("resolveAgentTurnPlan (legacy-equivalent turn rules)", () => {
+  it("keeps a greeting out of coverage and leaves memory untouched", () => {
+    const plan = resolveAgentTurnPlan({
+      memory: EMPTY,
+      planTopics: ["caching strategies"],
+      text: "Hello, thanks for joining. Let's get started.",
+      isGreeting: true,
+    });
+    expect(plan).toEqual({ kind: "GREETING", nextState: "SPEAKING", memory: EMPTY });
+  });
+
+  it("records a probe as a question and marks its plan topic asked", () => {
+    const plan = resolveAgentTurnPlan({
+      memory: EMPTY,
+      planTopics: ["caching strategies"],
+      text: "How did you design the caching layer eviction?",
+      isGreeting: false,
+    });
+    expect(plan.kind).toBe("QUESTION");
+    expect(plan.nextState).toBe("SPEAKING");
+    expect(plan.memory?.askedQuestions).toEqual(["How did you design the caching layer eviction?"]);
+    expect(plan.memory?.topicCoverage).toEqual([{ topic: "caching strategies", outcome: "ASKED" }]);
+  });
+
+  it("closes on a farewell and settles every asked topic", () => {
+    const memory: AgentMemorySnapshot = {
+      ...EMPTY,
+      remainingObjectives: ["Explain trade-offs"],
+      topicCoverage: [
+        { topic: "caching strategies", outcome: "ASKED" },
+        { topic: "system design", outcome: "COMPLETED" },
+      ],
+    };
+    const plan = resolveAgentTurnPlan({
+      memory,
+      planTopics: ["caching strategies", "system design"],
+      text: "That's all of my questions — thank you for your time.",
+      isGreeting: false,
+    });
+    expect(plan.kind).toBe("CLOSING");
+    expect(plan.nextState).toBe("CLOSING");
+    expect(plan.memory?.remainingObjectives).toEqual([]);
+    expect(plan.memory?.topicCoverage).toEqual([
+      { topic: "caching strategies", outcome: "COMPLETED" },
+      { topic: "system design", outcome: "COMPLETED" },
+    ]);
+  });
+
+  it("closes once every objective and planned topic is covered", () => {
+    const plan = resolveAgentTurnPlan({
+      memory: {
+        ...EMPTY,
+        remainingObjectives: [],
+        topicCoverage: [{ topic: "caching strategies", outcome: "COMPLETED" }],
+      },
+      planTopics: ["caching strategies"],
+      // Not farewell language: plan coverage alone must end the interview.
+      text: "Could you describe how you invalidate that cache?",
+      isGreeting: false,
+    });
+    expect(plan.kind).toBe("CLOSING");
+    expect(plan.nextState).toBe("CLOSING");
+  });
+
+  it("never treats a farewell-sounding question as a closing statement", () => {
+    const plan = resolveAgentTurnPlan({
+      memory: EMPTY,
+      planTopics: [],
+      text: "Shall I wrap up the interview here, or would you like another minute?",
+      isGreeting: false,
+    });
+    expect(plan.kind).toBe("QUESTION");
+    expect(plan.nextState).toBe("SPEAKING");
+  });
+
+  it("classifies turns without a memory row and reports no update", () => {
+    const plan = resolveAgentTurnPlan({
+      memory: null,
+      planTopics: ["caching strategies"],
+      text: "Tell me about a hard bug.",
+      isGreeting: false,
+    });
+    expect(plan).toEqual({ kind: "QUESTION", nextState: "SPEAKING", memory: null });
   });
 });
 
