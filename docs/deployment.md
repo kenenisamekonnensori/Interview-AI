@@ -54,7 +54,7 @@ Use the root [.env.example](../.env.example) as the complete secret-manager/temp
 
 1. Run CI: typecheck, lint, formatting check, build, tests, and container image builds.
 2. Build immutable API and web images, tagging them with the source revision.
-3. Back up PostgreSQL and review migration impact as documented in [database operations](./database-operations.md).
+3. Back up PostgreSQL and review migration impact as documented in [operations](./operations.md).
 4. Run the API image once as the `migrate` job: `ENV_FILE=.env.production docker compose -f docker-compose.production.example.yml --profile release run --rm migrate`. This runs `prisma migrate deploy` and exits.
 5. Start/update API, career-analysis worker, report worker, auth-email worker, and web images using the same release tag.
 6. Verify `/health`, `/ready`, worker queue metrics, authentication, and a non-sensitive browser smoke test.

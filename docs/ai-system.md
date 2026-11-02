@@ -28,6 +28,15 @@ Resume and job-description extraction use the AI module's internal structured-an
 
 ## Live-turn sequence
 
+In the default server-authoritative voice pipeline (`VOICE_PIPELINE=agent`):
+```text
+Browser mic (PCM 16kHz) -> Fastify Voice Gateway WS -> Deepgram Voice Agent
+                                                    -> Streaming Gemini Think
+                                                    -> Streaming Aura-2 TTS -> Browser playback
+                                                    -> AgentAudioDone -> Gateway settles turn & persists to DB
+                                                    -> Async post-turn structured assessment updates memory
+```
+In the legacy pipeline (`VOICE_PIPELINE=legacy`), the sequential fallback runs:
 ```text
 Deepgram final transcript -> Conversation Manager validates/persists user turn
                          -> AiProvider.generateInterviewerResponse
@@ -35,7 +44,7 @@ Deepgram final transcript -> Conversation Manager validates/persists user turn
                          -> Deepgram TTS plays persisted text
 ```
 
-Voice transport is deliberately separate from the LLM. A live voice provider is not an AI-orchestration provider in this design.
+In both pipelines, the live voice provider is transport and execution; the backend remains the authoritative owner of conversation state, turn persistence, and evaluation policies.
 
 ## Failure and privacy behavior
 

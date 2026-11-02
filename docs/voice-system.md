@@ -1,22 +1,15 @@
-# Voice System Roadmap — Server-Authoritative Interview Platform
+# Voice System Specification — Server-Authoritative Voice Platform
 
-Version: 1.0
-Status: Phases 0–4 implemented (server-owned Deepgram Voice Agent as the default conversational core; legacy retained behind a flag).
+Version: 1.1
+Status: Active Production Architecture (server-owned Deepgram Voice Agent default core; legacy retained behind a flag).
 
 ---
 
 # Purpose
 
-This document is the implementation roadmap for upgrading the interview voice system from the
-current client-orchestrated pipeline (browser → Deepgram direct + REST/SSE signaling) to a
-production-grade, server-authoritative voice platform, built the way real products
-(Retell / Vapi / LiveKit-style stacks) are built. It defines the target architecture, the exact
-provider protocol contract, the interviewer-brain design, the turn-taking policy, and the phased
-execution plan.
+This document defines the production voice architecture of Interviewer AI: a server-authoritative voice platform built the way modern voice products (Retell, Vapi, LiveKit) operate. It specifies the provider protocol contract, interviewer brain design, turn-taking policy, multi-instance concurrency, and lifecycle management.
 
-It supplements, and for voice transport supersedes, `docs/architecture.md` ("Live voice
-transport" row). All other boundaries of `architecture.md` (provider-agnostic AI module,
-Conversation Manager ownership, persistence, privacy rules) remain in force.
+It supplements `docs/architecture.md`. All domain boundaries of `architecture.md` (provider-agnostic AI module, Conversation Manager ownership, persistence, privacy rules) remain in force.
 
 ---
 
