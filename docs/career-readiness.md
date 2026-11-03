@@ -71,7 +71,7 @@ ACTIVE -> COMPLETED | ARCHIVED
 ```
 
 - Each plan contains an ordered sequence of `PracticePlanItem` goals (e.g. "Master distributed caching under load in System Design", "Improve STAR-method conciseness in Behavioral").
-- Completing a recommended interview automatically advances the corresponding item status from `PENDING` to `COMPLETED`.
+- Completing a recommended interview or a targeted question micro-drill (`POST /api/v1/interviews/:id/drills/new`) automatically advances the corresponding item status from `PENDING` to `COMPLETED`.
 - At most one `ACTIVE` practice plan exists per user.
 
 ---

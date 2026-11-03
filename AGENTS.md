@@ -3,6 +3,8 @@
 Before making changes, read:
 
 - docs/architecture.md
+- docs/interview-architecture.md
+- docs/building-phase.md
 - docs/technicalSpecification.md
 - docs/api&event.md
 - docs/voice-system.md
@@ -14,8 +16,8 @@ Before making changes, read:
 - docs/PRD.md
 
 These documents define:
-- system architecture and service topology
-- server-authoritative voice gateway and Deepgram Voice Agent contracts
+- system architecture, service topology, and V1 building phases
+- server-authoritative voice gateway, LiveKit WebRTC media runtime, and AI provider contracts
 - career readiness, skill analytics, practice plans, and Paddle billing
 - approved provider architecture and AI module boundaries
 - coding patterns and engineering playbook standards

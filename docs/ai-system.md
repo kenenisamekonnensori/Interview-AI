@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines the application-facing AI contract. It complements [architecture.md](./architecture.md): Gemini is the initial reasoning adapter and Deepgram owns voice, but neither provider leaks into controllers or domain services.
+This document defines the application-facing AI contract. It complements [architecture.md](./architecture.md): Gemini is the reasoning adapter, Deepgram powers speech-to-text, and Cartesia/Deepgram provide text-to-speech, but no provider formats leak into controllers or domain services.
 
 ## Responsibilities
 
@@ -12,8 +12,8 @@ The AI system reasons over supplied, minimized context and returns structured su
 | --- | --- | --- | --- |
 | `createInterviewPlan` | Interview configuration plus analyzed resume/job context | Validated plan | AI provider |
 | `generateInterviewerResponse` | Plan, recent validated turns, interview settings | One interviewer turn and requested next state | AI provider |
-| `evaluateInterview` | Completed validated transcript and rubric | Structured evaluation | AI provider |
-| `generateReport` | Validated evaluation and interview metadata | Candidate-facing report | AI provider |
+| `evaluateInterview` | Completed validated transcript, speech metrics, and rubric | Structured evaluation with STAR breakdowns | AI provider |
+| `generateReport` | Validated evaluation, speech delivery data, and interview metadata | Candidate-facing report with exemplar rewrites | AI provider |
 
 Resume and job-description extraction use the AI module's internal structured-analysis facility. They are not a controller integration point.
 
@@ -28,24 +28,26 @@ Resume and job-description extraction use the AI module's internal structured-an
 
 ## Live-turn sequence
 
-In the default server-authoritative voice pipeline (`VOICE_PIPELINE=agent`):
+In the primary WebRTC agent voice pipeline (`VOICE_PIPELINE=agent`):
 ```text
-Browser mic (PCM 16kHz) -> Fastify Voice Gateway WS -> Deepgram Voice Agent
-                                                    -> Streaming Gemini Think
-                                                    -> Streaming Aura-2 TTS -> Browser playback
-                                                    -> AgentAudioDone -> Gateway settles turn & persists to DB
-                                                    -> Async post-turn structured assessment updates memory
+Browser mic (Opus WebRTC) ──► LiveKit SFU ──► LiveKit Agent Worker
+                                                ├── Silero VAD (neural turn detection)
+                                                ├── Deepgram Nova-3 (real-time STT)
+                                                ├── Streaming Gemini 2.0 Flash (Think)
+                                                └── Streaming Cartesia Sonic (TTS, ~90ms)
+                                                │
+                                                ▼ Spoken audio to WebRTC room
+                                                │
+                                                ▼ Turn settled (AgentAudioDone)
+                                        Fastify API Gateway (persists turn & memory)
+                                                │
+                                                ▼
+                                        Async post-turn structured assessment (Gemini)
 ```
-In the legacy pipeline (`VOICE_PIPELINE=legacy`), the sequential fallback runs:
-```text
-Deepgram final transcript -> Conversation Manager validates/persists user turn
-                         -> AiProvider.generateInterviewerResponse
-                         -> validate response + persist AI turn
-                         -> Deepgram TTS plays persisted text
-```
+In fallback environments, the Fastify WebSocket gateway executes the same server-authoritative turn sequence.
 
-In both pipelines, the live voice provider is transport and execution; the backend remains the authoritative owner of conversation state, turn persistence, and evaluation policies.
+In all paths, the live voice provider is transport and execution; the backend remains the authoritative owner of conversation state, turn persistence, and evaluation policies.
 
 ## Failure and privacy behavior
 
-The AI module exposes categorized errors to its caller without provider payloads. The caller maps them to the documented API error contract and keeps existing persisted state intact. Logs may contain operational metadata only; see [architecture.md](./architecture.md#privacy) for the data-minimization rules.
+The AI module exposes categorized errors to its caller without provider payloads. The caller maps them to the documented API error contract and keeps existing persisted state intact. Logs may contain operational metadata only; see [architecture.md](./architecture.md#security-and-privacy) for the data-minimization rules.

@@ -1,311 +1,140 @@
-# Voice System Specification — Server-Authoritative Voice Platform
+# Voice System Specification & V1 Audio Architecture
 
-Version: 1.1
-Status: Active Production Architecture (server-owned Deepgram Voice Agent default core; legacy retained behind a flag).
+Version: 2.0
+Status: Active Production Architecture & V1 Audio Upgrade Specification
 
 ---
 
 # Purpose
 
-This document defines the production voice architecture of Interviewer AI: a server-authoritative voice platform built the way modern voice products (Retell, Vapi, LiveKit) operate. It specifies the provider protocol contract, interviewer brain design, turn-taking policy, multi-instance concurrency, and lifecycle management.
-
-It supplements `docs/architecture.md`. All domain boundaries of `architecture.md` (provider-agnostic AI module, Conversation Manager ownership, persistence, privacy rules) remain in force.
+This document defines the production voice architecture of Interviewer AI: a server-authoritative voice platform built the way modern voice products operate. It specifies the voice gateway protocol, the two-lane interviewer brain, turn-taking policies, multi-instance concurrency, and the V1 audio-focused architecture upgrade.
 
 ---
 
-# Current state and why it must change
+# Core Architecture: Two-Lane Design
 
-The current voice pipeline is **client-authoritative**: the browser connects directly to Deepgram
-STT with a granted token, the server synthesizes whole TTS blobs, the server's conversation state
-machine advances only on client REST acknowledgements (`playback-completed`), and the realtime
-LLM turn is a blocking structured-JSON generation.
-
-Diagnosed failure modes (2026-10 investigation, confirmed in production sessions):
-
-| Failure | Root cause | Class |
-| --- | --- | --- |
-| Greeting/first question arrives after minutes | Unbounded network segments (Deepgram SDK token grant, TTS synthesis, pre-warm await, browser fetch — none with deadlines); playback serially waits for transport before audio; recovery/retry cycles on provider quota | Structural |
-| Silent candidate never re-engaged reliably | Watchdog armed only by client `playback-completed` ack; one missed ack silently disarms it; state stuck in SPEAKING/THINKING | Structural |
-| Backend is blind to voice activity | Browser→Deepgram direct audio; server never sees VAD events; `/user-speech-started` endpoint unused by the client | Structural |
-| Dead air after answers | Non-streaming JSON-schema LLM turn (blocks TTFT), serialized fetch chain, serial audio queue | Structural |
-| Nudges stop permanently after 2 strikes | `maxSilenceNudgesPerTurn` exhaustion with no "move on" stage | Policy gap |
-| In-memory watchdogs lost on API reload | Timers live in process memory; dev reloads erase them silently | Reliability |
-
-These are not bugs to patch; they are properties of a client-orchestrated design. The fix is an
-architecture change, not more retry envelopes.
-
----
-
-# Target architecture
-
-## Overview
+Conversational latency must be strictly decoupled from deep interview evaluation. The system separates live voice interaction from offline assessment into two independent lanes:
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ BROWSER (thin client — capture and playback only)                        │
-│  getUserMedia → 16 kHz PCM frames → ONE WS to our voice gateway          │
-│  WebAudio rolling replay buffer  ← server pushes binary audio chunks     │
-└──────────────────────────────────────────────────────────────────────────┘
-                 audio in│ ▲audio + agent events out
-                         ▼ │
+│ REALTIME LANE (Sub-Second Latency Loop)                                 │
+│  • Voice capture & playback: Low-latency audio streaming                 │
+│  • Speech-to-Text (STT) + Streaming LLM Think + Text-to-Speech (TTS)     │
+│  • Neural Voice Activity Detection (VAD) & Instant Barge-In (≤ 150 ms)   │
+│  • Plain spoken text only: NO JSON schemas or tool calls in audio loop   │
+└────────────────────────────────────┬─────────────────────────────────────┘
+                                     │ Turn settled (AgentAudioDone)
+                                     ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ OUR API  = SESSION OWNER (voice gateway)                                 │
-│  • WS route: /api/v1/interviews/:id/conversation/ws (auth ticket)        │
-│  • Opens and owns the single Deepgram Agent WebSocket (server key)       │
-│  • Drives the interview state machine from agent events                  │
-│  • Persists turns via the existing ConversationService/Prisma models     │
-│  • Publishes existing SSE realtime events for the web UI                 │
-│  • Enforces silence/ladder policy, barge-in, duration metering           │
-└──────────────────────────────────────────────────────────────────────────┘
-                             │ ONE WS (agent.deepgram.com)
-                             ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│ DEEPGRAM VOICE AGENT API                                                 │
-│  STT (Nova-3) → Think (BYO Gemini endpoint, our key) → TTS (Aura-2)      │
-│  End-of-turn detection, interruption/barge-in, Streaming: built-in       │
+│ OFFLINE LANE (Asynchronous Evaluation Workers)                           │
+│  • Post-turn structured assessment via Gemini (JSON mode)                │
+│  • Updates InterviewMemory: covered topics, weak areas, question history │
+│  • Refreshes dynamic context digest for subsequent turns (UpdateThink)   │
+│  • Post-interview comprehensive evaluation & rubric scoring              │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-Key property: **the browser never holds a Deepgram credential** and never makes a provider call.
-The conversation timeline is advanced by server-observed events, not client acknowledgements.
+---
 
-## Why this split
+# Session Lifecycle & Concurrency Management
 
-| Previous failure mode | Handled where in the new design |
-| --- | --- |
-| LLM JSON-mode non-streaming → 8–20 s dead air | Realtime `think` streams plain text (no schema); JSON assessment moves to an async post-turn worker |
-| Minute-scale unbounded hangs | One WS with Settings/KeepAlive; audio is a continuous binary stream; no per-segment fetches to hang |
-| Client-owned timeline via `playback-completed` acks | Server drives state from agent events; acks become UI-only |
-| Backend deaf to voice activity | `UserStartedSpeaking` and end-of-turn arrive server-side; silence policy is a server decision |
-| Deepgram token handed to the browser | Relay is server-to-Deepgram; no browser credential |
-| Serial blob playback queue | Audio streams continuously; ordering is the socket itself |
+1. **Authentication & Ticket Minting**:
+   - Client requests a single-use voice ticket via `POST /api/v1/interviews/:id/voice-token`.
+   - Provider credentials (e.g. `DEEPGRAM_API_KEY`, `GEMINI_API_KEY`) remain strictly server-only. Clients never receive provider tokens.
+
+2. **Distributed Ownership (`VoiceSessionRegistry`)**:
+   - Live voice sessions hold a renewed Redis lease per interview ID.
+   - The newest connection supersedes any existing connection: the previous owner is closed with code `4001` over a control channel. The superseded client continues in text mode rather than reconnect-fighting.
+
+3. **Concurrency Limiting (`VoiceConcurrencyLimiter`)**:
+   - Enforces deployment-wide ceiling (`VOICE_MAX_CONCURRENT_SESSIONS`, default 100) using a shared Redis atomic acquire with stale-entry expiration.
+   - Over-capacity sessions cleanly degrade to typed interview mode with code `1013` rather than opening failing provider sockets.
 
 ---
 
-# Protocol contract (Deepgram Voice Agent API)
+# Server-Authoritative Turn-Taking & Silence Ladder
 
-Gateway session lifecycle per interview:
+Turn state and conversation timelines are advanced exclusively by server-observed events, never client acknowledgements.
 
-1. **Connect.** Browser WS → gateway authenticates (reuse `VoiceTicketService`, short TTL),
-   creates the session, opens the Deepgram Agent WS, awaits `Welcome`.
-   Do not send anything before `Welcome`.
+### Silence Ladder Policy
+When agent audio finishes (`AgentAudioDone`), the server transitions to `LISTENING` and arms the silence watchdog:
+1. **Strike 1 (~9–12 s idle)**: Canned invite (*"Take your time..."*) injected as an instant clarification turn without LLM delay.
+2. **Strike 2 (~8 s later)**: Canned offer (*"Would you like to pause here, or move to the next question?"*).
+3. **Strike 3 (Move-On)**: The interviewer changes topic, records the struggle in `InterviewMemory` as a weak area, and proceeds to the next planned question. The ladder never ends in permanent dead air.
+4. **Graceful Completion**: When move-on budget or interview duration is spent, the agent speaks a closing statement and triggers the report generation worker.
 
-2. **Settings → SettingsApplied.** Gateway sends `Settings`:
-   - `audio.input`: `{ encoding: "linear16", sample_rate: 16000 }`
-   - `audio.output`: `{ encoding: "linear16", sample_rate: 24000, container: "none" }`
-   - `agent.listen`: `deepgram nova-3` (Flux upgrade is a later optimization; keep language +
-     keyterm support)
-   - `agent.think`: BYO **Google AI Studio** endpoint (`generativelanguage.googleapis.com`
-     `:streamGenerateContent?alt=sse`, `x-goog-api-key` header). Instruction = interviewer
-     persona + interview plan + session context pack. Optional ordered fallback chain via the
-     `think` array (e.g. second Google credential or an OpenAI-compatible provider) —
-     provider-quota exhaustion finally has a first-class answer.
-   - `agent.speak`: Aura-2 per-language models (unchanged from `ttsModelFor`).
-
-3. **Greeting.** After `SettingsApplied`, gateway sends an `InjectUserMessage` with a
-   deterministic instruction to deliver the greeting. The greeting is the same streaming think
-   loop from the first millisecond — no separate blocking LLM call anywhere.
-
-4. **Runtime loop (all server-side).** Event → system action mapping:
-
-   | Agent event | Gateway action |
-   | --- | --- |
-   | `UserStartedSpeaking` | Cancel pending silence nudges; blank client replay buffer (barge-in); SSE `UserSpeechStarted` |
-   | `ConversationText` (user, turn-final) | Persist USER turn through existing append-turn transaction state guards |
-   | `AgentThinking` | UI state THINKING (SSE); mark in-turn state |
-   | `ConversationText` (agent) | Persist AI turn; enqueue post-turn assessment job; SSE `AIResponseGenerated` |
-   | Binary audio frames | Forward to browser; tee a rolling server-side copy ("what was actually spoken") |
-   | `AgentAudioDone` | State → LISTENING; arm the server-side silence watchdog |
-   | `Warning` (`THINK_REQUEST_FAILED`) | Observability; the think fallback chain retries with the next provider |
-   | `Error` (`FAILED_TO_THINK` / `FAILED_TO_SPEAK`) | Degraded path: canned server response via `InjectAgentMessage`; offer text mode if persistent |
-
-5. **Keepalive and caps.** Gateway sends `KeepAlive` every ≤8 s while idle; the Agent WS allows
-   ≤2 h, comfortably above the `durationMinutes` interview cap.
-
-6. **Completion.** Closing statement via inject; on final `AgentAudioDone` run the existing
-   `requestCompletion` → report worker flow, unchanged.
-
-## Latency SLOs
-
-Aligned with published production budgets (~800 ms total per-turn budget; Flux end-of-turn
-~260 ms p50; streaming LLM TTFT target ≤500 ms; TTS first byte 80–200 ms):
-
-| Metric | Target |
-| --- | --- |
-| Greeting first audible byte from `SettingsApplied` | ≤ 1.5 s |
-| User final answer → agent first audible byte | ≤ 1.8 s p95 |
-| Canned silence nudge (inject, no LLM) | ≤ 300 ms |
-| Barge-in playback stop | ≤ 150 ms from `UserStartedSpeaking` |
-
-SLOs are verified by an automated test harness with synthetic user audio, not by manual vibes.
+### Barge-In Policy
+- Agent speech halts immediately on candidate speech onset (`UserStartedSpeaking`).
+- Client immediately purges its audio replay buffer.
+- Silence nudges are disarmed immediately on speech detection.
 
 ---
 
-# Interviewer brain: two lanes
+# V1 Audio Architecture Upgrade: Transitioning to WebRTC (LiveKit)
 
-This is the central product-quality design. The realtime lane is optimized for perceived
-latency; the offline lane owns interview quality.
+For Version 1, the platform focuses strictly on **audio-only excellence**. To solve real-world network jitter, audio clipping, and speaker echo, the transport and voice runtime are upgraded as follows:
 
-## Realtime lane (Deepgram agent + Gemini streaming)
+```text
+┌────────────────────────────────────────────────────────┐
+│ CANDIDATE BROWSER (LiveKit WebRTC Client)              │
+│  • High-fidelity Opus Audio (24–32 kbps adaptive)      │
+│  • Hardware-accelerated browser Echo Cancellation (AEC)│
+└───────────────────────────┬────────────────────────────┘
+                            │ WebRTC (UDP / SRTP)
+                            ▼
+┌────────────────────────────────────────────────────────┐
+│ LIVEKIT SFU (Media Server)                             │
+│  • Sub-50ms media routing, Packet Loss Concealment     │
+│  • Dynamic jitter buffer, Global edge traversal        │
+└───────────────────────────┬────────────────────────────┘
+                            │ Low-latency worker loop
+                            ▼
+┌────────────────────────────────────────────────────────┐
+│ LIVEKIT AGENT RUNTIME                                  │
+│  • Silero VAD (Neural turn detection & intonation)     │
+│  • STT: Deepgram Nova-3                                │
+│  • LLM: Gemini 2.0 Flash / Claude 3.5 Sonnet           │
+│  • TTS: Cartesia Sonic / Deepgram Aura-2               │
+└───────────────────────────┬────────────────────────────┘
+                            │ Synchronize turns & state
+                            ▼
+┌────────────────────────────────────────────────────────┐
+│ FASTIFY BACKEND & PRISMA POSTGRESQL                    │
+│  • Auth, Career Targets, Readiness Engine, Reports     │
+└────────────────────────────────────────────────────────┘
+```
 
-- Persona + interview plan + a **precomputed context pack** (plan topics/objectives, resume
-  summary + skills, job required skills, memory digest) baked into the `think` instruction —
-  all fetched once at session start; they are small.
-- Per-turn dynamic state (covered topics, weak areas, unresolved follow-ups) pushed via
-  `UpdateSettings` after each completed turn.
-- **No function calling in the voice loop** — tool calls inside a live turn add 30–80 % latency.
-  Retrieval is pre-baked into the context pack instead.
-- Keep the existing interviewer prompt machinery; project it into the agent `think`
-  instruction.
-
-## Offline lane (existing BullMQ workers)
-
-- After each agent turn, a lightweight assessment-extraction job (structured JSON, current
-  prompt machinery, generous retries — nobody is waiting) updates `InterviewMemory`,
-  `topicCoverage`, weak-area lists, difficulty adaptation inputs.
-- Duplicate-question detection and closing logic remain **server-side rules** fed by this
-  memory — not realtime prompt behavior.
-
----
-
-# Turn-taking, barge-in, and silence policy
-
-All server-side; canned injects are instant because they bypass the LLM.
-
-**Silence ladder** after agent audio completes with no user speech:
-
-1. ~9 s → `InjectAgentMessage` canned invite ("Take your time…") — the existing strike-1 text.
-2. ~8 s more → canned offer ("Pause here, or move to the next question?") — the strike-2 text.
-3. **Move-on (new):** third silence event instructs the agent to proceed to the next planned
-   topic and record the struggle in its assessment. A human interviewer moves on; the ladder
-   must never end in permanent silence again.
-
-**Barge-in:** agent yields on `UserStartedSpeaking`; UI stops playback immediately from the
-pushed event (no round-trip). Nudges cancel on speech onset; the watchdog re-arms if speech
-stops without a finalized turn (false-start guard).
-
-**Duration:** connection expiry maps onto the interview clock; abandoned sessions auto-close
-and trigger the report. Orphaned-session risk disappears.
-
----
-
-# Phased execution plan
-
-Each phase is independently shippable and independently testable. Follow the execution
-principles of `docs/implementationRoadmap.md` (single objective, no unrelated changes).
-
-## Phase 0 — Stop the bleeding (urgent, no architecture change)
-
-### Goal
-Remove the minute-scale hang class from the CURRENT pipeline and get baseline measurements.
-
-### Deliverables
-- Hard deadlines (`AbortSignal.timeout`) on every remaining network segment: Deepgram SDK calls
-  (token grant, live connect, TTS synthesis + stream consumption), the audio route's
-  `awaitPreWarm`, and all browser fetches (audio queue included, 10–15 s).
-- Kill the serial audio queue hang: per-item fetch timeout before falling back to text mode.
-- Client reconciliation: on SSE (re)connect and on a cheap periodic probe, refetch and reconcile
-  server conversation state (no more single-shot, client-owned ack dependence).
-- Wire and document the per-stage latency observability events
-  (`ai.provider.*`, `voice.provider.*`, `conversation.turn.generation`).
-
-### Exit criteria
-- No session step can exceed its documented deadline; a hung provider call degrades in ≤15 s.
-- A scripted hang simulation recovers with a visible fallback, not silent minutes.
-- Baseline latency numbers recorded for the greeting and one full Q&A round.
-
-## Phase 1 — Voice Gateway skeleton (parallel-run behind a flag)
-
-### Goal
-Stand up our API as the session owner over the Deepgram Agent API, running in parallel with
-the legacy path.
-
-### Deliverables
-- New `@fastify/websocket` route + gateway session manager; agent transport module; browser
-  voice client (PCM capture + rolling replay buffer with barge-in flush).
-- Feature flag `voicePipeline: agent | legacy` per session; legacy stays default.
-- Turn persistence and SSE publishing through the EXISTING conversation models and event
-  vocabulary — no client data-model change.
-
-### Exit criteria
-- An agent-mode interview produces persisted turns and SSE events identical to legacy DTOs.
-- Greeting ≤ 1.5 s; answer→response ≤ 1.8 s; barge-in works; a WS drop resumes from DB state.
-- No Deepgram credential ever reaches the browser in agent mode.
-
-## Phase 2 — Interviewer brain and interview contract
-
-### Goal
-Port interview quality into the new two-lane design.
-
-### Deliverables
-- BYO Gemini think configuration + context pack; `UpdateSettings` memory pump.
-- Async post-turn assessment worker; duplicate-question and closing rules ported to server rules.
-- Greeting via deterministic inject; no-voice-start-without-plan guard preserved.
-
-### Exit criteria
-- Plan coverage and memory-driven adaptation behave equivalent to legacy, with the realtime
-  turn never blocked by assessment work.
-- THINK failures degrade gracefully (fallback chain / canned recovery), never fabricate content.
-
-## Phase 3 — Turn-taking and silence policy
-
-### Goal
-Make the interview _feel_ like a human interviewer.
-
-### Deliverables
-- Full silence ladder incl. the move-on stage; false-start handling.
-- Duration meter + auto-close; per-interview Deepgram/LLM usage counters wired toward billing.
-
-### Exit criteria
-- The three experienced failure scenarios — greeting lag, silent candidate, post-answer dead
-  air — are all covered by scripted automated cases that pass.
-- An abandoned session closes itself and produces the report.
-
-## Phase 4 — Production-grade hardening (implemented)
-
-### Goal
-Operate like a platform, not a demo.
-
-### Delivered
-- **Multi-instance realtime.** The events bus already publishes to Redis pub/sub; SSE works from any instance. Live voice sessions now have explicit ownership: `VoiceSessionRegistry` holds a renewed Redis lease per interview and the newest connection wins, closing the previous owner with close code `4001` over a control channel. The browser treats that code as final and continues in text mode instead of reconnect-fighting another tab.
-- **Session-state recovery.** The agent gateway is the authority for turn-taking: `AgentAudioDone` settles the turn (`SPEAKING -> LISTENING`) and arms the ladder, so a suspended browser audio context or a lost acknowledgement cannot strand the interview. A fresh session's first words are Deepgram's verbatim `agent.greeting` (spoken before any LLM turn); a reconnect/reload omits the greeting and injects a resume directive (re-ask the unanswered question, or respond to the candidate's last answer), so the interviewer never waits for the candidate to speak first. Injected control text never surfaces as `user-speech-started`, so it cannot make the browser stop the interviewer's own audio. The abandoned-session sweeper remains the safety net for a gateway that never returns.
-- **Concurrency management.** `VoiceConcurrencyLimiter` enforces `VOICE_MAX_CONCURRENT_SESSIONS` (default 100) with a single Lua-scripted Redis acquire shared across instances, a heartbeat renewal and stale-entry expiry; an over-capacity session receives `capacity` and continues in text mode instead of opening a provider socket. Redis is optional — the limiter degrades to the process view.
-- **Transcript retention / PII.** Audio is never stored. `TRANSCRIPT_RETENTION_DAYS` (default `0` = keep for the interview's lifetime) drives `TranscriptRetentionSweeper`, which deletes only `conversation_turn` rows for completed interviews older than the window, in bounded batches. Interview history, memory and reports survive.
-
-### Exit criteria
-- Two-instance deployment passes a soak test without state divergence. *(Ownership and concurrency are covered by unit tests; a two-instance soak run is an environment exercise, not part of CI.)*
-- Failure drills (gateway restart, provider outage, client network drop) recover correctly. *(Restart and network drop are covered by the reconnect + resume path and the expiry sweeper; provider outage degrades to text via the think chain.)*
-
-## Phase 5 — Product differentiators (post-core)
-
-- Report quality upgrades from exact per-question turn/timing data.
-- Performance analytics, coaching review waves, shareable outcomes.
+### Why LiveKit Over Raw WebSockets
+1. **UDP WebRTC vs. TCP WebSockets**:
+   - WebSockets run over TCP, where minor packet loss causes Head-of-Line blocking and audio stutter.
+   - WebRTC over UDP uses Opus codec with Packet Loss Concealment (PLC), providing seamless audio even under adverse network conditions.
+2. **Hardware Acoustic Echo Cancellation (AEC)**:
+   - Native WebRTC media engine allows candidates to interview using built-in laptop speakers and microphones without headphones, eliminating false barge-in loops.
+3. **Neural Turn Detection (Silero VAD)**:
+   - Replaces fixed-duration silence timers with pitch- and intonation-aware VAD, distinguishing thinking pauses (*"Hmm, let me consider..."*) from finished answers.
+4. **Sub-800ms Voice Latency**:
+   - Pairing Deepgram Nova-3 transcription with Cartesia Sonic TTS delivers sub-100ms first-audio-byte synthesis, achieving human conversational cadence.
 
 ---
 
-# Approved decisions
+# Pedagogical Coaching Upgrades (V1 Feature Focus)
 
-| Decision | Choice | Rationale |
-| --- | --- | --- |
-| Conversational core | Deepgram Voice Agent API (bundled runtime) | Fastest path to correct turn-taking; already in the provider stack; our differentiation is interview quality + reports, not STT glue |
-| Realtime think provider | BYO Google AI Studio Gemini (existing key) | Zero new spend; managed support documented; fallback chain reserves an OpenAI-compatible provider as later config, not rearchitecture |
-| Transport | WebSocket PCM relay (server-owned) | Browser-standard, no new infra; WebRTC via LiveKit remains swappable later for mobile/telephony |
-| Realtime output format | Streaming plain text (no JSON schema in the voice loop) | TTFT is the budget-critical metric; structure moves to the offline lane |
-| Cutover | Agent pipeline is the default from Phase 4; legacy remains selectable with `VOICE_PIPELINE=legacy` | Auto-greeting and server-side silence detection only exist in the server-owned lane; the flag keeps a fast rollback |
-| Function calling in voice loop | Disabled in realtime, retrieval pre-baked in context pack | Tool calls add 30–80 % latency inside live turns |
+To make Interviewer AI an effective skill-building tool, V1 introduces actionable speech analytics and instant practice loops:
 
-# Required document amendments during implementation
+1. **Speech Cadence & Delivery Analytics**:
+   - **Words Per Minute (WPM)**: Pacing feedback (optimal: 130–160 WPM).
+   - **Filler Word Heatmap**: Detection and counting of *"like"*, *"um"*, *"you know"*, *"sort of"*.
+   - **Talk-to-Listen Ratio**: Detection of monologuing vs. concise answers.
+2. **STAR Method Breakdown (Behavioral Interviews)**:
+   - Per-question scoring of Situation, Task, Action, and Result components.
+3. **Exemplar "Model" Answers**:
+   - Side-by-side comparison between candidate's verbatim answer and a top-tier exemplar response.
+4. **Targeted Micro-Drill ("Re-Do" Mode)**:
+   - One-click capability on the interview report to re-try any fumbled question in a focused 3-minute voice drill without restarting the full interview.
 
-- `docs/architecture.md`: replace the "Live voice transport" row (browser-to-Deepgram token
-  model) with the server-owned gateway model; keep the provider-agnostic boundary language.
-- `docs/api&event.md`: add the voice gateway WS route, its session message contract, the
-  `voicePipeline` flag semantics, and note that SSE event payloads are unchanged.
-- `docs/observability.md` (or equivalent): register the new per-stage latency events and SLOs.
+---
 
-# Open product decisions (not blockers for Phase 0–1)
+# Implementation Reference
 
-1. Whether to add an OpenAI-compatible fallback provider key in Phase 2 or defer to Phase 4.
-2. Deepgram Agent per-connected-minute cost acceptance thresholds and per-interview budget caps
-   (metering lands Phase 3; the cap policy needs a product value).
-3. Whether keyterm prompting (candidate's resume/project vocabulary) is enabled from Phase 2 or
-   tuned later from real-session WER data.
+- Complete architectural specifications and data flow: [`docs/interview-architecture.md`](./interview-architecture.md)
+- Phased implementation runbook and verification checkpoints: [`docs/building-phase.md`](./building-phase.md)

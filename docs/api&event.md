@@ -75,7 +75,8 @@ All endpoints below are under `/api/v1`, require an authenticated verified user,
 | `GET` | `/interviews/:id/plan` | — | Returns the current status and `InterviewPlan` when ready. |
 | `GET` | `/interviews/:id/state` | — | Returns the authoritative lifecycle state, timestamps, conversation state, and report readiness. |
 | `DELETE` | `/interviews/:id` | — | Cancels only a cancellable interview. |
-| `POST` | `/interviews/:id/voice-token` | — | Returns `{ pipeline, streamPath, streamTicket }`; in the default agent pipeline it carries no browser provider token. |
+| `POST` | `/interviews/:id/livekit-token` | — | Issues a signed participant JWT for the LiveKit WebRTC audio room. |
+| `POST` | `/interviews/:id/voice-token` | — | Returns `{ pipeline, streamPath, streamTicket }`; fallback legacy endpoint for WebSocket bridging. |
 | `POST` | `/interviews/:id/conversation/start` | — | Transitions `READY -> IN_PROGRESS` and creates the conversation in `GREETING`, returning immediately; greeting generation is decoupled from the request path and happens through `POST /interviews/:id/conversation/next-response` (the single generation path, so retries never create a second conversation or a duplicate greeting). |
 | `POST` | `/interviews/:id/conversation/next-response` | — | Backend generates and persists an AI turn. When a prior request already persisted the pending turn, retries return that same turn without creating another. |
 | `POST` | `/interviews/:id/conversation/transcripts` | `{ text, metadata? }` | Persists a finalized user transcript and moves the conversation to `THINKING`. |
@@ -84,6 +85,7 @@ All endpoints below are under `/api/v1`, require an authenticated verified user,
 | `POST` | `/interviews/:id/conversation/complete` | — | Idempotently finalizes an active conversation and transitions the interview through `COMPLETING` to `COMPLETED`. It creates one pending report and queues generation; a report failure never reopens or rolls back the completed interview. |
 | `GET` | `/interviews/:id/report` | — | Returns the owned report and its `PENDING`, `GENERATING`, `READY`, or `FAILED` status. |
 | `POST` | `/interviews/:id/report/retry` | — | Re-queues an owned failed report without changing interview lifecycle state or creating another report. |
+| `POST` | `/interviews/:id/drills/new` | `{ questionId?, topic? }` | Creates an ephemeral 3-minute focused voice practice drill for a fumbled question. |
 | `GET` | `/analytics/history` | Pagination and optional date/type/role/difficulty filters | Returns owned interview history, including planned, active, failed, and completed states. |
 | `GET` | `/analytics/interviews/:id` | — | Returns an owned completed interview only when it has a valid ready report. |
 | `GET` | `/analytics/reports` | Optional analytics filters | Returns historical reports backed by valid completed interviews. |
@@ -122,23 +124,20 @@ Examples:
 
 Events should never contain business logic—they only communicate state changes.
 
-### Agent voice pipeline (server-owned gateway)
+### Voice pipeline & media transport
 
-`VOICE_PIPELINE` selects the realtime voice pipeline per deployment: `agent` (default since Phase 4) routes each voice session through the server-owned Deepgram Voice Agent gateway; `legacy` restores the direct browser-to-Deepgram transport described above.
+Live voice sessions run through an authoritative server-controlled architecture:
+1. **LiveKit WebRTC Audio (Production Core)**: The browser calls `POST /interviews/:id/livekit-token` to obtain a scoped WebRTC JWT. The browser connects via UDP WebRTC Opus, with native browser AEC/AGC/ANS. The autonomous LiveKit Agent worker processes speech via Deepgram Nova-3 and responds via Cartesia Sonic (TTS) and Gemini 2.0 Flash (Think), streaming settled turns back to the Fastify API.
+2. **Fastify WebSocket Gateway (Fallback Bridge)**: Selected by `VOICE_PIPELINE=agent` for WebSocket environments. The browser opens a ticketed WebSocket at `/conversation/voice-stream`. Binary PCM frames are forwarded to the agent core.
 
-* `POST /interviews/:id/voice-token` returns `{ pipeline }` so the client knows which transport to use. In agent mode it carries no browser token — the gateway authenticates to Deepgram with the server key.
-* The client opens the existing voice-stream websocket with its ticket; binary mic frames (linear16 16 kHz PCM) are forwarded to the agent session.
 * The gateway persists both sides of the conversation through the append-turn transaction (candidate statements on `AgentThinking`, interviewer utterances on `AgentAudioDone`), updates the interview memory via the agent-path adapter in `agent-memory.ts` (asked questions, token-mapped topic coverage, closing statements), and publishes the same typed events (`TranscriptFinalized`, `AIResponseGenerated`, `UserSpeechStarted`). A close-classified utterance persists as a `CLOSING` turn and completes the interview through the ordinary lifecycle path.
 * Turn-taking is server-authoritative: when the provider finishes sending a turn's audio (`AgentAudioDone`), the gateway itself settles the turn (`SPEAKING -> LISTENING`) and arms the backend silence ladder. The browser's `playback-completed` call is an idempotent UI synchronization, never the event that keeps the interview alive.
-* Joining is explicit in the browser (one gesture unlocks audio and the microphone). A fresh session sends the opening as Deepgram's verbatim `agent.greeting`, so the interviewer speaks first without any LLM round trip and even while the think model is slow. A reconnect or page reload with persisted history omits the greeting and injects a resume directive that re-asks the unanswered question (or answers the candidate's last answer) instead of waiting for the candidate to speak first.
-* The gateway forwards `agent-thinking` (`AgentThinking`) and `agent-speaking-started` (the assistant's first `ConversationText`, or `AgentStartedSpeaking` where the provider emits it) so the UI reflects thinking/speaking instead of showing LISTENING while the interviewer talks.
-* Client messages over the voice-stream socket: `{ type: "agent-ready" }`, `{ type: "user-speech-started" }`, `{ type: "user-transcript", text }`, `{ type: "agent-turn", turn, state }` (media already streamed to the client), `{ type: "agent-audio-done" }`, `{ type: "warning" | "error", message, code? }` (the provider code is forwarded for diagnostics), `{ type: "think-degraded", message, fallback: "text", code? }`, `{ type: "capacity", message, active, limit }` (the deployment's live-session ceiling was reached; continue in text), `{ type: "superseded", message }` (another connection now owns the live session), plus binary linear16 24 kHz PCM frames of the interviewer's speech.
+* Joining is explicit in the browser (one gesture unlocks audio and the microphone). A fresh session sends the opening greeting verbatim, so the interviewer speaks first without any LLM round trip and even while the think model is slow. A reconnect or page reload with persisted history omits the greeting and injects a resume directive that re-asks the unanswered question (or answers the candidate's last answer) instead of waiting for the candidate to speak first.
+* The gateway forwards `agent-thinking` (`AgentThinking`) and `agent-speaking-started` so the UI reflects thinking/speaking instead of showing LISTENING while the interviewer talks.
 * Close codes: the gateway closes with `4001` when a newer connection took over the session — the client must not reconnect, it continues in text mode — and with `1013` for capacity/provider failures. Every other drop is recovered by the client's bounded reconnect, which re-fetches a fresh ticket and resumes from persisted state.
-* `agent.think` is an ordered chain: `GEMINI_MODEL` first, then the optional `GEMINI_FALLBACK_MODELS` (comma-separated, server-only). Deepgram retries the next entry when a model fails, and every mid-interview `UpdateThink` refresh resends the whole chain. If every entry is exhausted (`FAILED_TO_THINK`) or the speak stage cannot produce audio (`FAILED_TO_SPEAK`), the gateway sends `think-degraded` with a fixed server template and closes the socket: the client continues the same interview by typing, and no interviewer content is fabricated.
+* `agent.think` is an ordered chain: `GEMINI_MODEL` first, then the optional `GEMINI_FALLBACK_MODELS` (comma-separated, server-only). The agent runtime retries the next entry when a model fails, and every mid-interview `UpdateThink` refresh resends the whole chain. If every entry is exhausted (`FAILED_TO_THINK`) or the speak stage cannot produce audio (`FAILED_TO_SPEAK`), the gateway sends `think-degraded` with a fixed server template and closes the socket: the client continues the same interview by typing, and no interviewer content is fabricated.
 * Post-turn structured assessment runs after the turn is delivered and never in the response path; it updates the persisted memory (answer depth, follow-up need, completed objectives) and the next turn's think instruction. The spoken text itself carries no assessment payload.
 * Deliberately not in this skeleton: persisted turn audio for replay (live streaming only).
-
-The client obtains a short-lived Deepgram token from `POST /api/v1/interviews/:id/voice-token`. It sends raw audio directly to Deepgram and sends only the finalized, validated transcript text to the API as a conversation turn. Raw audio is neither proxied through nor persisted by the API by default.
 
 ### Turn-taking, silence policy and metering
 
@@ -153,13 +152,9 @@ Both lanes share one server-owned turn-taking policy (`silence-ladder.ts`):
 
 **Usage counters.** `interview_usage` records server-observed provider consumption per interview: `voiceSeconds` (server-owned agent session), `thinkRequests` (interviewer turns plus post-turn assessments) and `speakCharacters` (real synthesis only — cache hits are free). Counters are additive, never decremented, and never derived from client input; they are the ledger billing will read, while pricing and plan caps remain billing decisions.
 
-### Voice transport decision
-
-The current transport is **direct browser-to-Deepgram live voice with API coordination**. The API issues the short-lived token and remains authoritative for interview ownership, conversation transitions, finalized transcripts, generated turns, playback acknowledgement, and typed event publication. The browser may reconnect with a fresh token; it never receives a long-lived provider credential. Recordings are not part of the MVP, so raw audio has no object-storage retention or playback surface.
-
 ## Typed real-time event contract
 
-Event names and payload types are exported by `@interviewer-ai/types` as `RealtimeEventName`, `RealtimeEventPayloads`, and `RealtimeEvent`. Events are facts emitted after backend decisions; no event payload accepts an arbitrary next state.
+Event names and payload types are exported by `@interviewer-ai/types` as `RealtimeEventName`, `RealtimeEventPayloads`, and `RealtimeEvent`. Events are published after authoritative backend decisions over Server-Sent Events (SSE) and WebSocket channels; no event payload accepts an arbitrary next state.
 
 | Event | Payload |
 | --- | --- |
@@ -172,7 +167,7 @@ Event names and payload types are exported by `@interviewer-ai/types` as `Realti
 | `InterviewCompleted` | `{ interviewId, conversationId, occurredAt }` |
 | `ReportGenerated` | `{ interviewId, report, occurredAt }` |
 
-The current voice transport is Deepgram's browser WebSocket, with REST acknowledgements for finalized transcripts and playback completion. A future application WebSocket/SSE transport must publish this exact event union rather than inventing a second event vocabulary.
+The server gateway owns voice transport and publishes this exact typed event vocabulary to synchronize web client state.
 
 ### Typed interview fallback
 

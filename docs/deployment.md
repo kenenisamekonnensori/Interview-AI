@@ -8,24 +8,30 @@ The supported template is a **Docker-compatible container platform** using [dock
 
 ### Monolith Mode (Default / MVP Deployment)
 ```text
-Browser -> Next.js web -> Fastify API (Monolith) -> PostgreSQL
-                            |                     -> R2 (optional)
-                            |                     -> Redis (optional)
-                            |                     -> Gemini / Deepgram / Resend
+Browser ── WebRTC (Opus Audio) ──► LiveKit SFU ◄──► LiveKit Agent Worker (apps/agent)
+   │                                                         │
+   └── REST / SSE ──► Fastify API (Monolith) ◄───────────────┘
+                          │          ├── PostgreSQL
+                          │          ├── R2 (object storage)
+                          │          ├── Redis (optional)
+                          │          └── Gemini / Deepgram / Cartesia / Resend
 ```
-In Monolith Mode, the backend deploys as a **single Fastify API service** (e.g. on Render, Heroku, or Fly.io). No dedicated worker processes or Redis queues are required for full application functionality.
+In Monolith Mode, the core backend deploys as a **single Fastify API service** paired with the LiveKit media infrastructure and Agent Worker.
 
-### Worker Mode (Future Production Architecture)
+### Worker Mode (Production Scaled Architecture)
 ```text
-Browser -> Next.js web -> Fastify API -> PostgreSQL
-                            |          -> Redis / BullMQ
-                            |          -> R2
-                            |          -> Gemini / Deepgram / Resend
-BullMQ career-analysis worker -> Redis, PostgreSQL, R2, Gemini
-BullMQ report worker          -> Redis, PostgreSQL, Gemini
-Auth-email worker             -> PostgreSQL, Resend
+Browser ── WebRTC (Opus Audio) ──► LiveKit SFU ◄──► LiveKit Agent Worker (apps/agent)
+   │                                                         │
+   └── REST / SSE ──► Fastify API ◄──────────────────────────┘
+                          │          ├── PostgreSQL
+                          │          ├── Redis / BullMQ
+                          │          ├── R2
+                          │          └── Gemini / Deepgram / Cartesia / Resend
+BullMQ career-analysis worker ──► Redis, PostgreSQL, R2, Gemini
+BullMQ report worker          ──► Redis, PostgreSQL, Gemini
+Auth-email worker             ──► PostgreSQL, Resend
 ```
-When `WORKER_MODE=true` is set, API enqueues tasks to Redis queues and dedicated worker processes execute jobs.
+When `WORKER_MODE=true` is set, API enqueues background evaluation and document tasks to Redis queues and dedicated worker processes execute jobs.
 
 The API and each worker are independently scalable in Worker Mode. Run exactly one migration job per release; do not let every API replica execute migrations concurrently.
 
@@ -44,9 +50,11 @@ The API and each worker are independently scalable in Worker Mode. Run exactly o
 | `DATABASE_URL` | API, all workers, migration job | Server-only | PostgreSQL connection string. |
 | `REDIS_URL` | API, BullMQ workers | Server-only | Redis connection string; prefer `rediss://` when supported. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Auth email worker/API | Server-only | Transactional email delivery. |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | API, AI/report workers | Server-only | Gemini reasoning provider. |
-| `DEEPGRAM_API_KEY` | API | Server-only | Deepgram voice token/TTS provider. |
-| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT` | API, career worker, cleanup/offboarding jobs | Server-only | S3-compatible resume storage. `R2_ACCOUNT_ID` is operational metadata; current SDK requests use the endpoint and access keys. |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | API, agent, workers | Server-only | Gemini reasoning provider (e.g. `gemini-2.0-flash`). |
+| `DEEPGRAM_API_KEY` | API, agent worker | Server-only | Deepgram Nova-3 STT provider. |
+| `CARTESIA_API_KEY` | Agent worker | Server-only | Cartesia Sonic ultra-low latency TTS provider. |
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | API, agent worker | Server-only | LiveKit WebRTC media server URL and credentials. |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT` | API, career worker, cleanup/offboarding jobs | Server-only | S3-compatible resume storage. |
 
 Use the root [.env.example](../.env.example) as the complete secret-manager/template inventory. No `NEXT_PUBLIC_` variable may contain provider or storage credentials.
 
@@ -65,11 +73,11 @@ The migration job is intentionally separate from application startup. For the pr
 
 - Provision PostgreSQL with encrypted backups and least-privilege application credentials.
 - Provision Redis with authentication/TLS where available.
-- Create an R2 bucket and CORS policy for the explicit web origins and signed upload headers documented in [security](./security.md).
+- Create an R2 bucket and CORS policy for explicit web origins and signed upload headers as documented in [architecture](./architecture.md#security-and-privacy).
 - Store all server-only values in the deployment platform’s secret manager; do not place `.env.production` in source control or image layers.
 - Configure HTTPS/TLS at the ingress and set `TRUST_PROXY=true` only for a trusted proxy.
 - Route `app.example.com` to web and `api.example.com` to API; allow workers no public ingress.
-- Connect a monitoring adapter as described in [observability](./observability.md).
+- Connect a monitoring adapter as described in [operations](./operations.md#observability-and-health-checks).
 
 ## Rollback
 

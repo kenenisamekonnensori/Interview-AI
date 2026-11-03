@@ -63,21 +63,28 @@ Personalized Practice Plan (Repeat & Master)
 - **Career Targets**: Durable target roles binding required competencies to historical interview progress.
 
 ### 2. Conversational Real-Time Voice Interview
-- **Realistic Turn-Taking**: Single-digit latency streaming via Deepgram Voice Agent (Nova-3 STT, Aura-2 TTS, Gemini streaming think).
-- **Natural Barge-In**: The candidate can interrupt the interviewer at any time; playback halts instantly.
-- **Silence Re-engagement Ladder**: Canned clarifying nudges if the user is silent, automatic topic move-ons if unanswered, and graceful session closing.
+- **Ultra-Low-Latency Voice Stream**: Sub-800ms end-to-end turn latency over WebRTC (LiveKit SFU + Deepgram Nova-3 STT + Gemini 2.0 Flash Think + Cartesia Sonic / Deepgram Aura-2 TTS).
+- **Headphone-Free Audio Quality**: Hardware-accelerated browser Acoustic Echo Cancellation (AEC), allowing candidates to speak naturally through built-in laptop speakers and microphones.
+- **Neural Turn-Taking (Silero VAD)**: Intonation-aware speech detection that tolerates natural thinking pauses ("hmm...") without cutting off the candidate mid-sentence.
+- **Natural Barge-In**: The candidate can interrupt the interviewer at any time; playback halts instantly (≤ 150 ms).
+- **Active Conversational Steering**: Monologue Guard that gently steers candidates rambling past 90 seconds, plus calibrated responses to hint requests.
+- **Silence Ladder**: Tiered clarifying nudges if the user is silent, automatic topic move-ons if unanswered, and graceful session closing.
 - **Interview Types**: Technical, Behavioral (STAR method), System Design, Leadership, and Mixed.
 - **Difficulty Modes**: Easy, Medium, Hard with adaptive questioning.
 
 ### 3. Comprehensive Evaluation & Reporting
 - **Multidimensional Scoring**: Overall score (0–100), Communication, Technical Depth, Problem Solving, and Relevance.
+- **Speech Delivery Analytics**: Words Per Minute (WPM) cadence gauge, filler word frequency heatmap ("like", "um", "you know"), and talk-to-listen ratios.
+- **STAR Method Breakdown**: Structural scoring of Situation, Task, Action ("I" vs "We"), and Result (quantified business impact).
+- **Staff-Level Exemplar Rewrites**: Side-by-side model answers demonstrating how a top candidate responds to struggling questions.
 - **Actionable Evidence**: Every score links directly to specific conversational turns and quotes.
 - **Hiring Recommendation**: Strong No Hire, Lean No Hire, Lean Hire, or Strong Hire assessment with constructive next steps.
 
 ### 4. Career Readiness & Practice Plans
 - **Job Readiness Score**: Weighted readiness calculation (0–100) combining performance trends, skill coverage against the target role, practice recency, and consistency.
 - **Skill Matrix**: Historical tracking of strengths, recurring weaknesses, and proficiency levels across canonical skills.
-- **Personalized Practice Plans**: Actionable sequence of practice goals (e.g. "Master distributed caching under load in System Design") with auto-advancement upon interview completion.
+- **Personalized Practice Plans**: Actionable sequence of practice goals with auto-advancement upon interview completion.
+- **Targeted Question Micro-Drills ("Re-Do" Mode)**: Single-click 3-minute focused practice drills directly from the feedback report to master weak questions without repeating full 45-minute sessions.
 
 ### 5. Monetization & Subscription Tiers
 - **Paddle Billing Integration**: Free tier (2 interviews/mo, 15 min cap), Pro tier (20 interviews/mo, 45 min cap, deep skill analysis, priority think chain), Enterprise tier.
@@ -87,6 +94,7 @@ Personalized Practice Plan (Repeat & Master)
 
 # Non-Functional Requirements
 
-- **Voice Latency**: Target Time-To-First-Token (TTFT) < 1.5 seconds for natural conversation cadence.
+- **Voice Latency**: Target end-to-end voice latency ≤ 800 ms p95 (TTFT ≤ 500 ms, TTS first byte ≤ 100 ms) for human conversational cadence.
+- **Audio Quality**: Zero speaker bleed or audio echo using built-in laptop speakers/microphones without headphones.
 - **Reliability**: Server-authoritative state machine; lost connections resume cleanly from database state without losing conversational context.
 - **Privacy & Security**: Zero audio storage; ephemeral in-memory processing. Candidate resumes and transcripts are protected by strict ownership checks and configurable data retention policies.

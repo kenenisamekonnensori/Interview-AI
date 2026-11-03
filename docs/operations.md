@@ -114,3 +114,32 @@ pnpm --filter @interviewer-ai/api billing:reconcile
 ```
 
 This verifies customer status, active tiers, and usage counters directly with Paddle and synchronizes local `Subscription` records.
+
+---
+
+## 4. Observability and Health Checks
+
+### Request tracing and structured events
+- The API generates a request ID for every request unless the caller supplies `X-Request-Id`; safe errors echo `requestId`.
+- Structured events and metrics are emitted through `apps/api/src/services/observability.ts`. The default adapter writes JSON-safe logs. It records operation names, IDs, outcomes, durations, and status categories, redacting secrets, credentials, prompts, transcripts, and resumes.
+- Queue payloads carry `correlationId` linking worker jobs back to originating requests.
+
+### Health and readiness probes
+- `GET /health` is a process liveness check.
+- `GET /ready` checks PostgreSQL and Redis connectivity without returning credentials or internal URLs; use it for ingress/load-balancer readiness checks.
+- To connect external APM/monitoring (Sentry, Datadog, OpenTelemetry), implement `Observability` and invoke `setObservabilityAdapter(adapter)` at application startup. Redaction rules must remain strictly in force.
+
+---
+
+## 5. Media Infrastructure & LiveKit Agent Operations
+
+### LiveKit SFU health and room monitoring
+- Health probe: `GET /` on LiveKit SFU returns `OK`.
+- Active room inspections can be performed via LiveKit CLI: `livekit-cli list-rooms --url $LIVEKIT_URL --api-key $LIVEKIT_API_KEY --api-secret $LIVEKIT_API_SECRET`.
+- Concurrency limiting: LiveKit connection ceiling is coordinated with Fastify's `VoiceConcurrencyLimiter` (default 100 concurrent sessions).
+
+### LiveKit Agent Worker lifecycle
+- The agent worker runs as an autonomous long-running process (`pnpm --filter @interviewer-ai/agent start`).
+- The worker registers with LiveKit via WebSockets and awaits interview dispatch jobs.
+- Workers handle `SIGTERM` and `SIGINT` gracefully: finishing current active turns before terminating.
+- Stalled agent workers release Redis session leases automatically via TTL expiration, allowing client auto-reconnection.
