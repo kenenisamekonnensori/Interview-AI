@@ -1,345 +1,100 @@
 # Product Requirements Document (PRD)
 
-## Project Name
+# Interviewer AI
 
-**Interviewer AI** *(Working Name)*
+Version: 2.0
+Status: Active Product Specification
 
 ---
 
 # Vision
 
-Preparing for interviews should feel like preparing with a real interviewer—not filling out forms or chatting with a basic chatbot.
+Preparing for technical and professional interviews should feel like preparing with an experienced human hiring manager—not filling out forms or texting a basic chatbot.
 
-Interviewer AI provides realistic, voice-based mock interviews that adapt to the candidate in real time. It listens, asks follow-up questions, interrupts naturally when appropriate, evaluates responses, and delivers detailed, actionable feedback.
-
-The goal is to make interview practice feel indistinguishable from speaking with an experienced human interviewer.
+**Interviewer AI** provides realistic, voice-based mock interviews that adapt to the candidate in real time. It listens, asks dynamic follow-up questions, allows natural interruptions, evaluates responses against realistic rubrics, and delivers actionable coaching. Beyond individual interviews, the platform guides candidates through an end-to-end career readiness loop: setting career targets, diagnosing skill gaps, completing personalized practice plans, and tracking readiness over time.
 
 ---
 
 # Problem Statement
 
-Most interview preparation platforms today are passive.
-
-Candidates typically:
-
-* Read interview questions.
-* Watch preparation videos.
-* Solve coding challenges.
-* Chat with text-based AI.
-
-These methods fail to recreate the pressure, pacing, and unpredictability of a real interview.
-
-Real interviews involve:
-
-* Natural conversation.
-* Follow-up questions.
-* Interruptions.
-* Clarification requests.
-* Changing topics.
-* Communication evaluation.
-* Confidence assessment.
-
-Candidates often enter interviews technically prepared but conversationally unprepared.
+Most interview preparation platforms today are passive:
+- Candidates read static question lists, watch videos, or chat with text bots.
+- These tools fail to replicate the pressure, pacing, unpredictability, and conversational flow of a real technical or behavioral interview.
+- Candidates often enter real hiring rounds technically knowledgeable but conversationally unprepared to explain their decisions under pressure.
 
 ---
 
-# Solution
+# Product Solution & Core Loop
 
-Interviewer AI simulates realistic interviews using conversational voice AI.
+Interviewer AI combines server-authoritative voice AI with deep career analytics:
 
-Users upload their resume, provide a job description, select an interview type, and immediately begin a live conversation with an AI interviewer.
-
-The interviewer dynamically adapts based on:
-
-* Resume
-* Job description
-* Candidate responses
-* Interview progress
-* Previous answers
-* Communication quality
-
-Instead of asking scripted questions, the interviewer behaves like an experienced hiring manager.
-
----
-
-# Target Users
-
-### Primary
-
-* University students
-* New graduates
-* Job seekers
-* Career changers
-
-### Secondary
-
-* Experienced software engineers
-* Professionals preparing for promotions
-* Recruiters evaluating candidates
-* Bootcamp students
+```text
+Target Role & Resume Upload
+          │
+          ▼
+AI Interview Plan & Real-Time Voice Simulation
+(Barge-in, dynamic follow-ups, natural turn-taking)
+          │
+          ▼
+Structured Evaluation & Feedback Report
+          │
+          ▼
+Skill Gap Analysis & Job Readiness Score
+          │
+          ▼
+Personalized Practice Plan (Repeat & Master)
+```
 
 ---
 
-# Core Value Proposition
+# User Personas
 
-Practice interviews that feel real.
-
-Not generated questions.
-
-Not chat messages.
-
-A realistic conversation with an AI interviewer.
-
----
-
-# Goals
-
-The platform should help users:
-
-* Build interview confidence.
-* Improve communication.
-* Practice technical discussions.
-* Receive actionable feedback.
-* Identify weaknesses before real interviews.
-* Track improvement over time.
-
----
-
-# User Journey
-
-### Step 1
-
-Create an account.
-
----
-
-### Step 2
-
-Upload resume.
-
----
-
-### Step 3
-
-Paste job description or choose a predefined role.
-
----
-
-### Step 4
-
-Select interview type.
-
-Examples:
-
-* Behavioral
-* Technical
-* Coding
-* System Design
-* HR
-* Mixed
-
----
-
-### Step 5
-
-Generate interview.
-
-The AI analyzes:
-
-* Resume
-* Skills
-* Experience
-* Job requirements
-
-Then prepares a personalized interview plan.
-
----
-
-### Step 6
-
-Start live interview.
-
-The conversation happens entirely through voice.
-
-The interviewer:
-
-* Asks questions naturally.
-* Waits appropriately.
-* Interrupts when necessary.
-* Requests clarification.
-* Changes topics naturally.
-* Adapts difficulty.
-
----
-
-### Step 7
-
-Interview ends.
-
-The AI generates:
-
-* Overall score
-* Strengths
-* Weaknesses
-* Communication feedback
-* Technical feedback
-* Confidence analysis
-* Suggested improvements
-
----
-
-### Step 8
-
-Results are saved.
-
-Users can review previous interviews and monitor progress over time.
+1. **Job Seekers & Career Changers**: Preparing for high-stakes interviews, needing to build communication confidence and identify weak areas before real interviews.
+2. **University Students & New Grads**: Technically skilled candidates lacking real-world technical interviewing experience.
+3. **Senior Professionals**: Preparing for promotions or transitions into System Design and Leadership roles.
 
 ---
 
 # Core Features
 
-## Resume Analysis
+### 1. Career Profile & Document Processing
+- **Multi-Resume Management**: Upload PDF or DOCX resumes; automatic text extraction and skill analysis via AI.
+- **Job Description Targeting**: Input real job postings; AI extracts required competencies and technologies.
+- **Career Targets**: Durable target roles binding required competencies to historical interview progress.
 
-Upload and analyze resumes to personalize interview questions.
+### 2. Conversational Real-Time Voice Interview
+- **Ultra-Low-Latency Voice Stream**: Sub-800ms end-to-end turn latency over WebRTC (LiveKit SFU + Deepgram Nova-3 STT + Gemini 2.0 Flash Think + Cartesia Sonic / Deepgram Aura-2 TTS).
+- **Headphone-Free Audio Quality**: Hardware-accelerated browser Acoustic Echo Cancellation (AEC), allowing candidates to speak naturally through built-in laptop speakers and microphones.
+- **Neural Turn-Taking (Silero VAD)**: Intonation-aware speech detection that tolerates natural thinking pauses ("hmm...") without cutting off the candidate mid-sentence.
+- **Natural Barge-In**: The candidate can interrupt the interviewer at any time; playback halts instantly (≤ 150 ms).
+- **Active Conversational Steering**: Monologue Guard that gently steers candidates rambling past 90 seconds, plus calibrated responses to hint requests.
+- **Silence Ladder**: Tiered clarifying nudges if the user is silent, automatic topic move-ons if unanswered, and graceful session closing.
+- **Interview Types**: Technical, Behavioral (STAR method), System Design, Leadership, and Mixed.
+- **Difficulty Modes**: Easy, Medium, Hard with adaptive questioning.
 
----
+### 3. Comprehensive Evaluation & Reporting
+- **Multidimensional Scoring**: Overall score (0–100), Communication, Technical Depth, Problem Solving, and Relevance.
+- **Speech Delivery Analytics**: Words Per Minute (WPM) cadence gauge, filler word frequency heatmap ("like", "um", "you know"), and talk-to-listen ratios.
+- **STAR Method Breakdown**: Structural scoring of Situation, Task, Action ("I" vs "We"), and Result (quantified business impact).
+- **Staff-Level Exemplar Rewrites**: Side-by-side model answers demonstrating how a top candidate responds to struggling questions.
+- **Actionable Evidence**: Every score links directly to specific conversational turns and quotes.
+- **Hiring Recommendation**: Strong No Hire, Lean No Hire, Lean Hire, or Strong Hire assessment with constructive next steps.
 
-## Job Description Analysis
+### 4. Career Readiness & Practice Plans
+- **Job Readiness Score**: Weighted readiness calculation (0–100) combining performance trends, skill coverage against the target role, practice recency, and consistency.
+- **Skill Matrix**: Historical tracking of strengths, recurring weaknesses, and proficiency levels across canonical skills.
+- **Personalized Practice Plans**: Actionable sequence of practice goals with auto-advancement upon interview completion.
+- **Targeted Question Micro-Drills ("Re-Do" Mode)**: Single-click 3-minute focused practice drills directly from the feedback report to master weak questions without repeating full 45-minute sessions.
 
-Extract skills, responsibilities, and technologies from job postings.
-
----
-
-## AI Interview Generation
-
-Generate personalized interview plans based on the candidate and role.
-
----
-
-## Real-Time Voice Interview
-
-Conduct a live voice conversation using conversational AI.
-
-The interviewer should feel natural rather than scripted.
-
----
-
-## Dynamic Follow-up Questions
-
-Questions are generated based on previous answers instead of following a fixed list.
-
----
-
-## Interview Evaluation
-
-Evaluate:
-
-* Technical knowledge
-* Communication
-* Problem-solving
-* Confidence
-* Completeness
-* Relevance
-
----
-
-## Feedback Report
-
-Generate structured feedback with actionable recommendations.
-
----
-
-## Interview History
-
-Store completed interviews for future review.
-
----
-
-## Progress Tracking
-
-Allow users to compare performance across multiple interviews.
+### 5. Monetization & Subscription Tiers
+- **Paddle Billing Integration**: Free tier (2 interviews/mo, 15 min cap), Pro tier (20 interviews/mo, 45 min cap, deep skill analysis, priority think chain), Enterprise tier.
+- Self-service billing portal and automated monthly usage resets.
 
 ---
 
 # Non-Functional Requirements
 
-The platform should be:
-
-* Fast
-* Responsive
-* Reliable
-* Easy to use
-* Mobile friendly
-* Accessible
-* Scalable
-
-Voice conversations should feel natural with minimal latency.
-
----
-
-# MVP Scope
-
-The first version includes:
-
-* User authentication
-* Resume upload
-* Job description input
-* AI-generated interview plan
-* Voice interview
-* Personalized follow-up questions
-* Interview evaluation
-* Feedback report
-* Interview history
-
----
-
-# Out of Scope (MVP)
-
-The following are intentionally excluded:
-
-* Multiplayer interviews
-* Live human interviewers
-* Video interviews
-* Resume builder
-* Company recruiting portal
-* Team collaboration
-* Interview scheduling
-* Mobile applications
-* AI avatar
-
-These can be added in future versions.
-
----
-
-# Success Metrics
-
-A successful interview should:
-
-* Feel conversational rather than scripted.
-* Adapt to the candidate's responses.
-* Provide valuable feedback.
-* Help users identify areas for improvement.
-* Encourage repeated practice.
-
-Success for the product is measured by whether users leave each interview feeling better prepared for a real one.
-
----
-
-# Future Vision
-
-Interviewer AI will become a complete interview preparation platform.
-
-Future capabilities may include:
-
-* Company-specific interview simulations.
-* Coding interview environments.
-* System design whiteboards.
-* Technical pair-programming sessions.
-* AI career coaching.
-* Salary negotiation practice.
-* Group interviews.
-* Recruiter mode.
-* Custom interviewer personalities.
-* Multi-language interviews.
-
-The long-term vision is to become the most realistic AI interview experience available.
+- **Voice Latency**: Target end-to-end voice latency ≤ 800 ms p95 (TTFT ≤ 500 ms, TTS first byte ≤ 100 ms) for human conversational cadence.
+- **Audio Quality**: Zero speaker bleed or audio echo using built-in laptop speakers/microphones without headphones.
+- **Reliability**: Server-authoritative state machine; lost connections resume cleanly from database state without losing conversational context.
+- **Privacy & Security**: Zero audio storage; ephemeral in-memory processing. Candidate resumes and transcripts are protected by strict ownership checks and configurable data retention policies.

@@ -108,6 +108,96 @@ ${contextLines.length > 0 ? contextLines.map((line) => `- ${line}`).join("\n") :
 ${safetyPrivacyPrompt}`;
 }
 
+/**
+ * The exact words the interviewer says first, delivered through Deepgram's
+ * `agent.greeting` (spoken verbatim, before the LLM is involved).
+ *
+ * The greeting is not generated: it must start the interview even when the
+ * think provider is slow or down, it must never be mistaken for candidate
+ * speech, and it must already contain the opening question. That is what makes
+ * a live interview feel like a human interviewer rather than a silent line
+ * waiting for the candidate to talk first.
+ */
+export function buildAgentGreeting(input: AgentInterviewInstructionInput) {
+  const isGeneral =
+    input.isGeneralIntake ||
+    !input.targetRole ||
+    input.targetRole.toLowerCase().includes("general interview");
+  const type = input.interviewType.toLowerCase().replaceAll("_", " ");
+  const role = input.targetRole?.trim() ?? "";
+  const firstTopic = input.topics[0]?.trim() ?? "";
+  const copy = greetingCopy[input.language] ?? greetingCopy.en!;
+
+  if (isGeneral) return copy.intake;
+  const opening = role
+    ? copy.targeted.replaceAll("{type}", type).replaceAll("{role}", role)
+    : copy.withoutRole.replaceAll("{type}", type);
+  return firstTopic
+    ? `${opening} ${copy.firstTopic.replaceAll("{topic}", firstTopic)}`
+    : `${opening} ${copy.noTopic}`;
+}
+
+const greetingCopy: Record<
+  string,
+  {
+    intake: string;
+    targeted: string;
+    withoutRole: string;
+    firstTopic: string;
+    noTopic: string;
+  }
+> = {
+  en: {
+    intake:
+      "Hi, and welcome. I'm your interviewer today. Let's begin with an introduction: tell me about yourself — your field, the technologies you work with, and the kind of roles you're aiming for.",
+    targeted:
+      "Hi, and welcome. I'm your interviewer for this {type} interview for the {role} role.",
+    withoutRole: "Hi, and welcome. I'm your interviewer for this {type} interview.",
+    firstTopic: "Let's start with {topic}: could you walk me through your experience with it?",
+    noTopic: "Let's start simple: tell me about yourself and the work you're most proud of.",
+  },
+  es: {
+    intake:
+      "Hola y bienvenido. Soy su entrevistador hoy. Empecemos con una presentación: hábleme de usted — su campo, las tecnologías con las que trabaja y el tipo de puestos que busca.",
+    targeted:
+      "Hola y bienvenido. Soy su entrevistador para esta entrevista de {type} para el puesto de {role}.",
+    withoutRole: "Hola y bienvenido. Soy su entrevistador para esta entrevista de {type}.",
+    firstTopic: "Empecemos con {topic}: ¿podría explicarme su experiencia con ello?",
+    noTopic:
+      "Empecemos con algo sencillo: hábleme de usted y del trabajo del que se siente más orgulloso.",
+  },
+  de: {
+    intake:
+      "Hallo und willkommen. Ich bin heute Ihr Interviewer. Beginnen wir mit einer Vorstellung: Erzählen Sie mir von sich — Ihrem Bereich, den Technologien, mit denen Sie arbeiten, und der Art von Stellen, die Sie anstreben.",
+    targeted:
+      "Hallo und willkommen. Ich bin Ihr Interviewer für dieses {type}-Interview für die Rolle {role}.",
+    withoutRole: "Hallo und willkommen. Ich bin Ihr Interviewer für dieses {type}-Interview.",
+    firstTopic: "Beginnen wir mit {topic}: Können Sie mir von Ihrer Erfahrung damit erzählen?",
+    noTopic:
+      "Beginnen wir einfach: Erzählen Sie mir von sich und der Arbeit, auf die Sie am meisten stolz sind.",
+  },
+  fr: {
+    intake:
+      "Bonjour et bienvenue. Je suis votre recruteur aujourd'hui. Commençons par une présentation : parlez-moi de vous — votre domaine, les technologies avec lesquelles vous travaillez et le type de poste que vous visez.",
+    targeted:
+      "Bonjour et bienvenue. Je suis votre recruteur pour cet entretien {type} pour le poste de {role}.",
+    withoutRole: "Bonjour et bienvenue. Je suis votre recruteur pour cet entretien {type}.",
+    firstTopic: "Commençons par {topic} : pouvez-vous me parler de votre expérience à ce sujet ?",
+    noTopic:
+      "Commençons simplement : parlez-moi de vous et du travail dont vous êtes le plus fier.",
+  },
+  nl: {
+    intake:
+      "Hallo en welkom. Ik ben vandaag uw interviewer. Laten we beginnen met een introductie: vertel me over uzelf — uw vakgebied, de technologieën waarmee u werkt en het soort functies dat u nastreeft.",
+    targeted:
+      "Hallo en welkom. Ik ben uw interviewer voor dit {type}-gesprek voor de functie {role}.",
+    withoutRole: "Hallo en welkom. Ik ben uw interviewer voor dit {type}-gesprek.",
+    firstTopic: "Laten we beginnen met {topic}: kunt u mij vertellen over uw ervaring daarmee?",
+    noTopic:
+      "Laten we simpel beginnen: vertel me over uzelf en het werk waarop u het meest trots bent.",
+  },
+};
+
 /** Deterministic opening instruction sent right after the agent session is ready. */
 export function buildAgentOpeningMessage(input: AgentInterviewInstructionInput) {
   const isGeneral =

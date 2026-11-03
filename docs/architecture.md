@@ -1,28 +1,39 @@
 # Architecture
 
-## Approved AI provider design
+## Approved AI and Voice Provider Design
 
-The development and initial-release stack is **provider-agnostic at the application boundary**, with these approved first providers:
+The development and production stack is **provider-agnostic at the application boundary**, with these approved providers for the V1 audio platform:
 
 | Capability | Approved provider | Notes |
-| --- | --- | --- |
-| Speech-to-text (STT) | Deepgram | Browser audio is transcribed through a short-lived Deepgram access token. |
-| Text-to-speech (TTS) | Deepgram | The API synthesizes persisted interviewer text for playback. |
-| Live voice transport | Browser WebSocket to Deepgram | The web app owns microphone capture and playback; the backend only issues a short-lived token. |
-| Planning and resume/job analysis | Gemini | Gemini returns validated JSON through the AI provider module. |
-| Interviewing | Gemini | Gemini generates the next interviewer turn; the Conversation Manager owns state and persistence. |
-| Evaluation and reports | Gemini | Implemented through the same provider interface when those modules are added. |
+| :--- | :--- | :--- |
+| **Speech-to-text (STT)** | Deepgram Nova-3 | Real-time streaming transcription with interim results and word-level timestamps. |
+| **Text-to-speech (TTS)** | Cartesia Sonic / Deepgram Aura-2 | Sub-100ms first-byte streaming audio synthesis in 24 kHz. Cartesia primary, Aura-2 fallback. |
+| **Media Transport** | WebRTC via LiveKit SFU | Ultra-low-latency UDP transport (Opus codec, hardware AEC, packet loss concealment). Fastify issues session JWTs and retains state authority. |
+| **Realtime Interview Brain** | Google Gemini (2.0 Flash / 1.5 Flash) | BYO streaming think endpoint in the voice loop; plain spoken text with sub-500ms TTFT. |
+| **Planning & Document Analysis**| Google Gemini | Extracts structured skills, job requirements, and creates multi-topic interview plans. |
+| **Evaluation & Reports** | Google Gemini | Generates multidimensional rubric scores, speech analytics, and STAR exemplar rewrites via structured output. |
 
-Gemini and Deepgram were chosen for the build-and-test phase because their free allowances make iterative development practical. They are implementation choices, not application contracts. A future OpenAI or other provider must be added as an adapter to the interfaces below; controllers, services, events, and clients must not change to accommodate provider request formats.
+The Fastify backend remains the authoritative owner of interview lifecycle, turn persistence, state validation, and billing. Providers are implementation choices, not application contracts.
 
 ## Boundaries
 
 ```text
-Web app -- REST / short-lived voice token --> Fastify API
-Web app -- microphone audio / transcript events --> Deepgram
-Fastify Conversation Manager --> AI provider interface --> Gemini adapter
-Fastify services --> PostgreSQL / Redis / object storage
+Candidate Web App ─── WebRTC (Opus Audio) ───► LiveKit SFU
+                                                    │
+                                                    ▼
+                                          LiveKit Agent Runtime
+                                          (Silero VAD + Nova-3 + Gemini + Cartesia)
+                                                    │
+                                  State sync & turns│
+                                                    ▼
+Candidate Web App ─── REST + SSE ────────────► Fastify API Gateway (Authority)
+                                                    │
+                             ┌──────────────────────┴──────────────────────┐
+                             ▼                                             ▼
+             PostgreSQL (Prisma Models)                       Redis (Cache, Leases, BullMQ)
 ```
+
+Exactly one live gateway owns an interview's voice timeline. `VoiceSessionRegistry` makes the newest connection the owner (a reconnecting tab supersedes the old one over Redis pub/sub) and `VoiceConcurrencyLimiter` enforces the deployment-wide live-session ceiling (default 100 concurrent sessions), so running several API instances never produces two voices or two silence timelines.
 
 The Conversation Manager decides when a turn is needed, validates transitions, and persists approved turns. It calls `AiProvider.generateInterviewerResponse`; it does not construct Gemini requests or parse Gemini responses. The AI module alone owns provider SDKs, HTTP payloads, model names, retries, and output conversion.
 
@@ -49,22 +60,47 @@ The first Gemini adapter may also provide internal structured-analysis helpers f
 
 ## Environment configuration
 
-Only these AI/voice environment variables are approved for the current stack:
+Approved AI, voice, and media environment variables for the platform:
 
 ```dotenv
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.5-flash-lite
+GEMINI_MODEL=gemini-2.0-flash
+GEMINI_FALLBACK_MODELS=gemini-1.5-flash
 DEEPGRAM_API_KEY=
+CARTESIA_API_KEY=
+LIVEKIT_URL=
+LIVEKIT_API_KEY=
+LIVEKIT_API_SECRET=
+VOICE_PIPELINE=agent
+VOICE_MAX_CONCURRENT_SESSIONS=100
+TRANSCRIPT_RETENTION_DAYS=0
 ```
 
-`GEMINI_API_KEY` and `DEEPGRAM_API_KEY` are server-only. No `NEXT_PUBLIC_` provider key is permitted. OpenAI environment variables are not part of the approved configuration until an OpenAI adapter is deliberately introduced.
+`GEMINI_API_KEY`, `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`, and `LIVEKIT_API_SECRET` are strictly server-only. No `NEXT_PUBLIC_` provider key is permitted. Client access to voice is granted solely through signed, short-lived session tokens minted by the Fastify backend.
 
-## Privacy
+## Security and Privacy
 
+### Browser origins and cookies
+- `WEB_URL` is the primary browser origin and is always the only required CORS origin. Production values must use HTTPS.
+- Set `CORS_ALLOWED_ORIGINS` to a comma-separated list only when additional, known browser origins need credentialed API access. Wildcards are not supported.
+- Sessions use secure cookies in production and retain development-compatible cookies locally. Set `TRUST_PROXY=true` only when the API runs behind a trusted proxy that correctly supplies forwarding headers.
+
+### Rate limits
+The API uses Redis-backed fixed-window limits keyed by client IP:
+- Authentication POST endpoints: 10 requests per 10 minutes
+- Resume upload creation: 5 requests per 15 minutes
+- Voice-token minting: 10 requests per minute
+- Conversation POST endpoints: 40 requests per minute
+
+Redis is required for these protected routes. If it is unavailable, they return `503 RATE_LIMIT_UNAVAILABLE` rather than bypassing protection.
+
+### Candidate data and upload security
 - Send the smallest resume, job, and conversation context needed for the capability.
-- Do not log full resumes, raw audio, complete prompts, transcripts, credentials, or provider authorization tokens.
-- Store recordings only when the product explicitly enables recording and the user has consented; otherwise retain only the validated transcript and derived results required by the product.
-- Use HTTPS, short-lived Deepgram tokens, server-side provider keys, and existing authorization checks for all provider access.
+- Request logs redact authorization/cookie headers, passwords, tokens, transcript text, and raw job-description text. Conversation and lifecycle logs contain identifiers and event names only; they do not include transcript, prompt, report, or resume content.
+- Store recordings only when the product explicitly enables recording and the user has consented; otherwise retain only the validated transcript and derived results required by the product. The current product never stores audio.
+- `TRANSCRIPT_RETENTION_DAYS` (default `0`, meaning the interview's lifetime) is the hard age limit for validated transcript turns of completed interviews. When set, `TranscriptRetentionSweeper` deletes the turns only; the interview, its memory and its report remain, so outcomes survive the transcript.
+- Resume upload URLs require signed metadata binding the object to the requesting user and resume record. The API verifies this metadata, content type, and exact file size before marking an upload ready and again before a worker parses it.
+- Browser-direct R2 uploads require an explicit CORS policy allowing only `PUT` from explicit origins with headers `Content-Type`, `x-amz-meta-owner-user-id`, and `x-amz-meta-resume-id`. No wildcard origins.
 
 ## Execution Architecture: Monolith Mode vs Worker Mode
 

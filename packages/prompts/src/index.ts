@@ -1,5 +1,6 @@
 export { buildEvaluationPrompt } from "./evaluation.js";
 export {
+  buildAgentGreeting,
   buildAgentInterviewInstruction,
   buildAgentOpeningMessage,
   type AgentInterviewInstructionInput,

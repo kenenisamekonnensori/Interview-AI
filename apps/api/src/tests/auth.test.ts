@@ -75,12 +75,15 @@ test("createAuthConfig enforces secure account linking and attaches secondary st
     GOOGLE_CLIENT_SECRET: "google-test-secret",
     NODE_ENV: "test",
     VOICE_PIPELINE: "legacy",
+    VOICE_MAX_CONCURRENT_SESSIONS: 100,
+    TRANSCRIPT_RETENTION_DAYS: 0,
     PADDLE_ENVIRONMENT: "sandbox",
     RESEND_API_KEY: "resend-test-key",
     CORS_ALLOWED_ORIGINS: [],
     TRUST_PROXY: false,
     WEB_URL: "http://localhost:3000",
     GEMINI_MODEL: "gemini-3.5-flash-lite",
+    GEMINI_FALLBACK_MODELS: [],
     OWNER_EMAILS: [],
   };
 
@@ -110,12 +113,15 @@ test("createAuthConfig registers user.create and session.create database hooks t
     GOOGLE_CLIENT_SECRET: "google-test-secret",
     NODE_ENV: "test",
     VOICE_PIPELINE: "legacy",
+    VOICE_MAX_CONCURRENT_SESSIONS: 100,
+    TRANSCRIPT_RETENTION_DAYS: 0,
     PADDLE_ENVIRONMENT: "sandbox",
     RESEND_API_KEY: "resend-test-key",
     CORS_ALLOWED_ORIGINS: [],
     TRUST_PROXY: false,
     WEB_URL: "http://localhost:3000",
     GEMINI_MODEL: "gemini-3.5-flash-lite",
+    GEMINI_FALLBACK_MODELS: [],
     OWNER_EMAILS: [],
   };
 

@@ -26,6 +26,18 @@ const commaSeparatedEmails = z.preprocess(
   z.array(z.string().email()),
 );
 
+/** Ordered list inputs (think fallbacks): empty input means "no extra entries". */
+const commaSeparatedStrings = z.preprocess(
+  (value) =>
+    typeof value === "string" && value.trim().length > 0
+      ? value
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [],
+  z.array(z.string().min(1)),
+);
+
 export const serverEnvironmentSchema = z
   .object({
     API_PORT: z.coerce.number().int().positive().default(4000),
@@ -34,12 +46,25 @@ export const serverEnvironmentSchema = z
     DATABASE_URL: z.url(),
     DEEPGRAM_API_KEY: optionalEnvironmentString,
     /**
-     * Phase 1 of the voice-system roadmap: the realtime voice pipeline choice.
-     * `legacy` is the client-orchestrated browser-to-Deepgram pipeline;
-     * `agent` routes the session through our server-owned Deepgram Voice Agent
-     * gateway. Legacy stays the default until agent-mode meets its SLOs.
+     * The realtime voice pipeline. `agent` (default since Phase 4) routes the
+     * session through our server-owned Deepgram Voice Agent gateway, which owns
+     * turn-taking, the greeting and silence policy. `legacy` is the
+     * client-orchestrated browser-to-Deepgram pipeline, kept as a fallback.
      */
-    VOICE_PIPELINE: z.enum(["agent", "legacy"]).default("legacy"),
+    VOICE_PIPELINE: z.enum(["agent", "legacy"]).default("agent"),
+    /**
+     * Phase 4 concurrency management: live server-owned voice sessions allowed
+     * per deployment (across instances when Redis is configured). Past the cap,
+     * a new session closes cleanly and the client continues in text mode.
+     */
+    VOICE_MAX_CONCURRENT_SESSIONS: z.coerce.number().int().positive().default(100),
+    /**
+     * Phase 4 privacy policy: transcript retention in days for completed
+     * interviews. `0` keeps the validated transcript for the interview's
+     * lifetime (the default; reports are derived from it). Audio is never
+     * stored either way.
+     */
+    TRANSCRIPT_RETENTION_DAYS: z.coerce.number().int().min(0).default(0),
     EMAIL_FROM: z.string().min(1),
     GITHUB_CLIENT_ID: optionalEnvironmentString,
     GITHUB_CLIENT_SECRET: optionalEnvironmentString,
@@ -56,6 +81,13 @@ export const serverEnvironmentSchema = z
     PADDLE_WEBHOOK_SECRET: optionalEnvironmentString,
     GEMINI_API_KEY: optionalEnvironmentString,
     GEMINI_MODEL: z.string().min(1).default("gemini-3.5-flash-lite"),
+    /**
+     * Phase 2 of the voice-system roadmap: ordered think-provider fallbacks.
+     * The agent `think` chain is `GEMINI_MODEL` followed by these models, so
+     * provider-quota exhaustion retries instead of killing the interview.
+     * Empty by default: the chain is exactly the primary model.
+     */
+    GEMINI_FALLBACK_MODELS: commaSeparatedStrings.default([]),
     REDIS_URL: z.preprocess(
       (value) => (value === "" ? undefined : value),
       z.string().url().optional(),

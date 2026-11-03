@@ -1,736 +1,123 @@
 # Technical Specification
 
-# Interviewer AI
-
-Version: 1.0
+Version: 2.0
+Status: Active Implementation Specification
 
 ---
 
 # Purpose
 
-This document defines the technical implementation of Interviewer AI.
-
-It specifies the project's architecture, folder structure, application modules, interfaces, APIs, database ownership, AI integrations, event contracts, and engineering standards.
-
-Unlike the System Design Document, this document focuses on implementation details.
+This document defines the technical implementation of **Interviewer AI**. It specifies the project's monorepo structure, technology stack, application modules, domain boundaries, state machines, and engineering standards.
 
 ---
 
 # Technology Stack
 
-## Frontend
+## Frontend (`apps/web`)
+- **Framework**: Next.js 16 (App Router)
+- **UI Library**: React 19, Tailwind CSS v4, shadcn/ui, Radix UI primitives, Lucide React
+- **Graphics & Audio**: Three.js & `@react-three/fiber` (interactive 3D voice orb visualizer)
+- **Data & State**: TanStack React Query v5, Zustand 5, React Hook Form, Zod
+- **Real-Time Client**: WebRTC audio client via `@livekit/components-react` (Opus codec, hardware-accelerated AEC, noise suppression) + Server-Sent Events (SSE) state synchronization, with fallback WebSocket support
+- **Authentication**: Better-Auth client (`apps/web/lib/auth-client.ts`)
 
-- Next.js
-- React
-- TypeScript
-- Tailwind CSS
-- shadcn/ui
-- TanStack Query
-- Zustand
-- React Hook Form
-- Zod
-- WebRTC
+## Backend (`apps/api`)
+- **Runtime**: Node.js 22+ LTS (ESM), TypeScript 5.9+
+- **HTTP Engine**: Fastify v5 with `@fastify/cors`, `@fastify/websocket`
+- **Database & ORM**: PostgreSQL, Prisma ORM v7 with `@prisma/adapter-pg`
+- **Caching & Real-Time Bus**: Redis (ioredis) for rate limiting, distributed leases, and pub/sub events
+- **Background Jobs**: Dual-mode architecture:
+  - *Monolith Mode*: In-process non-blocking task execution via `MonolithExecutionManager`
+  - *Worker Mode*: BullMQ queues (`career-analysis`, `report-generation`, `auth-email`)
+- **Document Processing**: `mammoth` (DOCX), `pdf-parse` (PDF)
+- **Payments & Subscriptions**: Paddle Billing Node SDK v3 (`@paddle/paddle-node-sdk`)
 
----
+## Autonomous Voice Agent (`apps/agent`)
+- **Runtime**: LiveKit Agent framework (`@livekit/agents`) on Node.js 22+
+- **Turn-Taking & VAD**: Silero VAD (neural speech detection, intonation-aware pauses)
+- **Active Conversational Steering**: Monologue guard (>90s) & calibrated hint engine
 
-## Backend
-
-- Node.js
-- Fastify
-- TypeScript
-- Prisma ORM
-- PostgreSQL
-- Redis
-
----
-
-
-
-## AI
-
-- Gemini for reasoning, planning, interviewing, evaluation, and reports
-- Deepgram for STT, TTS, and browser live-voice transport
-- Structured Outputs
-- Function Calling
+## AI & Voice Infrastructure
+- **Media Transport**: LiveKit SFU (WebRTC over UDP, sub-50ms routing, packet loss concealment)
+- **Speech-to-Text (STT)**: Deepgram Nova-3 streaming transcription with word-level timestamps
+- **Conversational Brain (LLM)**: Google Gemini 2.0 Flash via streaming SSE think endpoint
+- **Text-to-Speech (TTS)**: Cartesia Sonic (~90ms first byte) with Deepgram Aura-2 fallback
+- **Reasoning & Evaluation**: Google Gemini (`gemini-2.0-flash`) with strict Zod structured outputs
+- **Object Storage**: Cloudflare R2 (S3-compatible presigned upload URLs with signed owner metadata verification)
+- **Transactional Email**: Resend SDK (`resend`)
 
 ---
 
-
-
-## Storage
-
-- Cloudflare R2
-
----
-
-
-
-# Monorepo Structure
+# Monorepo Architecture
 
 ```text
-apps/
-    web/
-    api/
-
-packages/
-    ui/
-    shared/
-    prompts/
-    types/
-    config/
-
-docs/
-
-scripts/
+interviewer-ai/
+├── apps/
+│   ├── web/                     # Next.js App Router client (WebRTC audio room)
+│   ├── api/                     # Fastify API, token authority & background workers
+│   └── agent/                   # Autonomous LiveKit voice interviewer worker
+├── packages/
+│   ├── config/                  # Shared environment schemas (server, agent, web)
+│   ├── prompts/                 # Versioned prompt templates (plan, report, agent, safety)
+│   ├── shared/                  # Common constants and utilities
+│   ├── types/                   # Authoritative DTOs, Zod schemas, enums & event types
+│   └── ui/                      # Shared UI components
+├── docs/                        # Architecture, API, and runbook documentation
+└── scripts/                     # Operational scripts and deployment helpers
 ```
 
 ---
 
+# Backend Module Architecture (`apps/api/src/modules/`)
 
+Every domain capability lives in its own module following the `controller / service / repository / schema / types` pattern:
 
-# Backend Structure
+| Module | Responsibility | Owned Entities |
+| :--- | :--- | :--- |
+| **`auth`** | Identity, session validation, OAuth, verification emails | `User`, `Session`, `Account`, `Verification`, `AuthEmailOutbox` |
+| **`users`** | User profiles, candidate experience, preferences | `UserProfile` |
+| **`resumes`** | Resume upload ticket minting, storage verification, parsing | `Resume`, `ResumeAnalysis` |
+| **`jobs`** | Target role descriptions, skill extractions, career targets | `JobDescription`, `JobAnalysis`, `CareerTarget` |
+| **`interviews`** | Mock interview setup, plan orchestration, lifecycle transitions | `Interview`, `InterviewPlan` |
+| **`conversation`**| LiveKit token authority, session registry, turn persistence, silence ladder | `Conversation`, `ConversationTurn`, `InterviewMemory` |
+| **`ai`** | Provider adapters (Gemini), structured extraction, tool bridge | Provider SDKs & prompt invocation |
+| **`reports`** | Multidimensional rubrics, speech delivery analytics (WPM, fillers), STAR exemplar rewrites | `InterviewReport` |
+| **`analytics`** | Skill gap analysis, progress trends, job readiness snapshots | `SkillAnalysis`, `ReadinessSnapshot` |
+| **`practice-plan`**| Personalized preparation plans and targeted single-question micro-drills | `PracticePlan`, `PracticePlanItem` |
+| **`billing`** | Paddle webhooks, subscription tiers, period usage counters | `BillingCustomer`, `Subscription`, `BillingEvent`, `UsageRecord`, `UsageCounter` |
 
+No module may directly query or manipulate another module's database tables; cross-module capabilities are consumed through exported services.
+
+---
+
+# Authoritative State Machines
+
+### 1. Interview Lifecycle (`InterviewStatus`)
 ```text
-src/
-
-    modules/
-
-        auth/
-
-        users/
-
-        resumes/
-
-        jobs/
-
-        interviews/
-
-        conversation/
-
-        ai/
-
-        reports/
-
-        analytics/
-
-    plugins/
-
-    middleware/
-
-    services/
-
-    utils/
-
-    events/
-
-    types/
+DRAFT -> PREPARING -> READY -> IN_PROGRESS -> COMPLETING -> COMPLETED
+  │          │          │           │             │
+  ▼          ▼          ▼           ▼             ▼
+CANCELLED  CANCELLED  CANCELLED   FAILED        FAILED
 ```
 
-Each module owns:
-
-- routes
-- service
-- repository
-- validation
-- types
-
-No module may directly manipulate another module's database entities.
-
----
-
-
-
-# Frontend Structure
-
+### 2. Conversation States (`ConversationState`)
 ```text
-app/
-
-components/
-
-features/
-
-hooks/
-
-services/
-
-stores/
-
-types/
-
-lib/
+GREETING -> SPEAKING -> LISTENING <───> TRANSCRIBING -> THINKING -> SPEAKING
+                           │
+                           ▼
+                        CLOSING -> COMPLETED
 ```
-
-Feature-specific logic belongs inside the corresponding feature folder.
-
----
-
-
-
-# Domain Ownership
-
-
-
-## Auth
-
-Owns:
-
-- authentication
-- authorization
-- sessions
+- **Greeting**: Verbatim opening greeting spoken immediately upon room connection without waiting for LLM tokens.
+- **Listening / Transcribing**: Candidate speech streamed over WebRTC Opus; Silero VAD detects speech boundaries and Nova-3 finalizes transcripts.
+- **Thinking**: Ultra-fast streaming think via Gemini 2.0 Flash.
+- **Speaking**: Sub-100ms first-byte TTS synthesis (Cartesia Sonic primary, Deepgram Aura-2 fallback) streamed directly into the WebRTC audio room.
+- **Silence Ladder**: Inactivity triggers canned clarifying nudges (max 2), followed by a topic move-on, before closing gracefully.
 
 ---
 
-
-
-## Resume
-
-Owns:
-
-- resume upload
-- parsing
-- storage
-
----
-
-
-
-## Jobs
-
-Owns:
-
-- job descriptions
-- extracted skills
-
----
-
-
-
-## Interview
-
-Owns:
-
-- interview lifecycle
-- interview persistence
-- transcripts
-
----
-
-
-
-## Conversation
-
-Owns:
-
-- conversation state
-- AI session
-- interruptions
-- turn management
-
----
-
-
-
-## Reports
-
-Owns:
-
-- evaluations
-- summaries
-- recommendations
-
----
-
-
-
-# API Design
-
-
-
-## Authentication
-
-```http
-POST /auth/login
-
-POST /auth/register
-
-POST /auth/logout
-```
-
----
-
-
-
-## Resume
-
-```http
-POST /resumes
-
-GET /resumes/:id
-
-DELETE /resumes/:id
-```
-
----
-
-
-
-## Job Description
-
-```http
-POST /jobs
-
-GET /jobs/:id
-```
-
----
-
-
-
-## Interview
-
-```http
-POST /interviews
-
-GET /interviews/:id
-
-POST /interviews/:id/start
-
-POST /interviews/:id/end
-```
-
----
-
-
-
-## Reports
-
-```http
-GET /reports/:id
-```
-
----
-
-
-
-# Conversation Manager
-
-The Conversation Manager coordinates the interview.
-
-Responsibilities:
-
-- maintain state
-- receive transcript updates
-- invoke AI
-- execute function calls
-- control speaking state
-- handle interruptions
-
-No UI logic belongs here.
-
-No persistence logic belongs here.
-
-It calls the `AiProvider` interface only. Gemini/OpenAI request URLs, SDK types, prompts serialized for a provider, and response parsing must remain in `modules/ai/`; no controller may know a provider request format.
-
----
-
-# AI Provider Module
-
-`modules/ai/` is the only backend module that integrates a reasoning provider. The initial adapter is Gemini. It exposes `createInterviewPlan`, `generateInterviewerResponse`, `evaluateInterview`, and `generateReport` as domain capabilities. Resume and job analysis use an internal structured-analysis helper in that module.
-
-Deepgram is a voice integration owned by the conversation module: it issues short-lived browser access tokens, transcribes live audio, and synthesizes persisted AI text. It does not plan or reason about an interview.
-
-The active environment configuration is:
-
-```dotenv
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.5-flash-lite
-DEEPGRAM_API_KEY=
-```
-
-These keys are server-only. OpenAI variables are intentionally not configured. A future provider is added by implementing the provider interface, not by modifying controllers.
-
-If Gemini fails, planning or response generation fails explicitly and does not invent output; live responses return `AI_RESPONSE_FAILED` while retaining the last valid state. If Deepgram fails, voice endpoints return `VOICE_UNAVAILABLE`; the user can use text turns where supported.
-
----
-
-
-
-# Interview State Machine
-
-```text
-CREATED
-
-↓
-
-READY
-
-↓
-
-GREETING
-
-↓
-
-QUESTIONING
-
-↓
-
-LISTENING
-
-↓
-
-THINKING
-
-↓
-
-RESPONDING
-
-↓
-
-FOLLOW_UP
-
-↓
-
-NEXT_QUESTION
-
-↓
-
-CLOSING
-
-↓
-
-REPORTING
-
-↓
-
-COMPLETED
-```
-
-State transitions must be explicit.
-
-No hidden transitions.
-
----
-
-
-
-# Event Definitions
-
-The application communicates internally using domain events.
-
-```text
-InterviewCreated
-
-InterviewStarted
-
-UserStartedSpeaking
-
-UserStoppedSpeaking
-
-TranscriptUpdated
-
-QuestionGenerated
-
-QuestionAnswered
-
-AIStartedSpeaking
-
-AIStoppedSpeaking
-
-InterviewFinished
-
-FeedbackGenerated
-```
-
-Events should describe something that has already happened.
-
----
-
-
-
-# AI Responsibilities
-
-The AI is responsible for:
-
-- reasoning
-- question generation
-- follow-up generation
-- evaluation
-- summarization
-
-The AI is NOT responsible for:
-
-- authentication
-- authorization
-- persistence
-- business rules
-- database access
-
----
-
-
-
-# Function Calling
-
-Available tools include:
-
-```text
-getResume()
-
-getJobDescription()
-
-getInterviewContext()
-
-saveTranscript()
-
-generateNextQuestion()
-
-finishInterview()
-
-generateFeedback()
-```
-
-Every tool must:
-
-- validate input
-- return structured output
-- be idempotent where appropriate
-
----
-
-
-
-# Prompt Organization
-
-```text
-prompts/
-
-    interviewer.md
-
-    feedback.md
-
-    scoring.md
-
-    follow-up.md
-
-    report.md
-```
-
-Each prompt has a single responsibility.
-
----
-
-
-
-# Validation
-
-Every request entering the backend must be validated.
-
-Validation occurs before business logic executes.
-
-Shared schemas should be reused whenever possible.
-
----
-
-
-
-# Error Handling
-
-Every endpoint returns structured errors.
-
-Example:
-
-```json
-{
-    "code": "INTERVIEW_NOT_FOUND",
-    "message": "Interview does not exist."
-}
-```
-
-Unexpected errors should never expose internal implementation details.
-
----
-
-
-
-# Logging
-
-Log:
-
-- authentication events
-- interview lifecycle
-- AI tool execution
-- failures
-- retries
-
-Avoid logging sensitive user information or complete prompts.
-
-Never log full resumes, raw audio, complete transcripts, provider tokens, or unredacted provider request/response bodies. Log provider capability, failure category, status, retry count, and request ID only when available.
-
----
-
-
-
-# Database Ownership
-
-Each module owns its tables.
-
-Example:
-
-Auth
-
-- users
-- sessions
-
-Interview
-
-- interviews
-- questions
-- answers
-
-Reports
-
-- reports
-
-Cross-module access must go through service interfaces rather than direct table manipulation.
-
----
-
-
-
-# Security
-
-- JWT authentication
-- Secure cookies when applicable
-- Rate limiting
-- Input validation
-- File validation
-- Principle of least privilege
-- HTTPS everywhere
-
----
-
-
-
-# Coding Standards
-
-- TypeScript strict mode
-- ESLint
-- Prettier
-- No use of any
-- Dependency injection where appropriate
-- Small, focused services
-- Pure business logic
-- Descriptive naming
-- Comprehensive error handling
-
----
-
-
-
-# Testing Strategy
-
-Unit Tests
-
-- business logic
-- utilities
-- state machine
-
-Integration Tests
-
-- API endpoints
-- database operations
-
-End-to-End Tests
-
-- authentication
-- interview creation
-- interview flow
-- report generation
-
----
-
-
-
-# Performance Goals
-
-- Fast initial page load
-- Low-latency voice interactions
-- Responsive UI
-- Efficient database queries
-- Streaming AI responses
-- Minimal blocking operations
-
----
-
-
-
-# Deployment Targets
-
-Frontend
-
-- Vercel
-
-Backend
-
-- Railway or Fly.io
-
-Database
-
-- PostgreSQL
-
-Cache
-
-- Redis
-
-Storage
-
-- Cloudflare R2
-
----
-
-
-
-# Engineering Principles
-
-1. Business logic belongs in services.
-2. AI is a reasoning engine, not the source of truth.
-3. Modules communicate through well-defined interfaces.
-4. Prefer composition over duplication.
-5. Favor explicit state transitions.
-6. Keep components small and focused.
-7. Design for maintainability before optimization.
-8. Optimize for readability and extensibility.
-
----
-
-
-
-# Implementation Order
-
-1. Initialize monorepo
-2. Configure tooling
-3. Authentication
-4. Database schema
-5. Resume module
-6. Job description module
-7. Interview module
-8. Conversation Manager
-9. AI integration
-10. Feedback engine
-11. Dashboard
-12. Analytics
-13. Deployment
-14. Testing
-15. Polish
-
----
-
-
-
-# Summary
-
-This specification defines the engineering contract for Interviewer AI.
-
-Every feature should be implemented within its owning module, communicate through clear interfaces, and follow the architectural principles established in the System Design Document.
-
-The goal is to produce a codebase that is modular, maintainable, testable, and easy for both engineers and AI coding agents to extend.
+# Security & Data Minimization
+
+1. **Authentication**: Handled via Better-Auth with session cookies (`httpOnly`, `secure`, `sameSite: lax` in production). Client IP rate limiting is enforced on sensitive endpoints via Redis.
+2. **Provider Key Isolation**: Browser never holds Deepgram, Gemini, Resend, or Paddle credentials. Clients access voice solely via short-lived tickets.
+3. **Storage Security**: Direct R2 uploads require HMAC signed metadata (`x-amz-meta-owner-user-id`, `x-amz-meta-resume-id`). The API verifies metadata and exact content length before marking uploads ready.
+4. **PII & Privacy**: Audio streams are processed live in-memory and never stored to disk. Transcripts are retained per `TRANSCRIPT_RETENTION_DAYS` (default 0). Logs redact credentials, prompt templates, resume contents, and raw speech.

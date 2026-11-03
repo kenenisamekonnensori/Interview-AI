@@ -25,9 +25,17 @@ export const deepgramAgentUrl = "wss://agent.deepgram.com/v1/agent/converse";
 export type AgentTransportSettings = {
   language: string;
   geminiModel: string;
+  /** Ordered think fallbacks after the primary model (Phase 2). */
+  geminiFallbackModels?: string[];
   instruction: string;
   /** Persisted turns replayed as provider-native history on reconnect. */
   history?: Array<{ role: "user" | "assistant"; content: string }>;
+  /**
+   * Verbatim first words, spoken by the provider immediately after
+   * SettingsApplied without involving the think model. Used only on a fresh
+   * session: a reconnect has history and must not be greeted again.
+   */
+  greeting?: string | null;
   /** Minimized context pack fetched once by the gateway before connect. */
   resumeSummary?: string | null;
   resumeSkills?: string[];
@@ -44,15 +52,20 @@ export type AgentTransportEvents = {
   onUserStatement: (text: string) => void;
   /** The agent started thinking: the user's turn is complete. */
   onAgentThinking: () => void;
+  /** The agent began emitting speech (audio may still be generating). */
+  onAgentStartedSpeaking?: () => void;
+  /** The provider refused an injected message; the turn was not produced. */
+  onInjectionRefused?: (reason?: string) => void;
   /** One spoken agent statement (ConversationText, role "assistant"). */
   onAgentStatement: (text: string) => void;
   /** One chunk of synthesized agent audio (linear16 PCM frames). */
   onAgentAudio: (chunk: Buffer) => void;
   onAgentAudioDone: () => void;
-  onWarning: (summary: string) => void;
+  /** Non-fatal provider warning; the code identifies the failing stage. */
+  onWarning: (summary: string, code?: string) => void;
   onThinkUpdated?: () => void;
   /** A terminal provider error; the session is unusable after this. */
-  onError: (summary: string) => void;
+  onError: (summary: string, code?: string) => void;
   onClose: (code: number, reason: string) => void;
 };
 
@@ -72,7 +85,26 @@ type AgentServerEvent = {
   role?: string;
   content?: string;
   message?: string;
+  description?: string;
+  code?: string;
 };
+
+/**
+ * The think chain is `GEMINI_MODEL` followed by the configured fallbacks,
+ * de-duplicated and order-preserving. Deepgram tries the entries in order, so
+ * a quota-exhausted primary model no longer ends the interview.
+ */
+export function resolveThinkModels({
+  geminiModel,
+  geminiFallbackModels,
+}: {
+  geminiModel: string;
+  geminiFallbackModels?: string[] | undefined;
+}): string[] {
+  return [
+    ...new Set([geminiModel, ...(geminiFallbackModels ?? [])].map((model) => model.trim())),
+  ].filter(Boolean);
+}
 
 /** Build the `Settings` payload for the agent connect + think + speak pipeline. */
 function buildThinkInstruction(
@@ -110,18 +142,35 @@ function buildThinkSettings(
   };
 }
 
+/**
+ * One think provider is a plain object; a fallback chain is the ordered array
+ * form Deepgram retries in sequence.
+ */
+function buildThinkChain(
+  environment: ServerEnvironment,
+  models: string[],
+  instruction: string,
+  headers?: Record<string, string>,
+) {
+  const chain = models.map((model) => buildThinkSettings(environment, model, instruction, headers));
+  return chain.length > 1 ? chain : chain[0];
+}
+
 export function buildAgentSettings(
   environment: ServerEnvironment,
-  {
+  settings: AgentTransportSettings,
+): Record<string, unknown> {
+  const {
     language,
     geminiModel,
+    geminiFallbackModels,
     instruction,
     history,
+    greeting,
     resumeSummary,
     resumeSkills,
     jobRequiredSkills,
-  }: AgentTransportSettings,
-): Record<string, unknown> {
+  } = settings;
   if (!environment.DEEPGRAM_API_KEY) throw new DeepgramConfigurationError();
   if (!environment.GEMINI_API_KEY)
     throw new Error("The AI provider is not configured (GEMINI_API_KEY missing).");
@@ -134,6 +183,7 @@ export function buildAgentSettings(
       output: { encoding: "linear16", sample_rate: 24_000, container: "none" },
     },
     agent: {
+      ...(greeting ? { greeting } : {}),
       ...(history && history.length > 0
         ? {
             context: {
@@ -148,9 +198,9 @@ export function buildAgentSettings(
       listen: {
         provider: { type: "deepgram", model: "nova-3", language },
       },
-      think: buildThinkSettings(
+      think: buildThinkChain(
         environment,
-        geminiModel,
+        resolveThinkModels({ geminiModel, geminiFallbackModels }),
         buildThinkInstruction(instruction, {
           ...(resumeSummary !== undefined ? { resumeSummary } : {}),
           ...(resumeSkills !== undefined ? { resumeSkills } : {}),
@@ -194,12 +244,12 @@ export async function connectAgentTransport(
   let ready = false;
   let readyResolve: (() => void) | undefined;
 
-  const fail = (summary: string) => {
+  const fail = (summary: string, code?: string) => {
     if (!ready && !setupFailed) {
       setupFailed = true;
-      observability().event("voice.agent.setup_failed", { reason: summary });
+      observability().event("voice.agent.setup_failed", { reason: summary, code });
     }
-    events.onError(summary);
+    events.onError(summary, code);
   };
 
   socket.on("open", () => {
@@ -239,17 +289,31 @@ export async function connectAgentTransport(
       case "AgentThinking":
         events.onAgentThinking();
         break;
+      case "AgentStartedSpeaking":
+        events.onAgentStartedSpeaking?.();
+        break;
+      case "InjectionRefused":
+        events.onInjectionRefused?.(
+          parsed.description ?? parsed.message ?? "The voice provider refused the injection.",
+        );
+        break;
       case "AgentAudioDone":
         events.onAgentAudioDone();
         break;
       case "Warning":
-        events.onWarning(parsed.message ?? "The voice provider sent a warning.");
+        events.onWarning(
+          parsed.description ?? parsed.message ?? "The voice provider sent a warning.",
+          parsed.code,
+        );
         break;
       case "ThinkUpdated":
         events.onThinkUpdated?.();
         break;
       case "Error":
-        fail(parsed.message ?? "The voice provider returned an error.");
+        fail(
+          parsed.description ?? parsed.message ?? "The voice provider returned an error.",
+          parsed.code,
+        );
         break;
       default:
         break;
@@ -303,9 +367,11 @@ export async function connectAgentTransport(
       socket.send(
         JSON.stringify({
           type: "UpdateThink",
-          think: buildThinkSettings(
+          // A refresh must keep the fallback chain: dropping it on the first
+          // turn would silently remove the quota protection mid-interview.
+          think: buildThinkChain(
             environment,
-            settings.geminiModel,
+            resolveThinkModels(settings),
             buildThinkInstruction(instruction, settings),
             headers ?? settings.thinkHeaders,
           ),

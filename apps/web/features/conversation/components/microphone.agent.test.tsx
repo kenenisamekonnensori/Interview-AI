@@ -25,22 +25,6 @@ vi.mock("./voice-visualizer", () => ({
   VoiceVisualizer: () => <div data-testid="voice-visualizer" />,
 }));
 
-vi.mock("./mic-diagnostic", () => ({
-  MicDiagnostic: ({ onComplete }: { onComplete: (stream?: MediaStream) => void }) => {
-    const stream = {
-      active: true,
-      id: "diagnostic-stream",
-      getTracks: () => [{ kind: "audio", readyState: "live", stop: () => {} }],
-      getAudioTracks: () => [{ kind: "audio", readyState: "live", stop: () => {} }],
-    } as unknown as MediaStream;
-    return (
-      <button type="button" onClick={() => onComplete(stream)}>
-        Start microphone test
-      </button>
-    );
-  },
-}));
-
 vi.mock("./audio-queue", () => ({
   audioQueue: {
     unlockAudio: vi.fn(async () => true),
@@ -91,10 +75,10 @@ class FakeAgentSocket {
     this.sent.push(data);
   }
 
-  close() {
+  close(code = 1000, reason = "") {
     if (this.readyState === FakeAgentSocket.CLOSED) return;
     this.readyState = FakeAgentSocket.CLOSED;
-    const event = { code: 1000, reason: "" };
+    const event = { code, reason };
     this.onclose?.(event);
     this.emit("close", event);
   }
@@ -268,7 +252,14 @@ beforeEach(() => {
   Object.defineProperty(window, "isSecureContext", { configurable: true, value: true });
   Object.defineProperty(navigator, "mediaDevices", {
     configurable: true,
-    value: { getUserMedia: vi.fn(async () => null) },
+    value: {
+      getUserMedia: vi.fn(async () => ({
+        active: true,
+        id: "join-stream",
+        getTracks: () => [{ kind: "audio", readyState: "live", stop: () => {} }],
+        getAudioTracks: () => [{ kind: "audio", readyState: "live", stop: () => {} }],
+      })),
+    },
   });
   vi.stubGlobal(
     "fetch",
@@ -324,7 +315,7 @@ function queuedTurns() {
   return vi.mocked(audioQueue.enqueue).mock.calls.map(([item]) => item);
 }
 
-/** Renders the component, passes the mic check, and waits for the agent session. */
+/** Renders the component, joins the interview, and waits for the agent session. */
 async function startAgentSession({
   onInterviewCompleted,
   onServerAiTurn,
@@ -341,7 +332,7 @@ async function startAgentSession({
       {...(onServerAiTurn ? { onServerAiTurn } : {})}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Start microphone test" }));
+  fireEvent.click(screen.getByRole("button", { name: "Join interview" }));
   await waitFor(() => expect(FakeAgentSocket.instances).toHaveLength(1));
   const socket = FakeAgentSocket.instances[0];
   if (!socket) throw new Error("The agent gateway socket was never opened.");
@@ -655,6 +646,62 @@ describe("agent voice turn lifecycle", () => {
     expect(forwardedMicFrames(socket)).toBe(before + 1);
   });
 
+  it("shows the interviewer speaking as soon as the provider starts, before the turn lands", async () => {
+    const { socket, states } = await startAgentSession();
+
+    await act(async () => {
+      socket.deliver({ type: "agent-thinking" });
+    });
+    expect(states.at(-1)).toBe("THINKING");
+
+    await act(async () => {
+      socket.deliver({ type: "agent-speaking-started" });
+    });
+    // The greeting audio begins before AgentAudioDone publishes the text: the
+    // UI must not sit in LISTENING while the interviewer is talking.
+    expect(states.at(-1)).toBe("SPEAKING");
+  });
+
+  it("shows one Join step and starts speaking without waiting for the candidate", async () => {
+    const { states } = await startAgentSession();
+    // Joining starts the conversation, fetches a ticket and opens the gateway
+    // socket immediately: there is no microphone test to talk through first.
+    expect(apiCalls.some((call) => call.path.endsWith("/conversation/start"))).toBe(true);
+    expect(apiCalls.some((call) => call.path.endsWith("/voice-token"))).toBe(true);
+    expect(states).toContain("LISTENING");
+    expect(FakeAgentSocket.instances).toHaveLength(1);
+  });
+
+  it("does not fight another tab that took over the live session", async () => {
+    const { socket, states } = await startAgentSession();
+
+    await act(async () => {
+      // The gateway closes with 4001 when a newer connection owns the session.
+      socket.close(4001, "This interview was opened in another session.");
+    });
+
+    expect(states.at(-1)).toBe("ERROR");
+    expect(await screen.findByText(/open in another tab/i)).toBeTruthy();
+    // No reconnect: reconnecting would take the session back from the other tab.
+    expect(FakeAgentSocket.instances).toHaveLength(1);
+  });
+
+  it("keeps the interview in text mode when the voice service is at capacity", async () => {
+    const { socket, states } = await startAgentSession();
+
+    await act(async () => {
+      socket.deliver({
+        type: "capacity",
+        message: "The voice interviewer is at capacity right now.",
+        active: 100,
+        limit: 100,
+      });
+    });
+
+    expect(await screen.findByLabelText("Type your answer")).toBeTruthy();
+    await waitFor(() => expect(states.at(-1)).toBe("LISTENING"));
+  });
+
   it("gives up after the reconnect ceiling and falls back to typed answers", async () => {
     const { socket, states } = await startAgentSession();
     await deliverTurn(socket, { id: "turn-8", text: "Why did you choose Postgres?" });
@@ -718,6 +765,39 @@ describe("agent voice turn lifecycle", () => {
     await waitFor(() => expect(playbackAcks()).toHaveLength(1));
     expect(playbackAcks()[0]?.path).toBe(
       "/api/v1/interviews/interview-1/conversation/turns/turn-5/playback-completed",
+    );
+  });
+
+  it("keeps the interview going in text mode when the provider's think chain is exhausted", async () => {
+    const notice =
+      "I'm having trouble continuing by voice, but nothing you said is lost. Let's keep going in text — type your answer below and I'll pick up from there.";
+    const { socket, states } = await startAgentSession();
+    await deliverTurn(socket, { id: "turn-think", text: "Describe a system you scaled." });
+    await act(async () => {
+      finishScheduledAudio();
+    });
+    await waitFor(() => expect(playbackAcks()).toHaveLength(1));
+
+    // The server's think chain (and its fallbacks) is exhausted: the gateway
+    // sends a fixed notice and ends the voice session. The candidate keeps the
+    // interview instead of losing the connection.
+    await act(async () => {
+      socket.deliver({ type: "think-degraded", message: notice, fallback: "text" });
+    });
+
+    expect((await screen.findAllByText(notice)).length).toBeGreaterThan(0);
+    const input = await screen.findByLabelText("Type your answer");
+    await waitFor(() => expect(states.at(-1)).toBe("LISTENING"));
+
+    // The settled turn is not acknowledged a second time on the way out.
+    expect(playbackAcks()).toHaveLength(1);
+    // The degraded session never schedules another voice reconnect.
+    expect(FakeAgentSocket.instances).toHaveLength(1);
+
+    fireEvent.change(input, { target: { value: "We sharded by tenant id." } });
+    fireEvent.click(screen.getByRole("button", { name: /Send Answer/ }));
+    await waitFor(() =>
+      expect(apiCalls.some((call) => call.path.endsWith("/conversation/transcripts"))).toBe(true),
     );
   });
 

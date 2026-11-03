@@ -216,6 +216,7 @@ model Interview {
   conversation     Conversation?
   memory           InterviewMemory?
   report           InterviewReport?
+  usage            InterviewUsage?
 
   @@index([userId, createdAt])
   @@index([status])
@@ -483,6 +484,25 @@ enum UsageRecordStatus {
   RESERVED
   COMMITTED
   RELEASED
+}
+
+/// Per-interview provider consumption (Phase 3). The server that owns the
+/// session increments these counters; nothing here is inferred from client
+/// input, and no counter is decremented. Billing reads this table — pricing,
+/// caps and invoicing stay per-plan decisions, not columns.
+model InterviewUsage {
+  interviewId     String    @id
+  /// Seconds of the server-owned Deepgram session (agent lane).
+  voiceSeconds    Int       @default(0)
+  /// LLM requests issued for this interview (turns plus post-turn assessments).
+  thinkRequests   Int       @default(0)
+  /// Interviewer characters actually synthesized (cache hits are free).
+  speakCharacters Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  interview       Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("interview_usage")
 }
 
 /// The application's relationship with a billing-provider customer. Paddle is
