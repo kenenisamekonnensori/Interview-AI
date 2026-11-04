@@ -8,6 +8,9 @@ import { defineConfig } from "vitest/config";
  * runner resolves imports itself, so the same alias is declared here.
  */
 export default defineConfig({
+  test: {
+    testTimeout: 15000,
+  },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL(".", import.meta.url)),

@@ -38,7 +38,17 @@ describe("Internal State Synchronization Bridge (Acceptance Check 3)", () => {
     const conversationId = "22222222-2222-4222-8222-222222222222";
     const userId = "33333333-3333-4333-8333-333333333333";
 
-    const persistedTurns: Array<Record<string, unknown>> = [];
+    const persistedTurns: Array<{
+      id: string;
+      createdAt: Date;
+      speaker: string;
+      type: string;
+      text: string;
+      startedAt?: Date | null;
+      endedAt?: Date | null;
+      durationMs?: number | null;
+      words?: unknown;
+    }> = [];
     let persistedMemory: Record<string, unknown> = {
       interviewId,
       askedQuestions: [],
@@ -85,7 +95,7 @@ describe("Internal State Synchronization Bridge (Acceptance Check 3)", () => {
             createdAt: new Date(),
             ...data,
           };
-          persistedTurns.push(record);
+          persistedTurns.push(record as (typeof persistedTurns)[number]);
           return record;
         },
       },
@@ -103,7 +113,7 @@ describe("Internal State Synchronization Bridge (Acceptance Check 3)", () => {
     const app = Fastify();
     registerConversationRoutes(
       app,
-      mockDatabase as PrismaClient,
+      mockDatabase as unknown as PrismaClient,
       testEnvironment,
       mockInterviewService,
     );
@@ -179,7 +189,7 @@ describe("Internal State Synchronization Bridge (Acceptance Check 3)", () => {
 
     // Verify persisted record in conversation_turn
     expect(persistedTurns).toHaveLength(1);
-    const persisted = persistedTurns[0];
+    const persisted = persistedTurns[0]!;
     expect(persisted.speaker).toBe("USER");
     expect(persisted.type).toBe("ANSWER");
     expect(persisted.durationMs).toBe(25000);

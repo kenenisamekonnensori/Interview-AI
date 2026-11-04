@@ -84,8 +84,13 @@ describe("LiveKit Token Minting Endpoint (Acceptance Check 2)", () => {
         });
       }
       request.authContext = {
-        user: { id: currentUserId, email: "candidate@example.com", emailVerified: true },
-        session: { id: "session-1" },
+        user: {
+          id: currentUserId,
+          email: "candidate@example.com",
+          name: "Candidate",
+          emailVerified: true,
+        },
+        sessionId: "session-1",
       };
     });
 

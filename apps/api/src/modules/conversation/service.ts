@@ -4,8 +4,10 @@ import type { Prisma, PrismaClient } from "../../../prisma/generated/client.js";
 import type { ServerEnvironment } from "@interviewer-ai/config";
 import type {
   ConversationState,
+  ConversationTurn,
   FinalizeTranscriptRequest,
   InterviewPlan,
+  WordTimingEntry,
 } from "@interviewer-ai/types";
 import { interviewPlanSchema } from "@interviewer-ai/types";
 import { AccessToken } from "livekit-server-sdk";
@@ -1158,15 +1160,23 @@ function asTurnDto(turn: {
   durationMs?: number | null;
   words?: unknown;
   createdAt: Date;
-}) {
-  return {
-    ...asTurnRecord(turn),
-    startedAt: turn.startedAt ? turn.startedAt.toISOString() : undefined,
-    endedAt: turn.endedAt ? turn.endedAt.toISOString() : undefined,
-    durationMs: turn.durationMs ?? undefined,
-    words: turn.words ?? undefined,
+}): ConversationTurn {
+  const base = asTurnRecord(turn);
+  const dto: ConversationTurn = {
+    id: base.id,
+    sequence: base.sequence,
+    speaker: base.speaker,
+    type: base.type,
+    text: base.text,
     createdAt: turn.createdAt.toISOString(),
   };
+
+  if (turn.startedAt) dto.startedAt = turn.startedAt.toISOString();
+  if (turn.endedAt) dto.endedAt = turn.endedAt.toISOString();
+  if (turn.durationMs != null) dto.durationMs = turn.durationMs;
+  if (turn.words != null) dto.words = turn.words as WordTimingEntry[];
+
+  return dto;
 }
 
 type CompactMemory = {
