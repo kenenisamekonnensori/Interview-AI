@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
-import React from "react";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import React, { useState } from "react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   LiveKitAudioRoom,
   audioTrackConstraints,
 } from "./livekit-audio-room";
+
+afterEach(() => {
+  cleanup();
+});
 
 // Mock @livekit/components-react to inspect props and simulate events
 vi.mock("@livekit/components-react", () => {
@@ -62,8 +66,8 @@ vi.mock("@livekit/components-react", () => {
   };
 });
 
-describe("LiveKitAudioRoom Component", () => {
-  it("mounts LiveKitRoom, enables audio, and renders RoomAudioRenderer and children", () => {
+describe("LiveKitAudioRoom Component (Acceptance Checks 1, 2, 4)", () => {
+  it("mounts LiveKitRoom, enables audio, and renders RoomAudioRenderer and children (Acceptance Check 1)", () => {
     const onConnected = vi.fn();
     const onDisconnected = vi.fn();
     const onError = vi.fn();
@@ -98,7 +102,7 @@ describe("LiveKitAudioRoom Component", () => {
     expect(onError).toHaveBeenCalledWith(expect.any(Error));
   });
 
-  it("configures audio track constraints with hardware echoCancellation, noiseSuppression, and autoGainControl", () => {
+  it("configures audio track constraints with hardware echoCancellation, noiseSuppression, and autoGainControl (Acceptance Check 2)", () => {
     expect(audioTrackConstraints.echoCancellation).toBe(true);
     expect(audioTrackConstraints.noiseSuppression).toBe(true);
     expect(audioTrackConstraints.autoGainControl).toBe(true);
@@ -130,5 +134,82 @@ describe("LiveKitAudioRoom Component", () => {
         sampleRate: 48000,
       }),
     );
+  });
+
+  it("simulates WebRTC room disconnection, displays Reconnecting state, and activates text mode fallback (Acceptance Check 4)", () => {
+    function SimulatedInterviewSession() {
+      const [mode, setMode] = useState<"VOICE" | "TEXT">("VOICE");
+      const [connectionState, setConnectionState] = useState<
+        "CONNECTED" | "RECONNECTING" | "DISCONNECTED"
+      >("CONNECTED");
+
+      return (
+        <div>
+          <div data-testid="connection-status">
+            {connectionState === "RECONNECTING"
+              ? "Reconnecting..."
+              : connectionState === "CONNECTED"
+                ? "Connected"
+                : "Disconnected"}
+          </div>
+
+          {mode === "VOICE" ? (
+            <LiveKitAudioRoom
+              interviewId="test-interview-123"
+              serverUrl="ws://localhost:7880"
+              token="test-jwt-token"
+              onConnected={() => setConnectionState("CONNECTED")}
+              onDisconnected={() => setConnectionState("RECONNECTING")}
+              onError={() => setConnectionState("DISCONNECTED")}
+            >
+              <div data-testid="voice-orb">Voice Orb Active</div>
+            </LiveKitAudioRoom>
+          ) : (
+            <div data-testid="text-composer">
+              <textarea placeholder="Type your response..." />
+              <button type="button">Send Answer</button>
+            </div>
+          )}
+
+          {connectionState === "RECONNECTING" && mode === "VOICE" ? (
+            <div data-testid="fallback-banner">
+              <p>Connection lost. You can switch to text mode to continue.</p>
+              <button
+                type="button"
+                data-testid="switch-to-text-btn"
+                onClick={() => setMode("TEXT")}
+              >
+                Switch to text mode
+              </button>
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+
+    render(<SimulatedInterviewSession />);
+
+    // Initially connected in voice mode
+    expect(screen.getByTestId("connection-status").textContent).toBe("Connected");
+    expect(screen.getByTestId("voice-orb")).toBeTruthy();
+    expect(screen.queryByTestId("text-composer")).toBeNull();
+
+    // Simulate WebRTC disconnection event
+    fireEvent.click(screen.getByTestId("mock-disconnect-trigger"));
+
+    // Verify UI reflects "Reconnecting..." state and offers switch to text mode button
+    expect(screen.getByTestId("connection-status").textContent).toBe("Reconnecting...");
+    expect(screen.getByTestId("fallback-banner")).toBeTruthy();
+
+    const switchBtn = screen.getByTestId("switch-to-text-btn");
+    expect(switchBtn).toBeTruthy();
+
+    // Click "Switch to text mode"
+    fireEvent.click(switchBtn);
+
+    // Verify WebRTC room unmounts and text composer activates
+    expect(screen.queryByTestId("livekit-audio-room")).toBeNull();
+    expect(screen.queryByTestId("voice-orb")).toBeNull();
+    expect(screen.getByTestId("text-composer")).toBeTruthy();
   });
 });

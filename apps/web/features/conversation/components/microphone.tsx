@@ -29,6 +29,8 @@ import {
   SUPPORTED_VOICE_LANGUAGES,
 } from "@/features/conversation/voice-languages";
 import { VoiceVisualizer } from "./voice-visualizer";
+import { LiveKitAudioRoom } from "./livekit-audio-room";
+import { LiveKitVisualizerAdapter } from "./livekit-visualizer-adapter";
 import { audioQueue } from "./audio-queue";
 import { AgentAudioPlayer, AgentMicCapture } from "../agent-voice";
 
@@ -281,6 +283,11 @@ export function InterviewMicrophone({
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [activeSpeechBuffer, setActiveSpeechBuffer] = useState<string>("");
   const [cameraActive, setCameraActive] = useState<boolean>(false);
+  const [liveKitSession, setLiveKitSession] = useState<{
+    token: string;
+    url: string;
+  } | null>(null);
+  const connectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const videoStreamRef = useRef<MediaStream | null>(null);
@@ -462,6 +469,11 @@ export function InterviewMicrophone({
 
   function cleanupSession() {
     sessionRef.current += 1;
+    if (connectTimeoutRef.current !== null) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
+    setLiveKitSession(null);
     if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
     reconnectTimerRef.current = null;
     if (silenceDebounceTimerRef.current !== null) {
@@ -604,6 +616,39 @@ export function InterviewMicrophone({
       const stream = await acquireMicrophoneStream(existingStream);
       streamRef.current = stream;
       console.log("[Voice Pipeline] Microphone stream ready.");
+
+      // 1b. Connect to LiveKit WebRTC Audio Room if available (Phase 3)
+      try {
+        const liveKitToken = await apiClient<{
+          token: string;
+          url: string;
+          roomName: string;
+          participantIdentity: string;
+        }>(`/api/v1/interviews/${interviewId}/livekit-token`, { method: "POST" });
+
+        if (liveKitToken?.token && liveKitToken?.url) {
+          if (session !== sessionRef.current) return;
+          setLiveKitSession({
+            token: liveKitToken.token,
+            url: liveKitToken.url,
+          });
+          onStarted?.();
+
+          // 10-second connection timeout guard (Task 3.2)
+          if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
+          connectTimeoutRef.current = setTimeout(() => {
+            if (stateRef.current === "CONNECTING") {
+              setVoiceFallback(
+                "Voice connection timed out after 10 seconds. You can switch to text mode to continue.",
+              );
+              updateState("ERROR");
+            }
+          }, 10_000);
+          return;
+        }
+      } catch (liveKitError) {
+        console.warn("[Voice Pipeline] LiveKit token fetch fell back to legacy:", liveKitError);
+      }
 
       // 2. Fetch conversation start and voice connection token in parallel
       console.log(
@@ -1534,13 +1579,49 @@ export function InterviewMicrophone({
           </div>
         ) : null}
 
-        <VoiceVisualizer
-          stream={streamRef.current}
-          state={state}
-          errorMessage={error}
-          partialTranscript={partialTranscript || activeSpeechBuffer}
-          onRetry={() => void startVoice()}
-        />
+        {liveKitSession ? (
+          <LiveKitAudioRoom
+            interviewId={interviewId}
+            serverUrl={liveKitSession.url}
+            token={liveKitSession.token}
+            onConnected={() => {
+              if (connectTimeoutRef.current) {
+                clearTimeout(connectTimeoutRef.current);
+                connectTimeoutRef.current = null;
+              }
+              updateState("LISTENING");
+            }}
+            onDisconnected={() => {
+              updateState("RECONNECTING");
+              setVoiceFallback(
+                "Voice room disconnected. Reconnecting or switch to text mode.",
+              );
+            }}
+            onError={(err) => {
+              console.error("[LiveKit] Room error:", err);
+              setError(err.message);
+              updateState("ERROR");
+              setVoiceFallback(
+                "Voice room encountered an error. Switch to text mode to continue.",
+              );
+            }}
+          >
+            <LiveKitVisualizerAdapter
+              state={state}
+              errorMessage={error}
+              partialTranscript={partialTranscript || activeSpeechBuffer}
+              onRetry={() => void startVoice()}
+            />
+          </LiveKitAudioRoom>
+        ) : (
+          <VoiceVisualizer
+            stream={streamRef.current}
+            state={state}
+            errorMessage={error}
+            partialTranscript={partialTranscript || activeSpeechBuffer}
+            onRetry={() => void startVoice()}
+          />
+        )}
 
         {/* Live Ongoing Speech Buffer Feedback */}
         {activeSpeechBuffer ? (
@@ -1590,7 +1671,7 @@ export function InterviewMicrophone({
               ? "Connecting…"
               : mode === "VOICE" && active
                 ? "Turn Off Microphone"
-                : "Start Voice Session"}
+                : "Start Voice Interview"}
           </Button>
 
           <Button

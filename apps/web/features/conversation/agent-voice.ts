@@ -10,7 +10,10 @@
  * directions without touching the legacy MediaRecorder/audio-queue machinery.
  */
 
-/** Schedules played audio strictly sequentially; stop() cancels everything. */
+/**
+ * Schedules played audio strictly sequentially; stop() cancels everything.
+ * @deprecated Deprecated in Phase 3. Replaced by LiveKit WebRTC audio room transport and RoomAudioRenderer.
+ */
 export class AgentAudioPlayer {
   private context: AudioContext | null = null;
   private playHead = 0;
@@ -103,6 +106,7 @@ const INPUT_SAMPLE_RATE = 16_000;
  * Captures the microphone as sequential 16 kHz Int16 PCM chunks. Uses a
  * ScriptProcessorNode: deprecated but universally available; the agent path is
  * behind a server flag and swappable for an AudioWorklet later.
+ * @deprecated Deprecated in Phase 3. Replaced by LiveKit WebRTC audio track publishing with hardware-accelerated AEC.
  */
 export class AgentMicCapture {
   private context: AudioContext;

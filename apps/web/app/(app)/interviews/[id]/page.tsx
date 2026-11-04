@@ -168,28 +168,43 @@ export default function LiveInterviewPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1.5 rounded-full bg-rose-400/10 px-3 py-1.5 text-xs font-medium text-rose-300">
-              <Radio className="size-3" />{" "}
-              {interactionMode === "TEXT"
-                ? "Text mode"
-                : voiceState === "IDLE"
-                  ? "Mic off"
-                  : "Voice session"}
-            </span>
-            <span
-              className={`grid size-8 place-items-center rounded-lg bg-white/[.05] ${
-                interactionMode === "TEXT" || voiceState === "IDLE" || voiceState === "ERROR"
-                  ? "text-muted-foreground"
-                  : "text-emerald-300"
-              }`}
-              aria-label={
-                interactionMode === "TEXT" || voiceState === "IDLE" || voiceState === "ERROR"
-                  ? "Voice transport is not connected"
-                  : "Voice transport is connected"
-              }
-            >
-              <Wifi className="size-3.5" />
-            </span>
+            {interactionMode === "VOICE" ? (
+              <span
+                data-testid="webrtc-health-badge"
+                className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${
+                  voiceState === "RECONNECTING"
+                    ? "bg-amber-400/10 text-amber-300"
+                    : voiceState === "LISTENING" ||
+                        voiceState === "SPEAKING" ||
+                        voiceState === "THINKING"
+                      ? "bg-emerald-400/10 text-emerald-300"
+                      : "bg-rose-400/10 text-rose-300"
+                }`}
+              >
+                <Wifi className="size-3.5" />
+                {voiceState === "RECONNECTING"
+                  ? "Reconnecting"
+                  : voiceState === "LISTENING" ||
+                        voiceState === "SPEAKING" ||
+                        voiceState === "THINKING"
+                    ? "Connected"
+                    : "Disconnected"}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 rounded-full bg-slate-400/10 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                <Radio className="size-3" /> Text mode
+              </span>
+            )}
+            {interactionMode === "VOICE" && voiceState !== "IDLE" ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setInteractionMode("TEXT")}
+              >
+                Switch to text mode
+              </Button>
+            ) : null}
           </div>
         </div>
         <div className="mt-7 grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -317,22 +332,22 @@ export default function LiveInterviewPage() {
                   <span>Network</span>
                   <span
                     className={
-                      interactionMode === "TEXT" || voiceState === "IDLE" || voiceState === "ERROR"
+                      interactionMode === "TEXT"
                         ? "text-muted-foreground"
-                        : voiceState === "RECONNECTING"
-                          ? "text-amber-300"
-                          : "text-emerald-300"
+                        : voiceState === "IDLE" || voiceState === "ERROR"
+                          ? "text-rose-300"
+                          : voiceState === "RECONNECTING"
+                            ? "text-amber-300"
+                            : "text-emerald-300"
                     }
                   >
                     {interactionMode === "TEXT"
                       ? "Not in use"
-                      : voiceState === "IDLE"
-                        ? "Not connected"
-                        : voiceState === "ERROR"
-                          ? "Unavailable"
-                          : voiceState === "RECONNECTING"
-                            ? "Reconnecting"
-                            : "Connected"}
+                      : voiceState === "IDLE" || voiceState === "ERROR"
+                        ? "Disconnected"
+                        : voiceState === "RECONNECTING"
+                          ? "Reconnecting"
+                          : "Connected"}
                   </span>
                 </p>
                 <p className="flex justify-between">
