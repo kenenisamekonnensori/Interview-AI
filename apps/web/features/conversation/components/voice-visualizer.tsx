@@ -51,12 +51,12 @@ export function calculateVisualizerParams(
 }
 
 export interface VoiceVisualizerProps {
-  stream?: MediaStream | null;
-  volume?: number;
+  stream?: MediaStream | null | undefined;
+  volume?: number | undefined;
   state: VoiceSessionState;
-  errorMessage?: string | null;
-  partialTranscript?: string;
-  onRetry?: () => void;
+  errorMessage?: string | null | undefined;
+  partialTranscript?: string | undefined;
+  onRetry?: (() => void) | undefined;
 }
 
 export function VoiceVisualizer({

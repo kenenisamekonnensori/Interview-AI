@@ -9,9 +9,9 @@ import type { VoiceSessionState } from "./microphone";
 
 export type LiveKitVisualizerAdapterProps = {
   state: VoiceSessionState;
-  errorMessage?: string | null;
-  partialTranscript?: string;
-  onRetry?: () => void;
+  errorMessage?: string | null | undefined;
+  partialTranscript?: string | undefined;
+  onRetry?: (() => void) | undefined;
 };
 
 export function LiveKitVisualizerAdapter(props: LiveKitVisualizerAdapterProps) {
