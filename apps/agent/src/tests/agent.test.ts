@@ -20,7 +20,7 @@ describe("Voice Agent Worker & TTS Hierarchy (Acceptance Checks 4 & 5)", () => {
   it("Acceptance Check 4: uses Deepgram Aura-2 as default TTS when CARTESIA_API_KEY is absent", () => {
     const ttsInstance = createTTS({ deepgramApiKey: "test-dg-key" });
     expect(ttsInstance).toBeInstanceOf(deepgram.TTS);
-    expect((ttsInstance as any).model).toBe("aura-asteria-en");
+    expect((ttsInstance as unknown as { model: string }).model).toBe("aura-asteria-en");
   });
 
   it("Acceptance Check 5: initializes Cartesia Sonic with Deepgram fallback when CARTESIA_API_KEY is configured", () => {
@@ -35,10 +35,10 @@ describe("Voice Agent Worker & TTS Hierarchy (Acceptance Checks 4 & 5)", () => {
     const fallbackTts = fallback.ttsInstances[1] as deepgram.TTS;
 
     expect(primaryTts).toBeInstanceOf(cartesia.TTS);
-    expect((primaryTts as any).model).toBe("sonic-english");
+    expect((primaryTts as unknown as { model: string }).model).toBe("sonic-english");
 
     expect(fallbackTts).toBeInstanceOf(deepgram.TTS);
-    expect((fallbackTts as any).model).toBe("aura-asteria-en");
+    expect((fallbackTts as unknown as { model: string }).model).toBe("aura-asteria-en");
   });
 
   it("registers job dispatch listener and filters rooms starting with interview-", async () => {
@@ -51,7 +51,9 @@ describe("Voice Agent Worker & TTS Hierarchy (Acceptance Checks 4 & 5)", () => {
       accept: vi.fn().mockResolvedValue(undefined),
       reject: vi.fn().mockResolvedValue(undefined),
     };
-    await serverOpts.requestFunc(acceptedMock as any);
+    await serverOpts.requestFunc(
+      acceptedMock as unknown as Parameters<typeof serverOpts.requestFunc>[0],
+    );
     expect(acceptedMock.accept).toHaveBeenCalled();
     expect(acceptedMock.reject).not.toHaveBeenCalled();
 
@@ -61,7 +63,9 @@ describe("Voice Agent Worker & TTS Hierarchy (Acceptance Checks 4 & 5)", () => {
       accept: vi.fn().mockResolvedValue(undefined),
       reject: vi.fn().mockResolvedValue(undefined),
     };
-    await serverOpts.requestFunc(rejectedMock as any);
+    await serverOpts.requestFunc(
+      rejectedMock as unknown as Parameters<typeof serverOpts.requestFunc>[0],
+    );
     expect(rejectedMock.reject).toHaveBeenCalled();
     expect(rejectedMock.accept).not.toHaveBeenCalled();
   });
@@ -84,8 +88,8 @@ describe("Voice Agent Worker & TTS Hierarchy (Acceptance Checks 4 & 5)", () => {
     expect(pipeline.agent).toBeDefined();
     expect(pipeline.greeting).toContain("Senior Backend Engineer");
     expect(pipeline.greeting).toContain("Distributed Systems");
-    expect((pipeline.stt as any).model).toBe("nova-3");
-    expect((pipeline.tts as any).model).toBe("aura-asteria-en");
+    expect((pipeline.stt as unknown as { model: string }).model).toBe("nova-3");
+    expect((pipeline.tts as unknown as { model: string }).model).toBe("aura-asteria-en");
 
     // Verify greeting dispatch invocation on simulated session
     const mockSession = {

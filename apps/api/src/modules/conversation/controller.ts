@@ -150,40 +150,37 @@ export function registerConversationRoutes(
     },
   );
 
-  app.post(
-    "/api/v1/internal/interviews/:id/turns",
-    async (request, reply) => {
-      const secretHeader = request.headers["x-internal-secret"];
-      const secret = Array.isArray(secretHeader) ? secretHeader[0] : secretHeader;
-      if (!validateInternalSecret(secret, environment.INTERNAL_API_SECRET)) {
-        return reply.status(401).send({
-          code: "UNAUTHORIZED",
-          message: "Unauthorized: missing or invalid x-internal-secret header.",
-        });
-      }
-      const params = conversationInterviewIdSchema.safeParse(request.params);
-      if (!params.success) {
-        return reply.status(400).send({
-          code: "VALIDATION_ERROR",
-          message: "Invalid interview ID.",
-        });
-      }
-      const body = internalTurnSyncSchema.safeParse(request.body);
-      if (!body.success) {
-        return reply.status(400).send({
-          code: "VALIDATION_ERROR",
-          message: "Invalid turn payload.",
-          details: body.error.flatten(),
-        });
-      }
-      try {
-        const turn = await service.syncInternalTurn(params.data.id, body.data);
-        return reply.status(201).send(turn);
-      } catch (error) {
-        return sendConversationError(reply, error);
-      }
-    },
-  );
+  app.post("/api/v1/internal/interviews/:id/turns", async (request, reply) => {
+    const secretHeader = request.headers["x-internal-secret"];
+    const secret = Array.isArray(secretHeader) ? secretHeader[0] : secretHeader;
+    if (!validateInternalSecret(secret, environment.INTERNAL_API_SECRET)) {
+      return reply.status(401).send({
+        code: "UNAUTHORIZED",
+        message: "Unauthorized: missing or invalid x-internal-secret header.",
+      });
+    }
+    const params = conversationInterviewIdSchema.safeParse(request.params);
+    if (!params.success) {
+      return reply.status(400).send({
+        code: "VALIDATION_ERROR",
+        message: "Invalid interview ID.",
+      });
+    }
+    const body = internalTurnSyncSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({
+        code: "VALIDATION_ERROR",
+        message: "Invalid turn payload.",
+        details: body.error.flatten(),
+      });
+    }
+    try {
+      const turn = await service.syncInternalTurn(params.data.id, body.data);
+      return reply.status(201).send(turn);
+    } catch (error) {
+      return sendConversationError(reply, error);
+    }
+  });
 
   app.get(
     "/api/v1/interviews/:id/conversation/voice-stream",

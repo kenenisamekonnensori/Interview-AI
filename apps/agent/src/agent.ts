@@ -9,30 +9,33 @@ import {
   type AgentInterviewInstructionInput,
 } from "@interviewer-ai/prompts";
 
-initializeLogger({ level: "info" });
+initializeLogger({ level: "info", pretty: false });
 
 export type AgentPipelineOptions = {
   interviewId: string;
-  language?: string;
-  cartesiaApiKey?: string;
-  deepgramApiKey?: string;
-  geminiApiKey?: string;
-  instructionInput?: Partial<AgentInterviewInstructionInput>;
+  language?: string | undefined;
+  cartesiaApiKey?: string | undefined;
+  deepgramApiKey?: string | undefined;
+  geminiApiKey?: string | undefined;
+  instructionInput?: Partial<AgentInterviewInstructionInput> | undefined;
 };
 
-export function createTTS(options?: { cartesiaApiKey?: string; deepgramApiKey?: string }) {
+export function createTTS(options?: {
+  cartesiaApiKey?: string | undefined;
+  deepgramApiKey?: string | undefined;
+}) {
   const cartesiaKey = options?.cartesiaApiKey ?? process.env.CARTESIA_API_KEY;
   const deepgramKey = options?.deepgramApiKey ?? process.env.DEEPGRAM_API_KEY;
 
   const deepgramTts = new deepgram.TTS({
     model: "aura-asteria-en",
-    apiKey: deepgramKey,
+    ...(deepgramKey ? { apiKey: deepgramKey } : {}),
   });
 
   if (cartesiaKey && cartesiaKey.trim().length > 0) {
     const cartesiaTts = new cartesia.TTS({
       model: "sonic-english",
-      apiKey: cartesiaKey,
+      ...(cartesiaKey ? { apiKey: cartesiaKey } : {}),
     });
     return new tts.FallbackAdapter({
       ttsInstances: [cartesiaTts, deepgramTts],
@@ -49,10 +52,11 @@ export async function createAgentPipeline(options: AgentPipelineOptions) {
   });
 
   const language = options.language ?? "en";
+  const deepgramKey = options.deepgramApiKey ?? process.env.DEEPGRAM_API_KEY;
   const stt = new deepgram.STT({
     model: "nova-3",
     language,
-    apiKey: options.deepgramApiKey ?? process.env.DEEPGRAM_API_KEY,
+    ...(deepgramKey ? { apiKey: deepgramKey } : {}),
   });
 
   const instructionInput: AgentInterviewInstructionInput = {
@@ -68,9 +72,10 @@ export async function createAgentPipeline(options: AgentPipelineOptions) {
   const instructions = buildAgentInterviewInstruction(instructionInput);
   const greeting = buildAgentGreeting(instructionInput);
 
+  const geminiKey = options.geminiApiKey ?? process.env.GEMINI_API_KEY;
   const llm = new google.LLM({
     model: "gemini-2.0-flash",
-    apiKey: options.geminiApiKey ?? process.env.GEMINI_API_KEY,
+    ...(geminiKey ? { apiKey: geminiKey } : {}),
   });
 
   const ttsInstance = createTTS({

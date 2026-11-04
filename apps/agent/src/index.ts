@@ -1,4 +1,11 @@
-import { cli, defineAgent, type JobContext, type JobRequest, ServerOptions, voice } from "@livekit/agents";
+import {
+  cli,
+  defineAgent,
+  type JobContext,
+  type JobRequest,
+  ServerOptions,
+  voice,
+} from "@livekit/agents";
 import { createAgentPipeline } from "./agent.js";
 import dotenv from "dotenv";
 

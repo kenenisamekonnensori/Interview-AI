@@ -85,6 +85,10 @@ test("createAuthConfig enforces secure account linking and attaches secondary st
     GEMINI_MODEL: "gemini-3.5-flash-lite",
     GEMINI_FALLBACK_MODELS: [],
     OWNER_EMAILS: [],
+    LIVEKIT_URL: "ws://localhost:7880",
+    LIVEKIT_API_KEY: "devkey",
+    LIVEKIT_API_SECRET: "secret",
+    INTERNAL_API_SECRET: "dev-internal-secret-min-16-chars",
   };
 
   const dummyDb = {} as PrismaClient;
@@ -123,6 +127,10 @@ test("createAuthConfig registers user.create and session.create database hooks t
     GEMINI_MODEL: "gemini-3.5-flash-lite",
     GEMINI_FALLBACK_MODELS: [],
     OWNER_EMAILS: [],
+    LIVEKIT_URL: "ws://localhost:7880",
+    LIVEKIT_API_KEY: "devkey",
+    LIVEKIT_API_SECRET: "secret",
+    INTERNAL_API_SECRET: "dev-internal-secret-min-16-chars",
   };
 
   let upsertArg: unknown;

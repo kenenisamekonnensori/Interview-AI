@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "../../../prisma/generated/client.js";
+import { Prisma, type PrismaClient } from "../../../prisma/generated/client.js";
 import type { ConversationState, ConversationTurnType } from "@interviewer-ai/types";
 
 type Database = PrismaClient | Prisma.TransactionClient;
@@ -84,10 +84,10 @@ export class ConversationRepository {
         speaker: input.speaker,
         type: input.type,
         text: input.text,
-        startedAt: input.startedAt,
-        endedAt: input.endedAt,
-        durationMs: input.durationMs,
-        words: input.words ?? undefined,
+        startedAt: input.startedAt ?? null,
+        endedAt: input.endedAt ?? null,
+        durationMs: input.durationMs ?? null,
+        words: input.words ?? Prisma.JsonNull,
       },
     });
   }

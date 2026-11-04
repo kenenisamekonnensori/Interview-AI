@@ -6,9 +6,9 @@ export type ConversationTurnRecord = {
   speaker: "USER" | "AI" | "SYSTEM";
   type: ConversationTurnType;
   text: string;
-  startedAt?: Date | null;
-  endedAt?: Date | null;
-  durationMs?: number | null;
+  startedAt?: Date | null | undefined;
+  endedAt?: Date | null | undefined;
+  durationMs?: number | null | undefined;
   words?: unknown;
   createdAt: Date;
 };

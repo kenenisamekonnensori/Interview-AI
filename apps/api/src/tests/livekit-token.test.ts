@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import Fastify from "fastify";
+import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import type { PrismaClient } from "../../prisma/generated/client.js";
 import type { ServerEnvironment } from "@interviewer-ai/config";
 import { TokenVerifier } from "livekit-server-sdk";
@@ -15,6 +15,8 @@ const testEnvironment: ServerEnvironment = {
   VOICE_MAX_CONCURRENT_SESSIONS: 100,
   TRANSCRIPT_RETENTION_DAYS: 0,
   EMAIL_FROM: "test@example.com",
+  GOOGLE_CLIENT_ID: "google-test-id",
+  GOOGLE_CLIENT_SECRET: "google-test-secret",
   NODE_ENV: "test",
   OWNER_EMAILS: [],
   PADDLE_ENVIRONMENT: "sandbox",
@@ -74,7 +76,7 @@ describe("LiveKit Token Minting Endpoint (Acceptance Check 2)", () => {
     app.decorateRequest("authContext", null);
 
     // Simulated auth hook
-    app.decorate("requireVerifiedUser", async (request: any, reply: any) => {
+    app.decorate("requireVerifiedUser", async (request: FastifyRequest, reply: FastifyReply) => {
       if (!currentUserId) {
         return reply.status(401).send({
           code: "UNAUTHORIZED",
@@ -87,12 +89,7 @@ describe("LiveKit Token Minting Endpoint (Acceptance Check 2)", () => {
       };
     });
 
-    registerConversationRoutes(
-      app,
-      mockDatabase,
-      testEnvironment,
-      mockInterviewService,
-    );
+    registerConversationRoutes(app, mockDatabase, testEnvironment, mockInterviewService);
 
     await app.ready();
 
@@ -121,7 +118,10 @@ describe("LiveKit Token Minting Endpoint (Acceptance Check 2)", () => {
     expect(typeof readyPayload.token).toBe("string");
 
     // c) Validates decoded JWT claims: video.roomJoin === true, video.room === "interview-<id>"
-    const verifier = new TokenVerifier(testEnvironment.LIVEKIT_API_KEY!, testEnvironment.LIVEKIT_API_SECRET!);
+    const verifier = new TokenVerifier(
+      testEnvironment.LIVEKIT_API_KEY!,
+      testEnvironment.LIVEKIT_API_SECRET!,
+    );
     const claims = await verifier.verify(readyPayload.token);
     expect(claims.video?.roomJoin).toBe(true);
     expect(claims.video?.room).toBe(`interview-${readyInterviewId}`);

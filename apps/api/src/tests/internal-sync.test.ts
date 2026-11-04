@@ -15,6 +15,8 @@ const testEnvironment: ServerEnvironment = {
   VOICE_MAX_CONCURRENT_SESSIONS: 100,
   TRANSCRIPT_RETENTION_DAYS: 0,
   EMAIL_FROM: "test@example.com",
+  GOOGLE_CLIENT_ID: "google-test-id",
+  GOOGLE_CLIENT_SECRET: "google-test-secret",
   NODE_ENV: "test",
   OWNER_EMAILS: [],
   PADDLE_ENVIRONMENT: "sandbox",
@@ -36,8 +38,8 @@ describe("Internal State Synchronization Bridge (Acceptance Check 3)", () => {
     const conversationId = "22222222-2222-4222-8222-222222222222";
     const userId = "33333333-3333-4333-8333-333333333333";
 
-    const persistedTurns: any[] = [];
-    let persistedMemory: any = {
+    const persistedTurns: Array<Record<string, unknown>> = [];
+    let persistedMemory: Record<string, unknown> = {
       interviewId,
       askedQuestions: [],
       topicCoverage: [],
@@ -51,7 +53,7 @@ describe("Internal State Synchronization Bridge (Acceptance Check 3)", () => {
     let conversationState = "LISTENING";
     let conversationSequence = 1;
 
-    const mockDatabase: any = {
+    const mockDatabase = {
       conversation: {
         findUnique: async () => ({
           id: conversationId,
@@ -70,14 +72,14 @@ describe("Internal State Synchronization Bridge (Acceptance Check 3)", () => {
             memory: persistedMemory,
           },
         }),
-        updateMany: async ({ data }: any) => {
+        updateMany: async ({ data }: { data: { sequence: number; state: string } }) => {
           conversationSequence = data.sequence;
           conversationState = data.state;
           return { count: 1 };
         },
       },
       conversationTurn: {
-        create: async ({ data }: any) => {
+        create: async ({ data }: { data: Record<string, unknown> }) => {
           const record = {
             id: "turn-" + (persistedTurns.length + 1),
             createdAt: new Date(),
@@ -88,18 +90,23 @@ describe("Internal State Synchronization Bridge (Acceptance Check 3)", () => {
         },
       },
       interviewMemory: {
-        upsert: async ({ create, update }: any) => {
+        upsert: async ({ update }: { create: unknown; update: Record<string, unknown> }) => {
           persistedMemory = { ...persistedMemory, ...update };
           return persistedMemory;
         },
       },
-      $transaction: async (fn: any) => fn(mockDatabase),
+      $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(mockDatabase),
     };
 
     const mockInterviewService = {} as InterviewService;
 
     const app = Fastify();
-    registerConversationRoutes(app, mockDatabase as PrismaClient, testEnvironment, mockInterviewService);
+    registerConversationRoutes(
+      app,
+      mockDatabase as PrismaClient,
+      testEnvironment,
+      mockInterviewService,
+    );
     await app.ready();
 
     // a) Missing or invalid x-internal-secret header yields HTTP 401 UNAUTHORIZED
@@ -197,7 +204,9 @@ describe("Internal State Synchronization Bridge (Acceptance Check 3)", () => {
     });
     expect(aiRes.statusCode).toBe(201);
     expect(persistedTurns).toHaveLength(2);
-    expect(persistedMemory.askedQuestions).toContain("How would you handle caching when nodes crash?");
+    expect(persistedMemory.askedQuestions).toContain(
+      "How would you handle caching when nodes crash?",
+    );
 
     await app.close();
   });

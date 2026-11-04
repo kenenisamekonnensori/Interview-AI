@@ -930,14 +930,18 @@ export class ConversationService {
         words: payload.words ? (payload.words as Prisma.InputJsonValue) : null,
       });
       if (!appended) {
-        throw new ConversationError("CONFLICT", "Failed to append turn due to concurrent sequence update.");
+        throw new ConversationError(
+          "CONFLICT",
+          "Failed to append turn due to concurrent sequence update.",
+        );
       }
 
       if (payload.speaker === "AI") {
         const plan = conversation.interview.plan;
         const memory = conversation.interview.memory;
         const planTopics = plan && Array.isArray(plan.topics) ? (plan.topics as string[]) : [];
-        const planObjectives = plan && Array.isArray(plan.objectives) ? (plan.objectives as string[]) : [];
+        const planObjectives =
+          plan && Array.isArray(plan.objectives) ? (plan.objectives as string[]) : [];
         const memorySnapshot = coerceAgentMemory(memory, { objectives: planObjectives });
         const { memory: updatedMemory } = resolveAgentTurnPlan({
           memory: memorySnapshot,
@@ -1160,7 +1164,7 @@ function asTurnDto(turn: {
     startedAt: turn.startedAt ? turn.startedAt.toISOString() : undefined,
     endedAt: turn.endedAt ? turn.endedAt.toISOString() : undefined,
     durationMs: turn.durationMs ?? undefined,
-    words: (turn.words as any) ?? undefined,
+    words: turn.words ?? undefined,
     createdAt: turn.createdAt.toISOString(),
   };
 }
