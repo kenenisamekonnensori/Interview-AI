@@ -9,8 +9,12 @@
   "dependencies": {
     "zod": "^4.1.12"
   },
+  "devDependencies": {
+    "vitest": "^4.1.10"
+  },
   "scripts": {
     "lint": "eslint .",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   }
 }

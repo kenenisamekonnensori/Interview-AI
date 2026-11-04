@@ -269,6 +269,10 @@ model ConversationTurn {
   speaker        ConversationSpeaker
   type           ConversationTurnType
   text           String
+  startedAt      DateTime?
+  endedAt        DateTime?
+  durationMs     Int?
+  words          Json?
   createdAt      DateTime             @default(now())
   conversation   Conversation         @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
