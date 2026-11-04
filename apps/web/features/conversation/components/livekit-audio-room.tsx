@@ -22,7 +22,7 @@ export type LiveKitAudioRoomProps = {
 };
 
 export function LiveKitAudioRoom({
-  interviewId: _interviewId,
+  interviewId,
   token,
   serverUrl,
   onConnected,
@@ -41,6 +41,7 @@ export function LiveKitAudioRoom({
       onDisconnected={onDisconnected}
       onError={onError}
       data-testid="livekit-audio-room"
+      data-interview-id={interviewId}
     >
       <RoomAudioRenderer />
       {children}

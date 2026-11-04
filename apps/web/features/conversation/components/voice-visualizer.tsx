@@ -249,9 +249,7 @@ export function VoiceVisualizer({
                 );
               } else if (isSpeaking) {
                 barHeight =
-                  16 +
-                  effectiveAmplitude * 40 * scaleFactor +
-                  Math.sin(Date.now() / 150 + i) * 12;
+                  16 + effectiveAmplitude * 40 * scaleFactor + Math.sin(Date.now() / 150 + i) * 12;
               } else if (isThinking) {
                 // Orbital Swirl Motion
                 barHeight = 14 + Math.sin(Date.now() / 150 + i * 1.2) * 10;

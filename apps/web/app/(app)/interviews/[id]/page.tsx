@@ -185,8 +185,8 @@ export default function LiveInterviewPage() {
                 {voiceState === "RECONNECTING"
                   ? "Reconnecting"
                   : voiceState === "LISTENING" ||
-                        voiceState === "SPEAKING" ||
-                        voiceState === "THINKING"
+                      voiceState === "SPEAKING" ||
+                      voiceState === "THINKING"
                     ? "Connected"
                     : "Disconnected"}
               </span>

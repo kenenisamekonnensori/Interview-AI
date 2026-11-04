@@ -3,10 +3,7 @@ import React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  VoiceVisualizer,
-  calculateVisualizerParams,
-} from "./voice-visualizer";
+import { VoiceVisualizer, calculateVisualizerParams } from "./voice-visualizer";
 
 afterEach(() => {
   cleanup();

@@ -3,10 +3,7 @@ import React, { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  LiveKitAudioRoom,
-  audioTrackConstraints,
-} from "./livekit-audio-room";
+import { LiveKitAudioRoom, audioTrackConstraints } from "./livekit-audio-room";
 
 afterEach(() => {
   cleanup();
@@ -16,25 +13,17 @@ afterEach(() => {
 vi.mock("@livekit/components-react", () => {
   return {
     LiveKitRoom: vi.fn(
-      ({
-        children,
-        onConnected,
-        onDisconnected,
-        onError,
-        audio,
-        serverUrl,
-        token,
-        video: _video,
-        connect: _connect,
-        ...props
-      }) => {
+      ({ children, onConnected, onDisconnected, onError, audio, serverUrl, token, ...props }) => {
+        const domProps = { ...props };
+        delete (domProps as Record<string, unknown>).video;
+        delete (domProps as Record<string, unknown>).connect;
         return (
           <div
             data-testid="livekit-audio-room"
             data-server-url={serverUrl}
             data-token={token}
             data-audio={JSON.stringify(audio)}
-            {...props}
+            {...domProps}
           >
             <button
               type="button"

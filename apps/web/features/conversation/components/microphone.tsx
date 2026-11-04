@@ -1593,17 +1593,13 @@ export function InterviewMicrophone({
             }}
             onDisconnected={() => {
               updateState("RECONNECTING");
-              setVoiceFallback(
-                "Voice room disconnected. Reconnecting or switch to text mode.",
-              );
+              setVoiceFallback("Voice room disconnected. Reconnecting or switch to text mode.");
             }}
             onError={(err) => {
               console.error("[LiveKit] Room error:", err);
               setError(err.message);
               updateState("ERROR");
-              setVoiceFallback(
-                "Voice room encountered an error. Switch to text mode to continue.",
-              );
+              setVoiceFallback("Voice room encountered an error. Switch to text mode to continue.");
             }}
           >
             <LiveKitVisualizerAdapter
