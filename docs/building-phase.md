@@ -56,7 +56,7 @@ The executing agent verifies the following confirmed decisions against the repos
    * The Gemini 2.0 Flash structured output schema in `apps/api/src/modules/ai/adapters/` must strictly require all defined sub-keys while allowing non-behavioral interviews to omit STAR evaluations.
 
 ### Tasks
-* [ ] **Task 1.1 — Word Timestamp and Cadence Analytics Module**
+* [x] **Task 1.1 — Word Timestamp and Cadence Analytics Module**
   * Exact File: `apps/api/src/modules/reports/speech-analytics.ts`.
   * Public Function: `calculateSpeechDeliveryMetrics(input: SpeechAnalyticsInput): SpeechDeliveryMetrics`.
   * Input Type:
@@ -102,12 +102,13 @@ The executing agent verifies the following confirmed decisions against the repos
     * **Words Per Minute (WPM)** per turn:
       * Word count: If `words` array is present and non-empty, use `words.length`. Otherwise, count non-empty tokens from `text.trim().split(/\s+/)`.
       * Duration: Use `turn.durationMs`. Do not derive from `createdAt`.
+      * Turn WPM Scope: Recorded per candidate (`USER`) turn only; set to `null` when `durationMs == null` or `durationMs <= 0`.
       * Formula:
         $$\text{WPM} = \frac{\text{Word Count} \times 60000}{\text{durationMs}}$$
       * If `durationMs == null` or `durationMs <= 0`: set `wpm` to `null`.
     * **Overall WPM**:
-      * Sum total candidate words across all candidate (`USER`) turns where `durationMs > 0`.
-      * Sum total candidate `durationMs` across qualifying candidate turns.
+      * Sum total candidate words across qualifying candidate (`USER`) turns divided by total candidate duration in minutes (never an average of turn WPMs).
+      * Pacing Thresholds: Turns under 3 words or under 2,000 ms (2 seconds) are excluded from overall WPM and the pace gauge to prevent conversational interjections ("yeah", "okay") or micro-pauses from skewing pacing diagnostics (if all candidate turns are silence/0 words with valid duration >= 2s, overall WPM is 0).
       * Overall WPM = $\frac{\text{Total Candidate Words} \times 60000}{\text{Total Candidate Duration Ms}}$.
       * If total candidate duration is null or 0, return `null`.
     * **Filler Word Count**: Canonical case-insensitive regex:
@@ -132,7 +133,7 @@ The executing agent verifies the following confirmed decisions against the repos
   * Backward Compatibility:
     * Historical turns have null `durationMs`, `startedAt`, `endedAt`, and `words`. Analytics must return `null` for all duration-dependent fields without throwing exceptions.
 
-* [ ] **Task 1.2 — STAR Method and Exemplar Prompt Engineering**
+* [x] **Task 1.2 — STAR Method and Exemplar Prompt Engineering**
   * Exact Files: `packages/prompts/src/report.ts`, `packages/prompts/src/evaluation.ts`, and `packages/prompts/src/index.ts`.
   * Update `buildEvaluationPrompt()` and `buildReportPrompt()`:
     * Instruct the evaluation LLM to analyze candidate answers for behavioral questions using Situation, Task, Action, and Result (STAR).
@@ -141,7 +142,7 @@ The executing agent verifies the following confirmed decisions against the repos
     * For any candidate answer whose overall evaluation or dimension score is $< 70/100$, generate a Staff/Principal-level model exemplar response demonstrating structured delivery, quantified impact metrics, and active ownership.
   * Backward Compatibility: Technical questions without behavioral context must allow empty or optional `starBreakdown` without causing evaluation schema rejections.
 
-* [ ] **Task 1.3 — Schema and Database Contract Updates**
+* [x] **Task 1.3 — Schema and Database Contract Updates**
   * Exact Files: `apps/api/prisma/schema.prisma`, `packages/types/src/index.ts`, `apps/api/src/modules/reports/schema.ts`.
   * Database Migration:
     * Generate Prisma migration in `apps/api/prisma/migrations/`:
@@ -194,7 +195,7 @@ The executing agent verifies the following confirmed decisions against the repos
     * `exemplars: z.array(questionExemplarSchema).optional()`
   * Ensure existing records in PostgreSQL deserialize cleanly when optional fields are omitted.
 
-* [ ] **Task 1.4 — Frontend Report UI Enhancements**
+* [x] **Task 1.4 — Frontend Report UI Enhancements**
   * Exact Files: `apps/web/features/reports/components/report-review.tsx`, `apps/web/features/reports/components/speech-delivery-card.tsx`, `apps/web/features/reports/components/exemplar-card.tsx`.
   * Create `SpeechDeliveryCard`:
     * WPM Gauge with color coding:
@@ -727,7 +728,7 @@ Use this table to track operational progress as phases are built and deployed:
 
 | Phase | Description | Status | Target Completion | Owner | Status Note |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Phase 1** | Speech Delivery Analytics and STAR Exemplar Coaching | `READY FOR IMPLEMENTATION` | Milestone 1 | Backend / AI | Ready to implement upon Task 0 approval |
+| **Phase 1** | Speech Delivery Analytics and STAR Exemplar Coaching | `COMPLETED` | Milestone 1 | Backend / AI | Phase 1 status: done. All 6 acceptance checks verified. Prisma migration 20261103210000_add_conversation_turn_timing applied to dev DB. Responsive checks verified at 375px, 768px, and 1280px. |
 | **Phase 2** | LiveKit WebRTC Infrastructure and Agent Worker | `PENDING` | Milestone 2 | Infra / AI | Blocked on Phase 1 completion |
 | **Phase 3** | Web Client WebRTC Migration (Echo-Free Audio) | `PENDING` | Milestone 3 | Frontend | Blocked on Phase 2 completion |
 | **Phase 4** | Conversational Steering, Monologue Guard and Hints | `PENDING` | Milestone 4 | AI / Backend | Blocked on Phase 3 completion |

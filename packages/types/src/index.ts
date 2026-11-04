@@ -223,6 +223,45 @@ export const evidenceBackedFindingSchema = z.object({
   evidenceTurnIds: z.array(z.uuid()).min(1).max(5),
 });
 export type EvidenceBackedFinding = z.infer<typeof evidenceBackedFindingSchema>;
+
+export const starComponentSchema = z.object({
+  score: z.number().min(0).max(100),
+  feedback: z.string().trim().min(1).max(1_000),
+  evidenceTurnIds: z.array(z.uuid()).max(5),
+});
+export type StarComponent = z.infer<typeof starComponentSchema>;
+
+export const starBreakdownSchema = z.object({
+  situation: starComponentSchema,
+  task: starComponentSchema,
+  action: starComponentSchema,
+  result: starComponentSchema,
+});
+export type StarBreakdown = z.infer<typeof starBreakdownSchema>;
+
+export const questionExemplarSchema = z.object({
+  turnId: z.uuid(),
+  questionText: z.string().trim().min(1),
+  candidateAnswerSnippet: z.string().trim().min(1),
+  candidateScore: z.number().min(0).max(100),
+  exemplarResponse: z.string().trim().min(1).max(3_000),
+  improvementRationale: z.string().trim().min(1).max(1_000),
+});
+export type QuestionExemplar = z.infer<typeof questionExemplarSchema>;
+
+export const speechDeliverySchema = z.object({
+  overallWpm: z.number().nullable(),
+  fillerWordCounts: z.record(z.string(), z.number()),
+  totalFillerWords: z.number().int().nonnegative(),
+  talkRatio: z.object({
+    candidateDurationMs: z.number().nonnegative(),
+    interviewerDurationMs: z.number().nonnegative(),
+    candidatePercentage: z.number().min(0).max(100),
+  }),
+  averageResponseLatencyMs: z.number().nullable(),
+});
+export type SpeechDelivery = z.infer<typeof speechDeliverySchema>;
+
 export const interviewEvaluationSchema = z.object({
   overallScore: z.number().min(0).max(100),
   technical: evaluationDimensionSchema,
@@ -234,6 +273,9 @@ export const interviewEvaluationSchema = z.object({
   weaknesses: z.array(evidenceBackedFindingSchema).max(10),
   missedOpportunities: z.array(evidenceBackedFindingSchema).max(10),
   recommendations: z.array(z.string().trim().min(1).max(1_000)).max(10),
+  speechDelivery: speechDeliverySchema.optional(),
+  starBreakdown: z.record(z.string(), starBreakdownSchema).optional(),
+  exemplars: z.array(questionExemplarSchema).optional(),
 });
 export type InterviewEvaluation = z.infer<typeof interviewEvaluationSchema>;
 export const reportStatuses = ["PENDING", "GENERATING", "READY", "FAILED"] as const;

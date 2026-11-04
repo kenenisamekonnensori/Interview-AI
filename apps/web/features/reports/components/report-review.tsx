@@ -12,6 +12,8 @@ import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api-client";
+import { SpeechDeliveryCard } from "./speech-delivery-card";
+import { ExemplarComparisonCard } from "./exemplar-card";
 
 type Report = {
   status: ReportStatus;
@@ -98,7 +100,7 @@ export function ReportReview({ interviewId }: { interviewId: string }) {
   return <Ready interview={interviewData} report={reportData} />;
 }
 
-function Ready({ interview, report }: { interview: Interview; report: Report }) {
+export function Ready({ interview, report }: { interview: Interview; report: Report }) {
   const evaluation = report.evaluation!;
   const turns = interview.conversation?.turns ?? [];
   const scores: Array<[string, number]> = [
@@ -156,6 +158,9 @@ function Ready({ interview, report }: { interview: Interview; report: Report }) 
           <Score key={label} label={label} score={score} />
         ))}
       </section>
+      <div className="mt-7">
+        <SpeechDeliveryCard speechDelivery={evaluation.speechDelivery} />
+      </div>
       <section className="mt-7 grid gap-5 lg:grid-cols-2">
         <Findings
           title="Strengths"
@@ -192,6 +197,9 @@ function Ready({ interview, report }: { interview: Interview; report: Report }) 
           ))}
         </div>
       </section>
+      <div className="mt-7">
+        <ExemplarComparisonCard exemplars={evaluation.exemplars} />
+      </div>
       <Transcript turns={turns} />
     </Shell>
   );

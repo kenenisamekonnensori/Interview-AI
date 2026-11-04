@@ -3,6 +3,7 @@ import type { ServerEnvironment } from "@interviewer-ai/config";
 import type { ReportEvidenceReference } from "@interviewer-ai/types";
 
 import { createAiProvider } from "../ai/index.js";
+import type { AiProvider } from "../ai/provider.js";
 import { AiProviderError, isRetryableAiError } from "../ai/errors.js";
 import { InterviewEventPublisher } from "../interviews/events.js";
 import type { createReportQueue } from "../../services/report-queue.js";
@@ -11,6 +12,10 @@ import type { PrismaClient } from "../../../prisma/generated/client.js";
 import { ReportRepository } from "./repository.js";
 import { generatedReportSchema } from "./schema.js";
 import { logSafeError } from "../../services/security.js";
+import {
+  calculateSpeechDeliveryMetrics,
+  type WordTimingEntry,
+} from "./speech-analytics.js";
 
 export class ReportLifecycleError extends Error {
   constructor(
@@ -79,9 +84,10 @@ export class ReportService {
       import("../../modules/analytics/readiness-service.js").ReadinessService,
       "recordSnapshotAfterReport"
     >,
+    aiProvider?: AiProvider,
   ) {
     this.repository = new ReportRepository(database);
-    this.aiProvider = createAiProvider(environment);
+    this.aiProvider = aiProvider ?? createAiProvider(environment);
   }
 
   async details(interviewId: string, userId: string) {
@@ -192,6 +198,50 @@ export class ReportService {
           finding.evidenceTurnIds.map((turnId) => ({ turnId, claim: finding.text })),
           turnIds,
         );
+
+      if (generated.evaluation.starBreakdown) {
+        for (const breakdown of Object.values(generated.evaluation.starBreakdown)) {
+          for (const component of [
+            breakdown.situation,
+            breakdown.task,
+            breakdown.action,
+            breakdown.result,
+          ]) {
+            if (component.evidenceTurnIds?.length) {
+              validateEvidence(
+                component.evidenceTurnIds.map((turnId) => ({ turnId, claim: component.feedback })),
+                turnIds,
+              );
+            }
+          }
+        }
+      }
+
+      if (generated.evaluation.exemplars) {
+        for (const exemplar of generated.evaluation.exemplars) {
+          if (!turnIds.has(exemplar.turnId)) {
+            throw new AiProviderError(
+              "INVALID_OUTPUT",
+              "Exemplar referenced a turn outside this interview.",
+            );
+          }
+        }
+      }
+
+      // Compute server-authoritative deterministic speech delivery metrics from transcript turns
+      const speechDelivery = calculateSpeechDeliveryMetrics({
+        turns: interview.conversation.turns.map((turn) => ({
+          id: turn.id,
+          speaker: turn.speaker,
+          text: turn.text,
+          createdAt: turn.createdAt,
+          startedAt: turn.startedAt,
+          endedAt: turn.endedAt,
+          durationMs: turn.durationMs,
+          words: (turn.words as WordTimingEntry[] | null) ?? null,
+        })),
+      });
+      generated.evaluation.speechDelivery = speechDelivery;
 
       const saved = await this.repository.saveReady(
         interviewId,

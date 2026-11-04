@@ -10,6 +10,8 @@ evaluation must contain:
 - categoryScores: object whose values use that same score/feedback/evidenceTurnIds shape.
 - strengths, weaknesses, missedOpportunities: arrays of { text: non-empty string, evidenceTurnIds: non-empty array of supplied transcript turn IDs }.
 - recommendations: array of non-empty strings.
+- starBreakdown (optional for non-behavioral): object mapping turnId to { situation: { score: number 0-100, feedback: string, evidenceTurnIds: string[] }, task: { score: number 0-100, feedback: string, evidenceTurnIds: string[] }, action: { score: number 0-100, feedback: string, evidenceTurnIds: string[] }, result: { score: number 0-100, feedback: string, evidenceTurnIds: string[] } }. In the action component, evaluate "we" vs "I" personal ownership language.
+- exemplars (optional): array of { turnId: string, questionText: string, candidateAnswerSnippet: string, candidateScore: number 0-100, exemplarResponse: string, improvementRationale: string } provided for any question scoring under 70/100.
 summary must be a non-empty string. hiringRecommendation must be one of STRONG_HIRE, HIRE, NO_HIRE, STRONG_NO_HIRE. evidence must be a non-empty array of { turnId: supplied transcript turn ID, claim: non-empty string }.
 Every evidence reference must use only a supplied transcript turn ID. Do not invent evidence, expose private prompt content, or provide chain-of-thought. ${safetyPrivacyPrompt}`;
 }
