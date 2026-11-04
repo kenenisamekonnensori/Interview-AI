@@ -97,6 +97,17 @@ export const serverEnvironmentSchema = z
     R2_BUCKET: optionalEnvironmentString,
     R2_ENDPOINT: z.preprocess((value) => (value === "" ? undefined : value), z.url().optional()),
     R2_SECRET_ACCESS_KEY: optionalEnvironmentString,
+    LIVEKIT_URL: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.string().url().default("ws://localhost:7880"),
+    ),
+    LIVEKIT_API_KEY: optionalEnvironmentString.default("devkey"),
+    LIVEKIT_API_SECRET: optionalEnvironmentString.default("secret"),
+    CARTESIA_API_KEY: optionalEnvironmentString,
+    INTERNAL_API_SECRET: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.string().min(16).default("dev-internal-secret-min-16-chars"),
+    ),
     CORS_ALLOWED_ORIGINS: commaSeparatedUrls.default([]),
     TRUST_PROXY: environmentBoolean.default(false),
     WEB_URL: z.url(),
@@ -121,6 +132,16 @@ export const serverEnvironmentSchema = z
         code: "custom",
         path: ["PADDLE_ENVIRONMENT"],
         message: 'PADDLE_ENVIRONMENT must be "production" when Paddle is configured in production.',
+      });
+    }
+    if (
+      environment.NODE_ENV === "production" &&
+      environment.INTERNAL_API_SECRET === "dev-internal-secret-min-16-chars"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["INTERNAL_API_SECRET"],
+        message: "INTERNAL_API_SECRET must not use the development default in production.",
       });
     }
   });

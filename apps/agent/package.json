@@ -1,0 +1,30 @@
+{
+  "name": "@interviewer-ai/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts dev",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@interviewer-ai/config": "workspace:*",
+    "@interviewer-ai/prompts": "workspace:*",
+    "@interviewer-ai/types": "workspace:*",
+    "@livekit/agents": "^1.9.5",
+    "@livekit/agents-plugin-cartesia": "^1.9.5",
+    "@livekit/agents-plugin-deepgram": "^1.9.5",
+    "@livekit/agents-plugin-google": "^1.9.5",
+    "@livekit/agents-plugin-silero": "^1.9.5",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

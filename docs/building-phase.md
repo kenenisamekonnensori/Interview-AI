@@ -284,7 +284,7 @@ The executing agent verifies the following confirmed decisions against the repos
    * API startup verifies `INTERNAL_API_SECRET` is set and non-empty.
 
 ### Tasks
-* [ ] **Task 2.1 — LiveKit SFU Deployment and Config**
+* [x] **Task 2.1 — LiveKit SFU Deployment and Config**
   * Exact Files: `docker-compose.yml`, `packages/config/src/index.ts`, `.env.example`.
   * Add `livekit` service to the existing root `docker-compose.yml` under profile `livekit`:
     ```yaml
@@ -308,7 +308,7 @@ The executing agent verifies the following confirmed decisions against the repos
   * Add superRefine check: In production (`NODE_ENV === "production"`), `INTERNAL_API_SECRET` must not equal the development default.
   * Mirror all variables in `.env.example`.
 
-* [ ] **Task 2.2 — Fastify Token Minting Endpoint**
+* [x] **Task 2.2 — Fastify Token Minting Endpoint**
   * Exact Files: `apps/api/src/modules/conversation/controller.ts`, `apps/api/src/modules/conversation/service.ts`, `apps/api/package.json`.
   * Install dependency: `livekit-server-sdk` in `apps/api/package.json`.
   * Route: `POST /api/v1/interviews/:id/livekit-token`.
@@ -333,7 +333,7 @@ The executing agent verifies the following confirmed decisions against the repos
     }
     ```
 
-* [ ] **Task 2.3 — Autonomous Voice Agent Worker (`apps/agent`)**
+* [x] **Task 2.3 — Autonomous Voice Agent Worker (`apps/agent`)**
   * Exact Files: `apps/agent/package.json`, `apps/agent/tsconfig.json`, `apps/agent/src/index.ts`, `apps/agent/src/agent.ts`.
   * Package Setup: Initialize `@interviewer-ai/agent` using Node.js 22 LTS with dependencies `@livekit/agents`, `@livekit/agents-plugin-silero`, `@livekit/agents-plugin-deepgram`, `@livekit/agents-plugin-cartesia`.
   * Pipeline Configuration:
@@ -343,7 +343,7 @@ The executing agent verifies the following confirmed decisions against the repos
     * **TTS**: Default is Deepgram Aura-2 (`model: "aura-asteria-en"`). If `CARTESIA_API_KEY` is present, use Cartesia Sonic (`model: "sonic-english"`) with automatic fallback to Deepgram Aura-2.
   * Worker Behavior: Connects to LiveKit SFU, registers job dispatch listener on rooms starting with `interview-`, and emits opening greeting upon candidate participant connection.
 
-* [ ] **Task 2.4 — Internal State Synchronization Bridge**
+* [x] **Task 2.4 — Internal State Synchronization Bridge**
   * Exact Files: `apps/api/src/modules/conversation/controller.ts`, `apps/api/src/modules/conversation/service.ts`, `apps/api/src/modules/conversation/schema.ts`.
   * Route: `POST /api/v1/internal/interviews/:id/turns`.
   * Security:
@@ -730,7 +730,7 @@ Use this table to track operational progress as phases are built and deployed:
 | Phase | Description | Status | Target Completion | Owner | Status Note |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Phase 1** | Speech Delivery Analytics and STAR Exemplar Coaching | `COMPLETED` | Milestone 1 | Backend / AI | Phase 1 status: done. All 6 acceptance checks verified. Prisma migration 20261103210000_add_conversation_turn_timing applied to dev DB. Responsive checks verified at 375px, 768px, and 1280px. |
-| **Phase 2** | LiveKit WebRTC Infrastructure and Agent Worker | `PENDING` | Milestone 2 | Infra / AI | Blocked on Phase 1 completion |
+| **Phase 2** | LiveKit WebRTC Infrastructure and Agent Worker | `COMPLETED` | Milestone 2 | Infra / AI | Phase 2 status: done. Deferred: none. Known issues: none. All 6 acceptance checks verified. LiveKit SFU compose service active under profile 'livekit' on port 7880; Fastify token minting at /api/v1/interviews/:id/livekit-token; apps/agent voice worker implemented with Silero VAD, Deepgram Nova-3 STT, Gemini Flash LLM, Deepgram Aura-2 default TTS, and Cartesia Sonic fallback; internal state sync bridge secured with timingSafeEqual validation. |
 | **Phase 3** | Web Client WebRTC Migration (Echo-Free Audio) | `PENDING` | Milestone 3 | Frontend | Blocked on Phase 2 completion |
 | **Phase 4** | Conversational Steering, Monologue Guard and Hints | `PENDING` | Milestone 4 | AI / Backend | Blocked on Phase 3 completion |
 | **Phase 5** | Targeted Question Micro-Drills and Platform Hardening | `PENDING` | Milestone 5 | Full Stack | Blocked on Phase 4 completion |

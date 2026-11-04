@@ -1,13 +1,18 @@
 import { PassThrough, Readable } from "node:stream";
 
-import type { PrismaClient } from "../../../prisma/generated/client.js";
+import type { Prisma, PrismaClient } from "../../../prisma/generated/client.js";
 import type { ServerEnvironment } from "@interviewer-ai/config";
 import type {
   ConversationState,
+  ConversationTurn,
   FinalizeTranscriptRequest,
   InterviewPlan,
+  WordTimingEntry,
 } from "@interviewer-ai/types";
 import { interviewPlanSchema } from "@interviewer-ai/types";
+import { AccessToken } from "livekit-server-sdk";
+import { coerceAgentMemory, resolveAgentTurnPlan } from "./agent-memory.js";
+import type { InternalTurnSyncInput } from "./schema.js";
 
 import { createAiProvider, type AiProvider } from "../ai/index.js";
 import type { InterviewService } from "../interviews/service.js";
@@ -846,6 +851,138 @@ export class ConversationService {
     };
   }
 
+  async createLiveKitToken(interviewId: string, userId: string) {
+    const interview = await this.repository.findOwnedInterview(interviewId, userId);
+    if (!interview) {
+      throw new ConversationError("INTERVIEW_NOT_FOUND", "Interview not found.");
+    }
+    if (!["READY", "IN_PROGRESS"].includes(interview.status)) {
+      throw new ConversationError(
+        "INVALID_STATE_TRANSITION",
+        `Cannot issue LiveKit token for interview in state ${interview.status}.`,
+      );
+    }
+    const apiKey = this.environment.LIVEKIT_API_KEY ?? "devkey";
+    const apiSecret = this.environment.LIVEKIT_API_SECRET ?? "secret";
+    const roomName = `interview-${interviewId}`;
+    const participantIdentity = `user-${userId}`;
+
+    const token = new AccessToken(apiKey, apiSecret, {
+      identity: participantIdentity,
+      ttl: "3600s",
+    });
+    token.addGrant({
+      roomJoin: true,
+      room: roomName,
+      canPublish: true,
+      canSubscribe: true,
+      canPublishData: true,
+    });
+    const jwt = await token.toJwt();
+    return {
+      token: jwt,
+      url: this.environment.LIVEKIT_URL,
+      roomName,
+      participantIdentity,
+    };
+  }
+
+  async syncInternalTurn(interviewId: string, payload: InternalTurnSyncInput) {
+    const conversation = await this.database.conversation.findUnique({
+      where: { interviewId },
+      include: {
+        interview: {
+          include: {
+            plan: true,
+            memory: true,
+          },
+        },
+      },
+    });
+    if (!conversation) {
+      throw new ConversationError("INTERVIEW_NOT_FOUND", "Interview not found.");
+    }
+    if (!["READY", "IN_PROGRESS"].includes(conversation.interview.status)) {
+      throw new ConversationError(
+        "INVALID_STATE_TRANSITION",
+        `Cannot sync turns for interview in state ${conversation.interview.status}.`,
+      );
+    }
+
+    let nextState: ConversationState;
+    if (payload.speaker === "USER") {
+      nextState = "THINKING";
+    } else if (payload.speaker === "AI") {
+      nextState = payload.type === "CLOSING" ? "CLOSING" : "LISTENING";
+    } else {
+      nextState = conversation.state;
+    }
+
+    const turn = await this.database.$transaction(async (tx) => {
+      const appended = await this.repository.appendTurn(tx, {
+        conversationId: conversation.id,
+        expectedSequence: conversation.sequence,
+        nextState,
+        speaker: payload.speaker,
+        type: payload.type,
+        text: payload.text,
+        startedAt: payload.startedAt ? new Date(payload.startedAt) : null,
+        endedAt: payload.endedAt ? new Date(payload.endedAt) : null,
+        durationMs: payload.durationMs ?? null,
+        words: payload.words ? (payload.words as Prisma.InputJsonValue) : null,
+      });
+      if (!appended) {
+        throw new ConversationError(
+          "CONFLICT",
+          "Failed to append turn due to concurrent sequence update.",
+        );
+      }
+
+      if (payload.speaker === "AI") {
+        const plan = conversation.interview.plan;
+        const memory = conversation.interview.memory;
+        const planTopics = plan && Array.isArray(plan.topics) ? (plan.topics as string[]) : [];
+        const planObjectives =
+          plan && Array.isArray(plan.objectives) ? (plan.objectives as string[]) : [];
+        const memorySnapshot = coerceAgentMemory(memory, { objectives: planObjectives });
+        const { memory: updatedMemory } = resolveAgentTurnPlan({
+          memory: memorySnapshot,
+          planTopics,
+          text: payload.text,
+          isGreeting: payload.type === "GREETING",
+        });
+        if (updatedMemory) {
+          await this.repository.updateMemory(tx, interviewId, updatedMemory);
+        }
+      }
+
+      return appended;
+    });
+
+    const turnDto = asTurnDto(turn);
+    if (payload.speaker === "USER") {
+      this.events.publish({
+        name: "TranscriptFinalized",
+        payload: {
+          interviewId,
+          conversationId: conversation.id,
+          turn: turnDto,
+        },
+      });
+    } else if (payload.speaker === "AI") {
+      this.events.publish({
+        name: "AIResponseGenerated",
+        payload: {
+          interviewId,
+          conversationId: conversation.id,
+          turn: turnDto,
+        },
+      });
+    }
+
+    return turnDto;
+  }
+
   private async requireActiveConversation(interviewId: string, userId: string) {
     const conversation = await this.repository.findActiveOwned(interviewId, userId);
     if (!conversation || !conversation.interview.plan)
@@ -996,9 +1133,20 @@ function asTurnRecord(turn: {
   speaker: "USER" | "AI" | "SYSTEM";
   type: string;
   text: string;
+  startedAt?: Date | null;
+  endedAt?: Date | null;
+  durationMs?: number | null;
+  words?: unknown;
   createdAt: Date;
 }): ConversationTurnRecord {
-  return { ...turn, type: turn.type as ConversationTurnRecord["type"] };
+  return {
+    ...turn,
+    type: turn.type as ConversationTurnRecord["type"],
+    startedAt: turn.startedAt ?? undefined,
+    endedAt: turn.endedAt ?? undefined,
+    durationMs: turn.durationMs ?? undefined,
+    words: turn.words ?? undefined,
+  };
 }
 
 function asTurnDto(turn: {
@@ -1007,9 +1155,28 @@ function asTurnDto(turn: {
   speaker: "USER" | "AI" | "SYSTEM";
   type: string;
   text: string;
+  startedAt?: Date | null;
+  endedAt?: Date | null;
+  durationMs?: number | null;
+  words?: unknown;
   createdAt: Date;
-}) {
-  return { ...asTurnRecord(turn), createdAt: turn.createdAt.toISOString() };
+}): ConversationTurn {
+  const base = asTurnRecord(turn);
+  const dto: ConversationTurn = {
+    id: base.id,
+    sequence: base.sequence,
+    speaker: base.speaker,
+    type: base.type,
+    text: base.text,
+    createdAt: turn.createdAt.toISOString(),
+  };
+
+  if (turn.startedAt) dto.startedAt = turn.startedAt.toISOString();
+  if (turn.endedAt) dto.endedAt = turn.endedAt.toISOString();
+  if (turn.durationMs != null) dto.durationMs = turn.durationMs;
+  if (turn.words != null) dto.words = turn.words as WordTimingEntry[];
+
+  return dto;
 }
 
 type CompactMemory = {

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "../../../prisma/generated/client.js";
 import type { ServerEnvironment } from "@interviewer-ai/config";
@@ -16,6 +17,7 @@ import {
   conversationInterviewIdSchema,
   conversationTurnIdSchema,
   finalizeTranscriptRequestSchema,
+  internalTurnSyncSchema,
 } from "./schema.js";
 import { ConversationError, ConversationService } from "./service.js";
 import { InterviewLifecycleError, type InterviewService } from "../interviews/service.js";
@@ -42,6 +44,17 @@ function sendConversationError(
   }
   const status = error.code.endsWith("NOT_FOUND") || error.code === "AI_TURN_NOT_FOUND" ? 404 : 409;
   return reply.status(status).send({ code: error.code, message: error.message });
+}
+
+export function validateInternalSecret(provided: string | undefined, expected: string): boolean {
+  if (typeof provided !== "string" || !provided) return false;
+  const providedBuffer = Buffer.from(provided);
+  const expectedBuffer = Buffer.from(expected);
+  if (providedBuffer.length !== expectedBuffer.length) {
+    crypto.timingSafeEqual(expectedBuffer, expectedBuffer);
+    return false;
+  }
+  return crypto.timingSafeEqual(providedBuffer, expectedBuffer);
 }
 
 export function registerConversationRoutes(
@@ -111,6 +124,63 @@ export function registerConversationRoutes(
       }
     },
   );
+
+  app.post(
+    "/api/v1/interviews/:id/livekit-token",
+    { preHandler: app.requireVerifiedUser },
+    async (request, reply) => {
+      const params = conversationInterviewIdSchema.safeParse(request.params);
+      if (!params.success)
+        return reply
+          .status(400)
+          .send({ code: "VALIDATION_ERROR", message: "Invalid interview ID." });
+      try {
+        const tokenInfo = await service.createLiveKitToken(
+          params.data.id,
+          request.authContext!.user.id,
+        );
+        observability().event("livekit.token.created", {
+          requestId: request.id,
+          interviewId: params.data.id,
+        });
+        return reply.status(200).send(tokenInfo);
+      } catch (error) {
+        return sendConversationError(reply, error);
+      }
+    },
+  );
+
+  app.post("/api/v1/internal/interviews/:id/turns", async (request, reply) => {
+    const secretHeader = request.headers["x-internal-secret"];
+    const secret = Array.isArray(secretHeader) ? secretHeader[0] : secretHeader;
+    if (!validateInternalSecret(secret, environment.INTERNAL_API_SECRET)) {
+      return reply.status(401).send({
+        code: "UNAUTHORIZED",
+        message: "Unauthorized: missing or invalid x-internal-secret header.",
+      });
+    }
+    const params = conversationInterviewIdSchema.safeParse(request.params);
+    if (!params.success) {
+      return reply.status(400).send({
+        code: "VALIDATION_ERROR",
+        message: "Invalid interview ID.",
+      });
+    }
+    const body = internalTurnSyncSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({
+        code: "VALIDATION_ERROR",
+        message: "Invalid turn payload.",
+        details: body.error.flatten(),
+      });
+    }
+    try {
+      const turn = await service.syncInternalTurn(params.data.id, body.data);
+      return reply.status(201).send(turn);
+    } catch (error) {
+      return sendConversationError(reply, error);
+    }
+  });
 
   app.get(
     "/api/v1/interviews/:id/conversation/voice-stream",

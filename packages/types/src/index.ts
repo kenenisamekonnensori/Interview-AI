@@ -151,12 +151,24 @@ export const conversationTurnTypes = [
 ] as const;
 export const conversationTurnTypeSchema = z.enum(conversationTurnTypes);
 export type ConversationTurnType = z.infer<typeof conversationTurnTypeSchema>;
+export const wordTimingEntrySchema = z.object({
+  word: z.string(),
+  start: z.number(),
+  end: z.number(),
+  confidence: z.number().optional(),
+});
+export type WordTimingEntry = z.infer<typeof wordTimingEntrySchema>;
+
 export const conversationTurnSchema = z.object({
   id: z.uuid(),
   sequence: z.number().int().nonnegative(),
   speaker: conversationSpeakerSchema,
   type: conversationTurnTypeSchema,
   text: z.string(),
+  startedAt: z.string().datetime().optional().nullable(),
+  endedAt: z.string().datetime().optional().nullable(),
+  durationMs: z.number().int().nonnegative().optional().nullable(),
+  words: z.array(wordTimingEntrySchema).optional().nullable(),
   createdAt: z.string().datetime(),
 });
 export type ConversationTurn = z.infer<typeof conversationTurnSchema>;

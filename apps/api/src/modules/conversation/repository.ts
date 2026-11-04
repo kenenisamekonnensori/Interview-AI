@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "../../../prisma/generated/client.js";
+import { Prisma, type PrismaClient } from "../../../prisma/generated/client.js";
 import type { ConversationState, ConversationTurnType } from "@interviewer-ai/types";
 
 type Database = PrismaClient | Prisma.TransactionClient;
@@ -56,19 +56,24 @@ export class ConversationRepository {
     input: {
       conversationId: string;
       expectedSequence: number;
-      expectedState: ConversationState;
+      expectedState?: ConversationState;
       nextState: ConversationState;
       speaker: "USER" | "AI" | "SYSTEM";
       type: ConversationTurnType;
       text: string;
+      startedAt?: Date | null;
+      endedAt?: Date | null;
+      durationMs?: number | null;
+      words?: Prisma.InputJsonValue | null;
     },
   ) {
+    const where: Prisma.ConversationWhereInput = {
+      id: input.conversationId,
+      sequence: input.expectedSequence,
+      ...(input.expectedState ? { state: input.expectedState } : {}),
+    };
     const claimed = await tx.conversation.updateMany({
-      where: {
-        id: input.conversationId,
-        sequence: input.expectedSequence,
-        state: input.expectedState,
-      },
+      where,
       data: { sequence: input.expectedSequence + 1, state: input.nextState },
     });
     if (!claimed.count) return null;
@@ -79,6 +84,10 @@ export class ConversationRepository {
         speaker: input.speaker,
         type: input.type,
         text: input.text,
+        startedAt: input.startedAt ?? null,
+        endedAt: input.endedAt ?? null,
+        durationMs: input.durationMs ?? null,
+        words: input.words ?? Prisma.JsonNull,
       },
     });
   }
