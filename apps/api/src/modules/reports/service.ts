@@ -12,10 +12,7 @@ import type { PrismaClient } from "../../../prisma/generated/client.js";
 import { ReportRepository } from "./repository.js";
 import { generatedReportSchema } from "./schema.js";
 import { logSafeError } from "../../services/security.js";
-import {
-  calculateSpeechDeliveryMetrics,
-  type WordTimingEntry,
-} from "./speech-analytics.js";
+import { calculateSpeechDeliveryMetrics, type WordTimingEntry } from "./speech-analytics.js";
 
 export class ReportLifecycleError extends Error {
   constructor(

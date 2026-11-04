@@ -53,9 +53,7 @@ function countWords(turn: TurnTimingInput): number {
   return trimmed.split(/\s+/).filter(Boolean).length;
 }
 
-export function calculateSpeechDeliveryMetrics(
-  input: SpeechAnalyticsInput,
-): SpeechDeliveryMetrics {
+export function calculateSpeechDeliveryMetrics(input: SpeechAnalyticsInput): SpeechDeliveryMetrics {
   const turns = input.turns;
 
   if (!turns || turns.length === 0) {
@@ -153,10 +151,7 @@ export function calculateSpeechDeliveryMetrics(
           turn.startedAt != null &&
           prevTurn.endedAt != null
         ) {
-          const pause = Math.max(
-            0,
-            turn.startedAt.getTime() - prevTurn.endedAt.getTime(),
-          );
+          const pause = Math.max(0, turn.startedAt.getTime() - prevTurn.endedAt.getTime());
           pauses.push(pause);
         }
       }
@@ -170,9 +165,7 @@ export function calculateSpeechDeliveryMetrics(
   // Calculate overall WPM
   let overallWpm: number | null = null;
   if (hasEligibleCandidateTurn && qualifyingCandidateDurationMs > 0) {
-    overallWpm = Math.round(
-      (qualifyingCandidateWords * 60_000) / qualifyingCandidateDurationMs,
-    );
+    overallWpm = Math.round((qualifyingCandidateWords * 60_000) / qualifyingCandidateDurationMs);
   }
 
   // Calculate talk ratio percentage

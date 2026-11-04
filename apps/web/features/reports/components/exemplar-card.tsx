@@ -20,7 +20,8 @@ export function ExemplarComparisonCard({
         <h2 className="text-xl font-semibold">Staff-level exemplar coaching</h2>
       </div>
       <p className="-mt-3 text-sm text-muted-foreground">
-        Targeted exemplar reconstructions demonstrating active ownership, quantifiable metrics, and structured STAR delivery for answers scoring below 70%.
+        Targeted exemplar reconstructions demonstrating active ownership, quantifiable metrics, and
+        structured STAR delivery for answers scoring below 70%.
       </p>
 
       {qualifyingExemplars.map((exemplar, index) => (

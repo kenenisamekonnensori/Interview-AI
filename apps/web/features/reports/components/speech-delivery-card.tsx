@@ -20,20 +20,18 @@ export function SpeechDeliveryCard({
     );
   }
 
-  const {
-    overallWpm,
-    fillerWordCounts,
-    totalFillerWords,
-    talkRatio,
-    averageResponseLatencyMs,
-  } = speechDelivery;
+  const { overallWpm, fillerWordCounts, totalFillerWords, talkRatio, averageResponseLatencyMs } =
+    speechDelivery;
 
   const sortedFillers = Object.entries(fillerWordCounts)
     .filter(([, count]) => count > 0)
     .sort((a, b) => b[1] - a[1]);
 
   return (
-    <section className="rounded-3xl border border-white/[.08] bg-card/45 p-5 sm:p-6" data-testid="speech-delivery-card">
+    <section
+      className="rounded-3xl border border-white/[.08] bg-card/45 p-5 sm:p-6"
+      data-testid="speech-delivery-card"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Activity className="size-5 text-primary" />
@@ -57,7 +55,9 @@ export function SpeechDeliveryCard({
           <div className="mt-3 flex items-baseline gap-2">
             {overallWpm !== null ? (
               <>
-                <span className={`text-4xl font-semibold tracking-[-.05em] ${getPaceColor(overallWpm)}`}>
+                <span
+                  className={`text-4xl font-semibold tracking-[-.05em] ${getPaceColor(overallWpm)}`}
+                >
                   {overallWpm}
                 </span>
                 <span className="text-sm font-medium text-muted-foreground">WPM</span>
@@ -84,7 +84,8 @@ export function SpeechDeliveryCard({
               {talkRatio.candidatePercentage}%
             </span>
             <span className="text-xs text-muted-foreground">
-              Candidate {talkRatio.candidatePercentage}% / Interviewer {100 - talkRatio.candidatePercentage}%
+              Candidate {talkRatio.candidatePercentage}% / Interviewer{" "}
+              {100 - talkRatio.candidatePercentage}%
             </span>
           </div>
           {/* Progress bar */}
@@ -119,9 +120,7 @@ export function SpeechDeliveryCard({
               <span className="text-sm text-muted-foreground">N/A — no turn pauses recorded</span>
             )}
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Average pause before answer onset
-          </p>
+          <p className="mt-2 text-xs text-muted-foreground">Average pause before answer onset</p>
         </div>
       </div>
 

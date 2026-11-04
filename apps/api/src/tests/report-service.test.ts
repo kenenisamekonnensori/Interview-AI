@@ -4,6 +4,25 @@ import { ReportService } from "../modules/reports/service.js";
 import type { AiProvider } from "../modules/ai/provider.js";
 import type { ServerEnvironment } from "@interviewer-ai/config";
 import type { InterviewEventPublisher } from "../modules/interviews/events.js";
+import type { createReportQueue } from "../services/report-queue.js";
+import type {
+  HiringRecommendation,
+  InterviewEvaluation,
+  ReportEvidenceReference,
+} from "@interviewer-ai/types";
+
+interface PersistedReportRecord {
+  interviewId: string;
+  status: string;
+  generationAttempts: number | { increment: number };
+  evaluation: InterviewEvaluation | null;
+  summary: string | null;
+  evidence: ReportEvidenceReference[];
+  hiringRecommendation: HiringRecommendation | null;
+  failureReason: string | null;
+  model?: string;
+  generatedAt?: Date;
+}
 
 describe("ReportService Generation with STAR & Speech Delivery (Acceptance Check 4)", () => {
   it("generates and saves READY report with speechDelivery, starBreakdown, and exemplars", async () => {
@@ -13,7 +32,7 @@ describe("ReportService Generation with STAR & Speech Delivery (Acceptance Check
     const turnUserId = "55555555-5555-4555-8555-555555555555";
 
     // In-memory persisted report store
-    let persistedReport: any = {
+    let persistedReport: PersistedReportRecord = {
       interviewId,
       status: "PENDING",
       generationAttempts: 0,
@@ -90,7 +109,8 @@ describe("ReportService Generation with STAR & Speech Delivery (Acceptance Check
     } as unknown as PrismaClient;
 
     const mockAiReportData = {
-      summary: "Candidate answered behavioral questions but lacked personal ownership in incidents.",
+      summary:
+        "Candidate answered behavioral questions but lacked personal ownership in incidents.",
       hiringRecommendation: "NO_HIRE",
       evidence: [
         {
@@ -171,7 +191,8 @@ describe("ReportService Generation with STAR & Speech Delivery (Acceptance Check
           {
             turnId: turnUserId,
             questionText: "Tell me about a high-severity production outage you navigated.",
-            candidateAnswerSnippet: "we had a server issue like basically our database crashed and we restarted it",
+            candidateAnswerSnippet:
+              "we had a server issue like basically our database crashed and we restarted it",
             candidateScore: 62,
             exemplarResponse:
               "When our primary PostgreSQL cluster experienced connection exhaustion during peak Cyber Monday traffic, causing 500 errors on 12% of checkouts, I led the emergency response. Within 3 minutes, I isolated non-critical read queries by shifting traffic to read replicas and adjusted pgBouncer pool limits. To prevent recurrence, I implemented automated circuit breakers, cutting recovery time by 80% in subsequent load spikes.",
@@ -196,11 +217,11 @@ describe("ReportService Generation with STAR & Speech Delivery (Acceptance Check
 
     const mockQueue = {
       enqueue: vi.fn(),
-    } as any;
+    } as unknown as ReturnType<typeof createReportQueue>;
 
-    const mockEvents: InterviewEventPublisher = {
+    const mockEvents = {
       publish: vi.fn(),
-    } as any;
+    } as unknown as InterviewEventPublisher;
 
     const service = new ReportService(
       mockPrisma,
@@ -221,27 +242,31 @@ describe("ReportService Generation with STAR & Speech Delivery (Acceptance Check
     // Verify persisted JSON includes speechDelivery, starBreakdown, and exemplars
     const evaluation = persistedReport.evaluation;
     expect(evaluation).toBeDefined();
+    if (!evaluation) {
+      throw new Error("Evaluation was not persisted");
+    }
 
     // 1. STAR Breakdown
     expect(evaluation.starBreakdown).toBeDefined();
-    expect(evaluation.starBreakdown[turnUserId]).toBeDefined();
-    expect(evaluation.starBreakdown[turnUserId].situation.score).toBe(65);
-    expect(evaluation.starBreakdown[turnUserId].action.score).toBe(58);
+    expect(evaluation.starBreakdown?.[turnUserId]).toBeDefined();
+    expect(evaluation.starBreakdown?.[turnUserId]?.situation.score).toBe(65);
+    expect(evaluation.starBreakdown?.[turnUserId]?.action.score).toBe(58);
 
     // 2. Exemplar
     expect(evaluation.exemplars).toBeDefined();
-    expect(evaluation.exemplars.length).toBe(1);
-    expect(evaluation.exemplars[0].candidateScore).toBe(62);
-    expect(evaluation.exemplars[0].turnId).toBe(turnUserId);
-    expect(evaluation.exemplars[0].exemplarResponse).toContain("PostgreSQL cluster");
+    expect(evaluation.exemplars?.length).toBe(1);
+    expect(evaluation.exemplars?.[0]?.candidateScore).toBe(62);
+    expect(evaluation.exemplars?.[0]?.turnId).toBe(turnUserId);
+    expect(evaluation.exemplars?.[0]?.exemplarResponse).toContain("PostgreSQL cluster");
 
     // 3. Speech Delivery metrics calculated from turns
-    expect(evaluation.speechDelivery).toBeDefined();
-    expect(evaluation.speechDelivery.overallWpm).toBeDefined();
-    expect(evaluation.speechDelivery.totalFillerWords).toBeGreaterThan(0);
-    expect(evaluation.speechDelivery.fillerWordCounts.um).toBe(1);
-    expect(evaluation.speechDelivery.fillerWordCounts.like).toBe(1);
-    expect(evaluation.speechDelivery.fillerWordCounts.basically).toBe(1);
-    expect(evaluation.speechDelivery.averageResponseLatencyMs).toBe(1_000); // 10:00:06 - 10:00:05 = 1s = 1000ms
+    const speechDelivery = evaluation.speechDelivery;
+    expect(speechDelivery).toBeDefined();
+    expect(speechDelivery?.overallWpm).toBeDefined();
+    expect(speechDelivery?.totalFillerWords).toBeGreaterThan(0);
+    expect(speechDelivery?.fillerWordCounts.um).toBe(1);
+    expect(speechDelivery?.fillerWordCounts.like).toBe(1);
+    expect(speechDelivery?.fillerWordCounts.basically).toBe(1);
+    expect(speechDelivery?.averageResponseLatencyMs).toBe(1_000); // 10:00:06 - 10:00:05 = 1s = 1000ms
   });
 });

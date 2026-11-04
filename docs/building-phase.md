@@ -6,6 +6,7 @@ Tracking Document: [`docs/interview-architecture.md`](./interview-architecture.m
 
 ---
 
+After every phase run pnpm lint and pnpm format:check(for pretier) and if there is error for lint fix and for format run pnpm format
 # Purpose and Philosophy
 
 This runbook defines the step-by-step phased execution plan to upgrade Interviewer AI into an **audio-first, human-parity interview platform**.

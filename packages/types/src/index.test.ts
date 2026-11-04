@@ -161,7 +161,9 @@ describe("interviewReportSchema backward compatibility", () => {
     const parsed = interviewReportSchema.parse(reportWithPhase1Data);
     expect(parsed.evaluation?.speechDelivery?.overallWpm).toBe(145);
     expect(parsed.evaluation?.speechDelivery?.totalFillerWords).toBe(3);
-    expect(parsed.evaluation?.starBreakdown?.["33333333-3333-4333-8333-333333333333"]?.action.score).toBe(92);
+    expect(
+      parsed.evaluation?.starBreakdown?.["33333333-3333-4333-8333-333333333333"]?.action.score,
+    ).toBe(92);
     expect(parsed.evaluation?.exemplars?.[0]?.candidateScore).toBe(65);
   });
 });
