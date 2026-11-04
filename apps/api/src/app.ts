@@ -44,6 +44,9 @@ import { createRedisConnectionOptions } from "./services/redis-connection.js";
 
 export function createApp() {
   const environment = serverEnvironmentSchema.parse(process.env);
+  if (!environment.INTERNAL_API_SECRET || environment.INTERNAL_API_SECRET.trim().length === 0) {
+    throw new Error("INTERNAL_API_SECRET must be configured and non-empty.");
+  }
   const app = Fastify({
     logger: {
       redact: {
