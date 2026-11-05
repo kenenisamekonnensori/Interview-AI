@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   cli,
   defineAgent,
@@ -9,6 +11,18 @@ import {
 import { createAgentPipeline } from "./agent.js";
 import dotenv from "dotenv";
 
+const candidatePaths = [
+  process.env.DOTENV_CONFIG_PATH,
+  resolve(process.cwd(), ".env"),
+  resolve(process.cwd(), "../../.env"),
+  resolve(new URL(".", import.meta.url).pathname, "../../../.env"),
+].filter(Boolean) as string[];
+
+for (const path of candidatePaths) {
+  if (existsSync(path)) {
+    dotenv.config({ path });
+  }
+}
 dotenv.config();
 
 export default defineAgent({
