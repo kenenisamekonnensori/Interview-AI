@@ -54,6 +54,7 @@ The API and each worker are independently scalable in Worker Mode. Run exactly o
 | `DEEPGRAM_API_KEY` | API, agent worker | Server-only | Deepgram Nova-3 STT provider. |
 | `CARTESIA_API_KEY` | Agent worker | Server-only | Cartesia Sonic ultra-low latency TTS provider. |
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | API, agent worker | Server-only | LiveKit WebRTC media server URL and credentials. |
+| `LIVEKIT_NODE_IP` | LiveKit container | Server-only | External IP advertised for WebRTC media negotiation (`127.0.0.1` locally, public IP in self-hosted VM). |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT` | API, career worker, cleanup/offboarding jobs | Server-only | S3-compatible resume storage. |
 
 Use the root [.env.example](../.env.example) as the complete secret-manager/template inventory. No `NEXT_PUBLIC_` variable may contain provider or storage credentials.

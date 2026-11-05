@@ -628,6 +628,11 @@ export function InterviewMicrophone({
 
         if (liveKitToken?.token && liveKitToken?.url) {
           if (session !== sessionRef.current) return;
+          // Release standby capture stream before LiveKit mounts to prevent concurrent device locks
+          if (stream && stream !== existingStream) {
+            stream.getTracks().forEach((track) => track.stop());
+            streamRef.current = null;
+          }
           setLiveKitSession({
             token: liveKitToken.token,
             url: liveKitToken.url,

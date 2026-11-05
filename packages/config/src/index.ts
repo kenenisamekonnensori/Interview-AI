@@ -103,6 +103,7 @@ export const serverEnvironmentSchema = z
     ),
     LIVEKIT_API_KEY: optionalEnvironmentString.default("devkey"),
     LIVEKIT_API_SECRET: optionalEnvironmentString.default("secret"),
+    LIVEKIT_NODE_IP: optionalEnvironmentString.optional(),
     CARTESIA_API_KEY: optionalEnvironmentString,
     INTERNAL_API_SECRET: z.preprocess(
       (value) => (value === "" ? undefined : value),

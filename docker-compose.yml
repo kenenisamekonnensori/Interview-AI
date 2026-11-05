@@ -28,8 +28,8 @@ services:
       retries: 10
 
   livekit:
-    image: livekit/livekit-server:v1.8.3
-    command: --dev --bind 0.0.0.0
+    image: livekit/livekit-server:v1.13.11
+    command: --dev --bind 0.0.0.0 --node-ip ${LIVEKIT_NODE_IP:-127.0.0.1}
     profiles: ["livekit"]
     ports:
       - "7880:7880"
