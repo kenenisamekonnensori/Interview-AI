@@ -17,6 +17,7 @@ vi.mock("@livekit/components-react", () => {
         const domProps = { ...props };
         delete (domProps as Record<string, unknown>).video;
         delete (domProps as Record<string, unknown>).connect;
+        delete (domProps as Record<string, unknown>).connectOptions;
         return (
           <div
             data-testid="livekit-audio-room"

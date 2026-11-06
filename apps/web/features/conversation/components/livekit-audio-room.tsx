@@ -35,6 +35,9 @@ export function LiveKitAudioRoom({
       audio={audioTrackConstraints}
       video={false}
       connect={true}
+      connectOptions={{
+        autoSubscribe: true,
+      }}
       serverUrl={serverUrl}
       token={token}
       onConnected={onConnected}

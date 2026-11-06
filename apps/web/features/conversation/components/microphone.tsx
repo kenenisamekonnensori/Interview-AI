@@ -639,16 +639,16 @@ export function InterviewMicrophone({
           });
           onStarted?.();
 
-          // 10-second connection timeout guard (Task 3.2)
+          // 20-second connection timeout guard (allows full WebRTC ICE negotiation window)
           if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
           connectTimeoutRef.current = setTimeout(() => {
             if (stateRef.current === "CONNECTING") {
               setVoiceFallback(
-                "Voice connection timed out after 10 seconds. You can switch to text mode to continue.",
+                "Voice connection timed out. You can switch to text mode to continue.",
               );
               updateState("ERROR");
             }
-          }, 10_000);
+          }, 20_000);
           return;
         }
       } catch (liveKitError) {

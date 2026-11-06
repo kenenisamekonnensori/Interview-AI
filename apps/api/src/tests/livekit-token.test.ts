@@ -134,6 +134,7 @@ describe("LiveKit Token Minting Endpoint (Acceptance Check 2)", () => {
     expect(claims.video?.canSubscribe).toBe(true);
     expect(claims.video?.canPublishData).toBe(true);
     expect(claims.sub).toBe(`user-${testUserId}`);
+    expect(claims.roomConfig?.agents?.[0]?.agentName).toBe("interviewer-ai-voice-agent");
 
     // d) User with COMPLETED interview yields HTTP 409 INVALID_STATE_TRANSITION
     const completedRes = await app.inject({
