@@ -18,6 +18,7 @@ export type AgentPipelineOptions = {
   deepgramApiKey?: string | undefined;
   geminiApiKey?: string | undefined;
   instructionInput?: Partial<AgentInterviewInstructionInput> | undefined;
+  vad?: silero.VAD | undefined;
 };
 
 export function createTTS(options?: {
@@ -46,10 +47,15 @@ export function createTTS(options?: {
 }
 
 export async function createAgentPipeline(options: AgentPipelineOptions) {
-  const vad = await silero.VAD.load({
-    minSpeechDuration: 0.2,
-    minSilenceDuration: 0.6,
-  });
+  // LiveKit VADOptions require durations in milliseconds (minSilenceDuration must be >= 250ms for TurnDetector)
+  const vad =
+    options.vad ??
+    (await silero.VAD.load({
+      minSpeechDuration: 200,
+      minSilenceDuration: 600,
+      prefixPaddingDuration: 500,
+      activationThreshold: 0.5,
+    }));
 
   const language = options.language ?? "en";
   const deepgramKey = options.deepgramApiKey ?? process.env.DEEPGRAM_API_KEY;

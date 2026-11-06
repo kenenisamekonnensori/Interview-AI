@@ -4,30 +4,83 @@ import { useEffect, useRef, useState } from "react";
 import { Mic, MicOff, Volume2, Brain, LoaderCircle, AlertTriangle } from "lucide-react";
 import type { VoiceSessionState } from "./microphone";
 
-interface VoiceVisualizerProps {
-  stream: MediaStream | null;
+export interface VisualizerStateParams {
+  scale: number;
+  rotationVelocity: number;
+  radialDisplacement: number;
+}
+
+export function calculateVisualizerParams(
+  state: VoiceSessionState,
+  volume = 0,
+  timeMs = 0,
+): VisualizerStateParams {
+  const normalizedVolume = Math.max(0, Math.min(1, volume));
+
+  switch (state) {
+    case "SPEAKING": {
+      // Dynamic amplitude reactivity responding directly to the agent's synthesized voice energy
+      // (scaling up to 1.35 based on volume)
+      const scale = 1.0 + normalizedVolume * 0.35;
+      const rotationVelocity = 1.5 + normalizedVolume * 0.5;
+      const radialDisplacement = 1.0 + normalizedVolume * 0.35;
+      return { scale, rotationVelocity, radialDisplacement };
+    }
+    case "THINKING": {
+      // Concentrated orbital particle swirl:
+      // higher rotation velocity than LISTENING, reduced radial displacement
+      const scale = 1.0;
+      const rotationVelocity = 2.5; // higher rotation velocity than LISTENING (1.0)
+      const radialDisplacement = 0.5; // reduced radial displacement compared to LISTENING (1.0)
+      return { scale, rotationVelocity, radialDisplacement };
+    }
+    case "LISTENING": {
+      // Gentle idle breathing oscillation (base scale 1.0, subtle periodic pulse)
+      // When candidate speaks, volume provides gentle responsiveness
+      const pulse = timeMs > 0 ? Math.sin(timeMs / 1000) * 0.03 : 0;
+      const speechReact = normalizedVolume * 0.15;
+      const scale = 1.0 + pulse + speechReact;
+      const rotationVelocity = 1.0;
+      const radialDisplacement = 1.0;
+      return { scale, rotationVelocity, radialDisplacement };
+    }
+    default: {
+      return { scale: 1.0, rotationVelocity: 0.5, radialDisplacement: 0.8 };
+    }
+  }
+}
+
+export interface VoiceVisualizerProps {
+  stream?: MediaStream | null | undefined;
+  volume?: number | undefined;
   state: VoiceSessionState;
-  errorMessage?: string | null;
-  partialTranscript?: string;
-  onRetry?: () => void;
+  errorMessage?: string | null | undefined;
+  partialTranscript?: string | undefined;
+  onRetry?: (() => void) | undefined;
 }
 
 export function VoiceVisualizer({
   stream,
+  volume,
   state,
   errorMessage,
   partialTranscript,
   onRetry,
 }: VoiceVisualizerProps) {
-  const [amplitude, setAmplitude] = useState<number>(0);
+  const [streamAmplitude, setStreamAmplitude] = useState<number>(0);
   const animFrameRef = useRef<number | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
 
-  // Set up Web Audio API Analyser Node on stream
+  // Set up Web Audio API Analyser Node on stream only if volume is not provided directly
   useEffect(() => {
+    if (typeof volume === "number") {
+      setStreamAmplitude(0);
+      return;
+    }
+
     if (!stream || state === "IDLE" || state === "ERROR" || state === "SPEAKING") {
-      setAmplitude(0);
+      setStreamAmplitude(0);
       return;
     }
 
@@ -58,14 +111,14 @@ export function VoiceVisualizer({
         const average = sum / dataArray.length;
         // Normalize 0 to 1
         const normalized = Math.min(1, Math.max(0, average / 128));
-        setAmplitude(normalized);
+        setStreamAmplitude(normalized);
 
         animFrameRef.current = requestAnimationFrame(updateVolume);
       };
 
       updateVolume();
     } catch {
-      setAmplitude(0);
+      setStreamAmplitude(0);
     }
 
     return () => {
@@ -79,7 +132,12 @@ export function VoiceVisualizer({
       audioCtxRef.current = null;
       analyserRef.current = null;
     };
-  }, [stream, state]);
+  }, [stream, state, volume]);
+
+  const effectiveAmplitude =
+    typeof volume === "number" ? Math.max(0, Math.min(1, volume)) : streamAmplitude;
+
+  const animParams = calculateVisualizerParams(state, effectiveAmplitude, Date.now());
 
   // Visualizer configuration based on current session state
   const isListening = state === "LISTENING";
@@ -99,7 +157,7 @@ export function VoiceVisualizer({
     if (isListening) {
       return {
         icon: <Mic className="size-4 text-emerald-400 animate-pulse" />,
-        label: amplitude > 0.15 ? "Listening to you…" : "Listening — speak your response",
+        label: effectiveAmplitude > 0.15 ? "Listening to you…" : "Listening — speak your response",
         bg: "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
       };
     }
@@ -134,7 +192,14 @@ export function VoiceVisualizer({
   const status = getStatusBadge();
 
   return (
-    <div className="relative flex flex-col items-center justify-center py-6 px-4">
+    <div
+      className="relative flex flex-col items-center justify-center py-6 px-4"
+      data-testid="voice-visualizer-container"
+      data-state={state}
+      data-scale={animParams.scale.toFixed(3)}
+      data-rotation={animParams.rotationVelocity.toFixed(2)}
+      data-displacement={animParams.radialDisplacement.toFixed(2)}
+    >
       {/* Central Visualizer Stage */}
       <div className="relative flex items-center justify-center size-48 sm:size-56">
         {/* Outer Glow Pulse Rings */}
@@ -142,14 +207,14 @@ export function VoiceVisualizer({
           className={`absolute inset-0 rounded-full transition-all duration-300 ${
             isSpeaking
               ? "bg-violet-500/20 animate-ping opacity-75 blur-xl"
-              : isListening && amplitude > 0.1
+              : isListening && effectiveAmplitude > 0.1
                 ? "bg-emerald-500/25 blur-xl"
                 : isThinking
                   ? "bg-indigo-500/20 animate-pulse blur-lg"
                   : "bg-transparent"
           }`}
           style={{
-            transform: `scale(${1 + amplitude * 0.4})`,
+            transform: `scale(${animParams.scale})`,
           }}
         />
 
@@ -159,7 +224,7 @@ export function VoiceVisualizer({
             isSpeaking
               ? "border-violet-400/50 bg-gradient-to-br from-violet-900/40 to-indigo-950/60 shadow-[0_0_40px_rgba(139,92,246,0.35)]"
               : isListening
-                ? amplitude > 0.15
+                ? effectiveAmplitude > 0.15
                   ? "border-emerald-400/60 bg-gradient-to-br from-emerald-950/40 to-teal-950/60 shadow-[0_0_40px_rgba(16,185,129,0.35)]"
                   : "border-emerald-500/30 bg-slate-950/80 shadow-[0_0_20px_rgba(16,185,129,0.15)]"
                 : isThinking
@@ -168,21 +233,26 @@ export function VoiceVisualizer({
                     ? "border-rose-500/40 bg-rose-950/20 shadow-[0_0_20px_rgba(244,63,94,0.2)]"
                     : "border-slate-800 bg-slate-950/60"
           }`}
+          style={{
+            transform: `scale(${1.0 + (animParams.scale - 1.0) * 0.5})`,
+          }}
         >
-          {/* Animated Equalizer Waveform Bars */}
+          {/* Animated Equalizer Waveform Bars / Reactive Representation */}
           <div className="flex items-center gap-1.5 h-16 px-4">
-            {[0.4, 0.7, 1.0, 0.6, 0.9, 0.5, 0.8, 0.4].map((scale, i) => {
+            {[0.4, 0.7, 1.0, 0.6, 0.9, 0.5, 0.8, 0.4].map((scaleFactor, i) => {
               let barHeight = 12;
 
               if (isListening) {
-                // Real Microphone Amplitude Response
-                barHeight = Math.max(12, amplitude * 64 * scale + (i % 2 === 0 ? 8 : 4));
+                barHeight = Math.max(
+                  12,
+                  effectiveAmplitude * 64 * scaleFactor + (i % 2 === 0 ? 8 : 4),
+                );
               } else if (isSpeaking) {
-                // Simulated AI Voice Rhythm
-                barHeight = 16 + Math.sin(Date.now() / 150 + i) * 18 + 12;
+                barHeight =
+                  16 + effectiveAmplitude * 40 * scaleFactor + Math.sin(Date.now() / 150 + i) * 12;
               } else if (isThinking) {
-                // Gentle Thinking Orbital Wave
-                barHeight = 14 + Math.sin(Date.now() / 300 + i * 0.8) * 8;
+                // Orbital Swirl Motion
+                barHeight = 14 + Math.sin(Date.now() / 150 + i * 1.2) * 10;
               }
 
               return (
@@ -192,14 +262,14 @@ export function VoiceVisualizer({
                     isSpeaking
                       ? "bg-gradient-to-t from-violet-500 to-indigo-300"
                       : isListening
-                        ? amplitude > 0.1
+                        ? effectiveAmplitude > 0.1
                           ? "bg-gradient-to-t from-emerald-500 to-teal-200"
                           : "bg-emerald-500/60"
                         : isThinking
                           ? "bg-indigo-400/60"
                           : "bg-slate-700"
                   }`}
-                  style={{ height: `${barHeight}px` }}
+                  style={{ height: `${Math.max(4, barHeight)}px` }}
                 />
               );
             })}

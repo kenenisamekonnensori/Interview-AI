@@ -427,7 +427,7 @@ The executing agent verifies the following confirmed decisions against the repos
 4. **Three.js Visualizer Integration**: `apps/web/features/conversation/components/voice-visualizer.tsx` will be adapted to read audio track energy from LiveKit's `useTrackVolume` hook for candidate and agent audio streams.
 
 ### Tasks
-* [ ] **Task 3.1 — Install and Configure LiveKit Web SDK**
+* [x] **Task 3.1 — Install and Configure LiveKit Web SDK**
   * Exact Files: `apps/web/package.json`, `apps/web/features/conversation/components/livekit-audio-room.tsx`.
   * Install dependencies: `@livekit/components-react` and `livekit-client` in `apps/web/package.json`.
   * Create `LiveKitAudioRoom`:
@@ -446,7 +446,7 @@ The executing agent verifies the following confirmed decisions against the repos
     * Wraps session with `<LiveKitRoom audio={true} video={false} connect={true}>`.
     * Mounts `<RoomAudioRenderer />` to handle incoming audio tracks from the agent worker.
 
-* [ ] **Task 3.2 — Replace Raw PCM Plumbing**
+* [x] **Task 3.2 — Replace Raw PCM Plumbing**
   * Exact Files: `apps/web/features/conversation/agent-voice.ts`, `apps/web/features/conversation/components/microphone.tsx`, `apps/web/app/(app)/interviews/[id]/page.tsx`.
   * Mark `AgentMicCapture` (`ScriptProcessorNode`) and `AgentAudioPlayer` in `agent-voice.ts` as deprecated.
   * Publish candidate microphone track with hardware-accelerated constraints:
@@ -461,7 +461,7 @@ The executing agent verifies the following confirmed decisions against the repos
     ```
   * Maintain graceful fallback: if WebRTC room fails to connect within 10 seconds (proposed), show a fallback alert enabling one-click switch to typed text mode.
 
-* [ ] **Task 3.3 — Connect Voice Orb and Visualizer to WebRTC Audio Energy**
+* [x] **Task 3.3 — Connect Voice Orb and Visualizer to WebRTC Audio Energy**
   * Exact Files: `apps/web/features/conversation/components/voice-visualizer.tsx`, `apps/web/features/conversation/components/livekit-visualizer-adapter.tsx`.
   * Create `LiveKitVisualizerAdapter`:
     * Subscribes to local candidate audio track using `useTrackVolume(localTrack)`.
@@ -472,7 +472,7 @@ The executing agent verifies the following confirmed decisions against the repos
     * `THINKING`: Concentrated orbital particle swirl (higher rotation velocity, reduced radial displacement).
     * `SPEAKING`: Dynamic amplitude reactivity responding directly to the agent's synthesized voice energy (scaling up to 1.35 based on volume).
 
-* [ ] **Task 3.4 — HUD Controls and Failure Fallback**
+* [x] **Task 3.4 — HUD Controls and Failure Fallback**
   * Exact Files: `apps/web/app/(app)/interviews/[id]/page.tsx`.
   * Retain and connect interview HUD controls:
     * Authoritative interview duration countdown timer.
@@ -731,6 +731,6 @@ Use this table to track operational progress as phases are built and deployed:
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Phase 1** | Speech Delivery Analytics and STAR Exemplar Coaching | `COMPLETED` | Milestone 1 | Backend / AI | Phase 1 status: done. All 6 acceptance checks verified. Prisma migration 20261103210000_add_conversation_turn_timing applied to dev DB. Responsive checks verified at 375px, 768px, and 1280px. |
 | **Phase 2** | LiveKit WebRTC Infrastructure and Agent Worker | `COMPLETED` | Milestone 2 | Infra / AI | Phase 2 status: done. Deferred: none. Known issues: none. All 6 acceptance checks verified. LiveKit SFU compose service active under profile 'livekit' on port 7880; Fastify token minting at /api/v1/interviews/:id/livekit-token; apps/agent voice worker implemented with Silero VAD, Deepgram Nova-3 STT, Gemini Flash LLM, Deepgram Aura-2 default TTS, and Cartesia Sonic fallback; internal state sync bridge secured with timingSafeEqual validation. |
-| **Phase 3** | Web Client WebRTC Migration (Echo-Free Audio) | `PENDING` | Milestone 3 | Frontend | Blocked on Phase 2 completion |
-| **Phase 4** | Conversational Steering, Monologue Guard and Hints | `PENDING` | Milestone 4 | AI / Backend | Blocked on Phase 3 completion |
+| **Phase 3** | Web Client WebRTC Migration (Echo-Free Audio) | `COMPLETED` | Milestone 3 | Frontend | Phase 3 status: done. Deferred: none. Known issues: none. All 6 acceptance checks verified. Installed @livekit/components-react and livekit-client; implemented LiveKitAudioRoom with hardware AEC constraints; created LiveKitVisualizerAdapter and volume-reactive VoiceVisualizer orb; wired 10-second fallback, WebRTC health badges, and text fallback; verified at 375px, 768px, and 1280px viewports. |
+| **Phase 4** | Conversational Steering, Monologue Guard and Hints | `PENDING` | Milestone 4 | AI / Backend | Ready to begin |
 | **Phase 5** | Targeted Question Micro-Drills and Platform Hardening | `PENDING` | Milestone 5 | Full Stack | Blocked on Phase 4 completion |

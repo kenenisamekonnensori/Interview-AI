@@ -10,7 +10,12 @@ import type {
   WordTimingEntry,
 } from "@interviewer-ai/types";
 import { interviewPlanSchema } from "@interviewer-ai/types";
-import { AccessToken } from "livekit-server-sdk";
+import {
+  AccessToken,
+  AgentDispatchClient,
+  RoomAgentDispatch,
+  RoomConfiguration,
+} from "livekit-server-sdk";
 import { coerceAgentMemory, resolveAgentTurnPlan } from "./agent-memory.js";
 import type { InternalTurnSyncInput } from "./schema.js";
 
@@ -878,7 +883,33 @@ export class ConversationService {
       canSubscribe: true,
       canPublishData: true,
     });
+    token.roomConfig = new RoomConfiguration({
+      agents: [
+        new RoomAgentDispatch({
+          agentName: "interviewer-ai-voice-agent",
+          metadata: JSON.stringify({ interviewId, userId }),
+        }),
+      ],
+    });
     const jwt = await token.toJwt();
+
+    // Supplementary explicit room dispatch (non-blocking so token generation responds in ~5ms)
+    try {
+      const httpUrl = (this.environment.LIVEKIT_URL ?? "http://localhost:7880")
+        .replace(/^ws:\/\//, "http://")
+        .replace(/^wss:\/\//, "https://");
+      const dispatchClient = new AgentDispatchClient(httpUrl, apiKey, apiSecret);
+      void dispatchClient
+        .createDispatch(roomName, "interviewer-ai-voice-agent", {
+          metadata: JSON.stringify({ interviewId, userId }),
+        })
+        .catch(() => {
+          // Best-effort: token.roomConfig dispatches natively upon room connection
+        });
+    } catch {
+      // Best-effort
+    }
+
     return {
       token: jwt,
       url: this.environment.LIVEKIT_URL,

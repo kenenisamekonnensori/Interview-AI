@@ -44,6 +44,8 @@ describe("Voice Agent Worker & TTS Hierarchy (Acceptance Checks 4 & 5)", () => {
   it("registers job dispatch listener and filters rooms starting with interview-", async () => {
     const serverOpts = createServerOptions("/fake/path/index.ts");
     expect(serverOpts.agentName).toBe("interviewer-ai-voice-agent");
+    expect(serverOpts.numIdleProcesses).toBe(1);
+    expect(serverOpts.initializeProcessTimeout).toBe(60_000);
 
     // Room starting with interview- should be accepted
     const acceptedMock = {
@@ -86,6 +88,9 @@ describe("Voice Agent Worker & TTS Hierarchy (Acceptance Checks 4 & 5)", () => {
     });
 
     expect(pipeline.agent).toBeDefined();
+    expect(pipeline.vad).toBeDefined();
+    expect(pipeline.vad.minSilenceDuration).toBeGreaterThanOrEqual(250);
+    expect(pipeline.vad.minSilenceDuration).toBe(600);
     expect(pipeline.greeting).toContain("Senior Backend Engineer");
     expect(pipeline.greeting).toContain("Distributed Systems");
     expect((pipeline.stt as unknown as { model: string }).model).toBe("nova-3");
