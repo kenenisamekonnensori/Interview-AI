@@ -81,9 +81,7 @@ const currentFilePath = fileURLToPath(import.meta.url);
 const entryArg = process.argv[1];
 const isDirectlyExecuted =
   entryArg !== undefined &&
-  (entryArg.endsWith("index.ts") ||
-    entryArg.endsWith("index.js") ||
-    entryArg === currentFilePath);
+  (entryArg.endsWith("index.ts") || entryArg.endsWith("index.js") || entryArg === currentFilePath);
 
 if (isDirectlyExecuted) {
   cli.runApp(createServerOptions(currentFilePath));
